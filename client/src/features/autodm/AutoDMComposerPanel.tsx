@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import { motion, AnimatePresence } from "framer-motion";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -268,18 +269,88 @@ export function AutoDMComposerPanel({ config, onChange, postType }: any) {
                   <h4 className="text-sm font-semibold text-[var(--ink)]">Privately send them a DM</h4>
                 </div>
                 
-                <div className="pl-8">
+                <div className="pl-8 space-y-4">
+                  {/* Opening DM Card */}
                   <div className="rounded-xl border border-black/10 bg-white shadow-sm overflow-hidden">
-                    <div className="bg-gray-50/50 border-b border-black/5 px-4 py-3 flex items-center gap-2">
-                       <Send className="h-4 w-4 text-[var(--slate)]" />
-                       <span className="text-xs font-medium text-[var(--ink)]">Direct Message Flow</span>
+                    <div className="bg-gray-50/50 border-b border-black/5 p-4 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[#1683dd] text-sm font-bold text-white">
+                          1
+                        </span>
+                        <div>
+                          <p className="font-semibold text-sm text-[var(--ink)]">Opening DM</p>
+                          <p className="text-xs text-[var(--slate)]">Sent first with a button, like the screenshot.</p>
+                        </div>
+                      </div>
+                      <Switch
+                        checked={Boolean(config.responseFlow?.opening_message_enabled)}
+                        onCheckedChange={(checked) =>
+                          update({
+                            responseFlow: {
+                              ...config.responseFlow,
+                              opening_message_enabled: checked,
+                            },
+                          })
+                        }
+                      />
+                    </div>
+
+                    {config.responseFlow?.opening_message_enabled && (
+                      <div className="space-y-3 p-4 bg-white">
+                        <Textarea
+                          value={config.responseFlow?.opening_message || ""}
+                          onChange={(e) =>
+                            update({
+                              responseFlow: {
+                                ...config.responseFlow,
+                                opening_message: e.target.value,
+                              },
+                            })
+                          }
+                          placeholder="Hey there! Thanks for your interest ✨&#10;Click below to get the details."
+                          className="min-h-[100px] resize-none rounded-lg border border-black/10 text-sm leading-relaxed p-3 focus-visible:ring-1 focus-visible:ring-[var(--arc)]"
+                        />
+                        <Input
+                          value={config.responseFlow?.opening_button || ""}
+                          onChange={(e) =>
+                            update({
+                              responseFlow: {
+                                ...config.responseFlow,
+                                opening_button: e.target.value,
+                              },
+                            })
+                          }
+                          placeholder="Send me the link"
+                          className="rounded-lg border border-black/10 text-sm h-10 px-3 focus-visible:ring-1 focus-visible:ring-[var(--arc)]"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Flow Builder Card */}
+                  <div className="rounded-xl border border-black/10 bg-white shadow-sm overflow-hidden">
+                    <div className="bg-gray-50/50 border-b border-black/5 p-4 flex items-center gap-3">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[#111111] text-sm font-bold text-white">
+                        {config.responseFlow?.opening_message_enabled ? "2" : "1"}
+                      </span>
+                      <div>
+                        <p className="font-semibold text-sm text-[var(--ink)]">
+                          {config.responseFlow?.opening_message_enabled ? "After they tap the button" : "Direct Message Flow"}
+                        </p>
+                        <p className="text-xs text-[var(--slate)]">
+                          {config.responseFlow?.opening_message_enabled
+                            ? `Shown after the user sends “${config.responseFlow?.opening_button || 'Send me the link'}”.`
+                            : "Sent directly to the user in DM."}
+                        </p>
+                      </div>
                     </div>
                     <div className="p-4 bg-[var(--canvas-lifted)]">
                       <ResponseFlowBuilder
                         responseFlow={config.responseFlow}
                         onChange={(responseFlow: any) => update({ responseFlow })}
                         compact={true}
-                        step={0}
+                        step={config.responseFlow?.opening_message_enabled ? 2 : 0}
+                        hideHeader={true}
                       />
                     </div>
                   </div>

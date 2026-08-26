@@ -99,40 +99,42 @@ export function KeywordInput({
         </div>
       )}
 
-      <div>
-        <p className="mb-2 text-sm text-[var(--slate)]">Suggested keywords:</p>
-        <div className="flex flex-wrap gap-2">
-          {suggestedKeywords
-            .filter((keyword) => !keywords.includes(keyword))
-            .slice(0, 5)
-            .map((keyword) => {
-              const conflict = conflictMap.get(keyword.toLowerCase());
-              return (
-                <button
-                  key={keyword}
-                  type="button"
-                  onClick={() => !conflict && onChange([...keywords, keyword])}
-                  disabled={!!conflict}
-                  title={conflict ? `Already used in "${conflict.automationName}"` : undefined}
-                  className={`rounded-full border border-dashed px-3 py-1 text-sm transition-colors ${
-                    conflict
-                      ? "border-red-200 bg-red-50 text-red-400 cursor-not-allowed opacity-60"
-                      : "border-black/15 bg-white hover:border-[var(--arc)] hover:text-[var(--arc)]"
-                  }`}
-                >
-                  {conflict ? (
-                    <span className="flex items-center gap-1">
-                      <AlertTriangle className="h-3 w-3" />
-                      {keyword}
-                    </span>
-                  ) : (
-                    `+ ${keyword}`
-                  )}
-                </button>
-              );
-            })}
+      {keywords.length === 0 && (
+        <div>
+          <p className="mb-2 text-sm text-[var(--slate)]">Suggested keywords:</p>
+          <div className="flex flex-wrap gap-2">
+            {suggestedKeywords
+              .filter((keyword) => !keywords.includes(keyword))
+              .slice(0, 5)
+              .map((keyword) => {
+                const conflict = conflictMap.get(keyword.toLowerCase());
+                return (
+                  <button
+                    key={keyword}
+                    type="button"
+                    onClick={() => !conflict && onChange([...keywords, keyword])}
+                    disabled={!!conflict}
+                    title={conflict ? `Already used in "${conflict.automationName}"` : undefined}
+                    className={`rounded-full border border-dashed px-3 py-1 text-sm transition-colors ${
+                      conflict
+                        ? "border-red-200 bg-red-50 text-red-400 cursor-not-allowed opacity-60"
+                        : "border-black/15 bg-white hover:border-[var(--arc)] hover:text-[var(--arc)]"
+                    }`}
+                  >
+                    {conflict ? (
+                      <span className="flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        {keyword}
+                      </span>
+                    ) : (
+                      `+ ${keyword}`
+                    )}
+                  </button>
+                );
+              })}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="flex items-center justify-between gap-4 rounded-[14px] bg-black/[0.035] p-3">
         <div className="flex items-center gap-2">
