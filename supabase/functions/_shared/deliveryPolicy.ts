@@ -41,6 +41,43 @@ export const applyDeliveryBranding = <T extends BrandableAction>(
   ];
 };
 
+const PAID_PLANS = new Set([
+  "pro",
+  "enterprise",
+  "starter",
+  "slite",
+  "growth",
+  "sgrowth",
+  "scale",
+  "sscale",
+  "custom_bundle",
+  "custom_bundle_monthly",
+  "custom_bundle_quarterly",
+  "custom_bundle_half_yearly",
+  "custom_bundle_yearly",
+  "custom",
+  "gap_core",
+  "gap_max",
+  "gap_ultimate_ecosystem",
+  "spstarter",
+  "spgrowth",
+  "social_pilot_starter",
+  "social_pilot_growth",
+  "social_pilot_pro",
+  "all_in_one_bundle",
+  "all_in_one_bundle_monthly",
+  "all_in_one_bundle_quarterly",
+  "all_in_one_bundle_half_yearly",
+  "all_in_one_bundle_yearly",
+]);
+
+export const isPaidPlan = (planId?: string | null): boolean => {
+  if (!planId) return false;
+  const normalized = String(planId).toLowerCase().trim().replace(/[\s-]+/g, "_");
+  if (["free", "free_trial", "none"].includes(normalized)) return false;
+  return PAID_PLANS.has(normalized) || !normalized.includes("free");
+};
+
 export const getDeliveryPlan = (
   subscriptions: Array<{
     plan_id?: string | null;
@@ -51,22 +88,38 @@ export const getDeliveryPlan = (
   }>,
   now = Date.now(),
 ): { id: DeliveryPlanId; replyLimit: number } => {
-  const rank: Record<string, number> = { free: 0, pro: 1, enterprise: 2 };
+  const rank: Record<string, number> = {
+    free: 0,
+    free_trial: 0,
+    slite: 1,
+    starter: 1,
+    social_pilot_starter: 1,
+    sgrowth: 2,
+    growth: 2,
+    pro: 2,
+    social_pilot_growth: 2,
+    social_pilot_pro: 2,
+    custom_bundle: 2,
+    sscale: 3,
+    scale: 3,
+    enterprise: 3,
+  };
+
   const usable = subscriptions
     .filter((subscription) => {
       if (!["active", "trialing"].includes(String(subscription.status)))
         return false;
-      if (
+      if(
         subscription.grace_period_ends_at &&
         Date.parse(subscription.grace_period_ends_at) >= now
       )
         return true;
-      if (
+      if(
         subscription.current_period_end &&
         Date.parse(subscription.current_period_end) < now
       )
         return false;
-      if (
+      if(
         subscription.status === "trialing" &&
         subscription.trial_ends_at &&
         Date.parse(subscription.trial_ends_at) < now
@@ -75,12 +128,19 @@ export const getDeliveryPlan = (
       return true;
     })
     .sort(
-      (a, b) => (rank[String(b.plan_id)] ?? 0) - (rank[String(a.plan_id)] ?? 0),
-    )[0];
+      (a, b) =>
+        (rank[String(a.plan_id).toLowerCase()] ?? (isPaidPlan(a.plan_id) ? 2 : 0)) -
+        (rank[String(b.plan_id).toLowerCase()] ?? (isPaidPlan(b.plan_id) ? 2 : 0)),
+    )
+    .reverse()[0];
 
-  const id: DeliveryPlanId =
-    usable?.plan_id === "pro" || usable?.plan_id === "enterprise"
-      ? usable.plan_id
-      : "free";
-  return { id, replyLimit: id === "free" ? 50 : 1_000_000 };
+  const isPaid = usable?.plan_id ? isPaidPlan(usable.plan_id) : false;
+  const id: DeliveryPlanId = isPaid
+    ? String(usable?.plan_id).toLowerCase().includes("enterprise") ||
+      String(usable?.plan_id).toLowerCase().includes("scale")
+      ? "enterprise"
+      : "pro"
+    : "free";
+
+  return { id, replyLimit: isPaid ? 1_000_000 : 50 };
 };

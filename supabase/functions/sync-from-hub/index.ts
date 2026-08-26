@@ -15,15 +15,30 @@ function jsonRes(status: number, body: Record<string, unknown>): Response {
 
 // Plans that include Social Pilot access mapping dictionary
 const HUB_PLAN_MAPPING: Record<string, "free" | "slite" | "sgrowth"> = {
+  "free": "free",
   "free_trial": "free",
   "social_pilot_starter": "slite",
   "social_pilot_growth": "sgrowth",
   "social_pilot_pro": "sgrowth",
   "social_pilot_quarterly": "slite",
   "social_pilot_half_yearly": "slite",
+  "all_in_one_bundle": "sgrowth",
   "all_in_one_bundle_monthly": "sgrowth",
   "all_in_one_bundle_quarterly": "sgrowth",
-  "all_in_one_bundle_half_yearly": "sgrowth"
+  "all_in_one_bundle_half_yearly": "sgrowth",
+  "all_in_one_bundle_yearly": "sgrowth",
+  "custom_bundle": "sgrowth",
+  "custom_bundle_monthly": "sgrowth",
+  "custom_bundle_quarterly": "sgrowth",
+  "custom_bundle_half_yearly": "sgrowth",
+  "custom_bundle_yearly": "sgrowth",
+  "custom": "sgrowth",
+  "gap_core": "sgrowth",
+  "gap_max": "sgrowth",
+  "gap_ultimate_ecosystem": "sgrowth",
+  "spstarter": "slite",
+  "spgrowth": "sgrowth",
+  "enterprise": "sgrowth",
 };
 
 Deno.serve(async (req: Request) => {
@@ -69,9 +84,16 @@ Deno.serve(async (req: Request) => {
       auth: { persistSession: false },
     });
 
-    // Normalize plan_id to match exact mapping keys
+    // Normalize plan_id and plan_label to match mapping keys
     const rawPlanId = plan_id ? String(plan_id).toLowerCase().trim() : "";
-    const mappedPlan = HUB_PLAN_MAPPING[rawPlanId] || "free";
+    const rawPlanNorm = rawPlanId.replace(/\s+/g, '_');
+    let mappedPlan = HUB_PLAN_MAPPING[rawPlanId] || HUB_PLAN_MAPPING[rawPlanNorm] || "free";
+    
+    if (mappedPlan === "free" && plan_label) {
+      const rawLabel = String(plan_label).toLowerCase().trim();
+      const rawLabelNorm = rawLabel.replace(/\s+/g, '_');
+      mappedPlan = HUB_PLAN_MAPPING[rawLabel] || HUB_PLAN_MAPPING[rawLabelNorm] || "free";
+    }
     
     // Normalize status.
     const rawStatus = subscription_status ? String(subscription_status).trim().toLowerCase() : "";
