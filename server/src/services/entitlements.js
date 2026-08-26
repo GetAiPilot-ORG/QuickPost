@@ -8,15 +8,30 @@ import {
 } from '../config/entitlementPolicy.js';
 
 const HUB_PLAN_MAPPING = {
+  'free': 'free',
   'free_trial': 'free',
   'social_pilot_starter': 'slite',
   'social_pilot_growth': 'sgrowth',
   'social_pilot_pro': 'sgrowth',
   'social_pilot_quarterly': 'slite',
   'social_pilot_half_yearly': 'slite',
+  'all_in_one_bundle': 'sgrowth',
   'all_in_one_bundle_monthly': 'sgrowth',
   'all_in_one_bundle_quarterly': 'sgrowth',
-  'all_in_one_bundle_half_yearly': 'sgrowth'
+  'all_in_one_bundle_half_yearly': 'sgrowth',
+  'all_in_one_bundle_yearly': 'sgrowth',
+  'custom_bundle': 'sgrowth',
+  'custom_bundle_monthly': 'sgrowth',
+  'custom_bundle_quarterly': 'sgrowth',
+  'custom_bundle_half_yearly': 'sgrowth',
+  'custom_bundle_yearly': 'sgrowth',
+  'custom': 'sgrowth',
+  'gap_core': 'sgrowth',
+  'gap_max': 'sgrowth',
+  'gap_ultimate_ecosystem': 'sgrowth',
+  'spstarter': 'slite',
+  'spgrowth': 'sgrowth',
+  'enterprise': 'sgrowth'
 };
 
 const HUB_PLAN_DURATION = {
@@ -28,7 +43,21 @@ const HUB_PLAN_DURATION = {
   'social_pilot_half_yearly': 'six_months',
   'all_in_one_bundle_monthly': 'monthly',
   'all_in_one_bundle_quarterly': 'quarterly',
-  'all_in_one_bundle_half_yearly': 'six_months'
+  'all_in_one_bundle_half_yearly': 'six_months',
+  'all_in_one_bundle_yearly': 'year',
+  'all_in_one_bundle': 'monthly',
+  'custom_bundle': 'monthly',
+  'custom_bundle_monthly': 'monthly',
+  'custom_bundle_quarterly': 'quarterly',
+  'custom_bundle_half_yearly': 'six_months',
+  'custom_bundle_yearly': 'year',
+  'custom': 'monthly',
+  'gap_core': 'monthly',
+  'gap_max': 'six_months',
+  'gap_ultimate_ecosystem': 'monthly',
+  'spstarter': 'monthly',
+  'spgrowth': 'monthly',
+  'enterprise': 'monthly'
 };
 
 const entitlementsCache = new Map();
@@ -119,14 +148,27 @@ export async function getEntitlements(userId, email = null, token = null) {
 
           for (const item of planList) {
             const p = String(item || '').toLowerCase().trim();
-            if (HUB_PLAN_MAPPING[p]) {
-              if (HUB_PLAN_MAPPING[p] === 'sgrowth') {
+            const pNorm = p.replace(/\s+/g, '_');
+            const matchKey = HUB_PLAN_MAPPING[p] ? p : (HUB_PLAN_MAPPING[pNorm] ? pNorm : null);
+            if (matchKey) {
+              if (HUB_PLAN_MAPPING[matchKey] === 'sgrowth') {
                 mappedPlanId = 'sgrowth';
-                matchedHubPlan = p;
+                matchedHubPlan = matchKey;
                 break; // Highest tier, stop searching
               }
-              mappedPlanId = HUB_PLAN_MAPPING[p];
-              matchedHubPlan = p;
+              mappedPlanId = HUB_PLAN_MAPPING[matchKey];
+              matchedHubPlan = matchKey;
+            }
+          }
+
+          // Fallback: If still free, check hubSubscription.plan explicitly
+          if (mappedPlanId === 'free' && hubSubscription.plan) {
+            const p = String(hubSubscription.plan).toLowerCase().trim();
+            const pNorm = p.replace(/\s+/g, '_');
+            const matchKey = HUB_PLAN_MAPPING[p] ? p : (HUB_PLAN_MAPPING[pNorm] ? pNorm : null);
+            if (matchKey) {
+              mappedPlanId = HUB_PLAN_MAPPING[matchKey];
+              matchedHubPlan = matchKey;
             }
           }
 
