@@ -606,6 +606,7 @@ export default function PricingPage() {
 
             <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
               {[
+                { label: "Docs & Guide", to: "/dashboard/docs" },
                 { label: "Privacy Policy", to: "/privacy" },
                 { label: "Terms of Service", to: "/terms" },
               ].map(({ label, to }) => (

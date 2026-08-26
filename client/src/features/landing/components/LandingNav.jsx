@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Menu, X, ArrowUpRight } from "lucide-react";
 import {
   motion,
@@ -13,11 +13,32 @@ import { useAuth } from "../../../context/AuthContext";
 
 export default function LandingNav() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, isAuthenticated } = useAuth();
   const { scrollY } = useScroll();
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  const isHomePage = location.pathname === "/";
+
+  const handleNavClick = (e, href) => {
+    if (href.startsWith("#")) {
+      if (isHomePage) {
+        e.preventDefault();
+        const element = document.querySelector(href);
+        if (element) {
+          element.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      } else {
+        e.preventDefault();
+        navigate("/" + href);
+      }
+    } else {
+      e.preventDefault();
+      navigate(href);
+    }
+  };
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
@@ -164,7 +185,8 @@ export default function LandingNav() {
               {navLinks.map((link) => (
                 <a
                   key={link.label}
-                  href={link.href}
+                  href={link.href.startsWith("#") && !isHomePage ? `/${link.href}` : link.href}
+                  onClick={(e) => handleNavClick(e, link.href)}
                   style={{
                     fontSize: 13,
                     fontWeight: 600,
@@ -294,8 +316,11 @@ export default function LandingNav() {
               {navLinks.map((link) => (
                 <a
                   key={link.label}
-                  href={link.href}
-                  onClick={() => setMobileMenuOpen(false)}
+                  href={link.href.startsWith("#") && !isHomePage ? `/${link.href}` : link.href}
+                  onClick={(e) => {
+                    setMobileMenuOpen(false);
+                    handleNavClick(e, link.href);
+                  }}
                   style={{
                     fontSize: 20,
                     fontWeight: 600,

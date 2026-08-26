@@ -76,10 +76,10 @@ export default function PrivacyPolicy() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--canvas)', fontFamily: 'var(--font)', display: 'flex', flexDirection: 'column' }}>
       <LandingNav />
-
+      
       <main style={{ flexGrow: 1, padding: '48px 24px', maxWidth: 1280, margin: '0 auto', width: '100%' }}>
         <div className="flex flex-col lg:flex-row gap-12">
-
+          
           {/* Sidebar */}
           <aside className="hidden lg:block w-full max-w-[300px] shrink-0">
             <div className="custom-scrollbar" style={{ position: 'sticky', top: 100, display: 'flex', flexDirection: 'column', gap: 24, maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' }}>
@@ -425,8 +425,8 @@ export default function PrivacyPolicy() {
                   </div>
                   <h2 style={{ fontSize: 28, fontWeight: 500, color: 'var(--ink)', letterSpacing: '-0.02em', margin: 0 }}>9. Policy Updates</h2>
                 </div>
-                <div style={{ padding: 32, background: 'var(--canvas)', border: '1px solid rgba(20,20,19,0.08)', borderRadius: 'var(--r-hero)' }}>
-                  <p style={{ fontSize: 16, fontWeight: 500, color: 'var(--ink)', lineHeight: 1.6, margin: 0 }}>
+                <div style={{ color: 'var(--Charcoal)', fontSize: 16, lineHeight: 1.6, fontWeight: 450 }}>
+                  <p style={{ margin: 0 }}>
                     We may update this Privacy Policy periodically to reflect changes in legal requirements or our operational practices. Any material changes will be notified by updating the "Last updated" date at the top of this policy and, if necessary, via a prominent notice on our website or email. Continued use of our services after updates signifies your acceptance of the revised policy.
                   </p>
                 </div>
@@ -472,6 +472,11 @@ export default function PrivacyPolicy() {
               © 2026 GAP Social-pilot. All rights reserved.
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+              <Link to="/dashboard/docs" style={{ fontSize: 13, fontWeight: 500, color: 'var(--slate)', textDecoration: 'none', transition: 'color 0.15s' }}
+                onMouseEnter={e => e.currentTarget.style.color = 'var(--ink)'}
+                onMouseLeave={e => e.currentTarget.style.color = 'var(--slate)'}>
+                Docs & Guide
+              </Link>
               <Link to="/privacy" style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)', textDecoration: 'none' }}>
                 Privacy Policy
               </Link>
