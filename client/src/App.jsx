@@ -144,6 +144,8 @@ function AppContent() {
   );
 }
 
+import MaintenanceGuard from './components/MaintenanceGuard';
+
 function App() {
   return (
     <ErrorBoundary>
@@ -151,13 +153,15 @@ function App() {
         <DialogProvider>
           <UploadJobProvider>
             <BrowserRouter>
-              <Suspense fallback={<PageLoader />}>
-                <AppContent />
-              </Suspense>
-              <Toaster position="top-right" />
-              <UploadManagerPanel />
-              <ComplianceBanner />
-              <ContentProtection />
+              <MaintenanceGuard productKey="social_pilot">
+                <Suspense fallback={<PageLoader />}>
+                  <AppContent />
+                </Suspense>
+                <Toaster position="top-right" />
+                <UploadManagerPanel />
+                <ComplianceBanner />
+                <ContentProtection />
+              </MaintenanceGuard>
             </BrowserRouter>
           </UploadJobProvider>
         </DialogProvider>
