@@ -17,13 +17,20 @@ function base64urlEncode(obj) {
 }
 
 class FacebookOAuth {
-  constructor() {
-    this.appId = process.env.FACEBOOK_APP_ID || process.env.INSTAGRAM_APP_ID;
-    this.appSecret = process.env.FACEBOOK_APP_SECRET || process.env.INSTAGRAM_APP_SECRET;
-    this.loginConfigId = process.env.FACEBOOK_LOGIN_CONFIG_ID;
-    this.redirectUri =
+  get appId() {
+    return process.env.FACEBOOK_APP_ID;
+  }
+  get appSecret() {
+    return process.env.FACEBOOK_APP_SECRET;
+  }
+  get loginConfigId() {
+    return process.env.FACEBOOK_LOGIN_CONFIG_ID;
+  }
+  get redirectUri() {
+    return (
       process.env.FACEBOOK_REDIRECT_URI ||
-      'http://localhost:5000/api/auth/facebook/callback';
+      'http://localhost:5000/api/auth/facebook/callback'
+    ).trim();
   }
 
   assertConfigured({ requireSecret = false } = {}) {
