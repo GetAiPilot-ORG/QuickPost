@@ -289,6 +289,11 @@ export default function TermsOfService() {
               © 2026 GAP Social-pilot. All rights reserved.
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+              <Link to="/dashboard/docs" style={{ fontSize: 13, fontWeight: 500, color: 'var(--slate)', textDecoration: 'none', transition: 'color 0.15s' }}
+                onMouseEnter={e => e.currentTarget.style.color = 'var(--ink)'}
+                onMouseLeave={e => e.currentTarget.style.color = 'var(--slate)'}>
+                Docs & Guide
+              </Link>
               <Link to="/privacy" style={{ fontSize: 13, fontWeight: 500, color: 'var(--slate)', textDecoration: 'none', transition: 'color 0.15s' }}
                 onMouseEnter={e => e.currentTarget.style.color = 'var(--ink)'}
                 onMouseLeave={e => e.currentTarget.style.color = 'var(--slate)'}>

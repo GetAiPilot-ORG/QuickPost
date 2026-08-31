@@ -1186,53 +1186,67 @@ router.get("/accounts", authenticateUser, async (req, res) => {
 });
 
 router.get("/pending-selection/:id", authenticateUser, async (req, res) => {
-  const pending = pendingOAuthSelections.get(req.params.id);
-  if (!pending || pending.expiresAt < Date.now()) {
-    pendingOAuthSelections.delete(req.params.id);
-    return res.status(404).json({ success: false, error: "Selection expired. Please reconnect." });
+  try {
+    const pending = pendingOAuthSelections.get(req.params.id);
+    if (!pending || pending.expiresAt < Date.now()) {
+      pendingOAuthSelections.delete(req.params.id);
+      return res.status(404).json({ success: false, error: "Selection expired. Please reconnect." });
+    }
+    if (pending.userId !== req.user.userId) {
+      return res.status(403).json({ success: false, error: "Selection does not belong to this user." });
+    }
+    console.log(`FB: pending page selection fetched: ${req.params.id}`);
+
+    const userIds = [...new Set([req.user.userId, req.user.authUserId].filter(Boolean))];
+    const { data: existingRows, error: existingError } = await supabase
+      .from("social_tokens")
+      .select("account_id,page_id")
+      .in("user_id", userIds)
+      .eq("provider", pending.provider);
+
+    if (existingError) {
+      console.warn("Error fetching existing social tokens:", existingError);
+    }
+
+    let accountLimit = Infinity;
+    let connectedCount = 0;
+    let availableSlots = Number.MAX_SAFE_INTEGER;
+
+    try {
+      const entitlements = await getEntitlements(req.user.authUserId || req.user.userId, req.user.email, req.token);
+      accountLimit = entitlements?.limits?.social_accounts ?? Infinity;
+      connectedCount = await getConnectedTargetCount(req.user.userId);
+      availableSlots = Number.isFinite(accountLimit)
+        ? Math.max(0, accountLimit - connectedCount)
+        : Number.MAX_SAFE_INTEGER;
+    } catch (entErr) {
+      console.warn("Could not fetch entitlements for pending selection, defaulting to unlimited:", entErr);
+    }
+
+    const connectedIds = new Set(
+      (existingRows || [])
+        .flatMap((row) => [row.account_id, row.page_id])
+        .filter(Boolean)
+        .map(String),
+    );
+
+    res.json({
+      success: true,
+      provider: pending.provider,
+      accountLimit,
+      connectedCount,
+      availableSlots,
+      accounts: (pending.tokenData.pages || []).map((page) => ({
+        id: page.pageId,
+        name: page.userInfo?.pageName,
+        picture: page.userInfo?.picture?.data?.url || page.userInfo?.picture?.url || null,
+        alreadyConnected: connectedIds.has(String(page.pageId)),
+      })),
+    });
+  } catch (err) {
+    console.error("Error in pending-selection GET route:", err);
+    res.status(500).json({ success: false, error: err.message || "Failed to retrieve pending accounts." });
   }
-  if (pending.userId !== req.user.userId) {
-    return res.status(403).json({ success: false, error: "Selection does not belong to this user." });
-  }
-  console.log(`FB: pending page selection fetched: ${req.params.id}`);
-
-  const userIds = [...new Set([req.user.userId, req.user.authUserId].filter(Boolean))];
-  const { data: existingRows, error: existingError } = await supabase
-    .from("social_tokens")
-    .select("account_id,page_id")
-    .in("user_id", userIds)
-    .eq("provider", pending.provider);
-
-  if (existingError) {
-    return res.status(500).json({ success: false, error: existingError.message });
-  }
-
-  const entitlements = await getEntitlements(req.user.authUserId || req.user.userId, req.user.email, req.token);
-  const accountLimit = entitlements.limits.social_accounts;
-  const connectedCount = await getConnectedTargetCount(req.user.userId);
-  const availableSlots = Number.isFinite(accountLimit)
-    ? Math.max(0, accountLimit - connectedCount)
-    : Number.MAX_SAFE_INTEGER;
-  const connectedIds = new Set(
-    (existingRows || [])
-      .flatMap((row) => [row.account_id, row.page_id])
-      .filter(Boolean)
-      .map(String),
-  );
-
-  res.json({
-    success: true,
-    provider: pending.provider,
-    accountLimit,
-    connectedCount,
-    availableSlots,
-    accounts: (pending.tokenData.pages || []).map((page) => ({
-      id: page.pageId,
-      name: page.userInfo?.pageName,
-      picture: page.userInfo?.picture?.data?.url || page.userInfo?.picture?.url || null,
-      alreadyConnected: connectedIds.has(String(page.pageId)),
-    })),
-  });
 });
 
 router.post("/pending-selection/:id", authenticateUser, async (req, res) => {

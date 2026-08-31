@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import {
   Hero,
@@ -19,11 +19,18 @@ import "../styles/landing.css";
 export default function LandingPage() {
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
-  // Removed automatic redirect to allow logged-in users to visit home page
-  // useEffect(() => {
-  //   if (isAuthenticated) navigate("/dashboard");
-  // }, [isAuthenticated, navigate]);
+  useEffect(() => {
+    if (location.hash) {
+      const el = document.querySelector(location.hash);
+      if (el) {
+        setTimeout(() => {
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 150);
+      }
+    }
+  }, [location.hash]);
 
   return (
     <SmoothScroll>
@@ -135,6 +142,7 @@ export default function LandingPage() {
 
               <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
                 {[
+                  { label: "Docs & Guide", to: "/dashboard/docs" },
                   { label: "Privacy Policy", to: "/privacy" },
                   { label: "Terms of Service", to: "/terms" },
                 ].map(({ label, to }) => (

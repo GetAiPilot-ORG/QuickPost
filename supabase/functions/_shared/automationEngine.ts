@@ -2594,6 +2594,40 @@ export const processAutomationEvent = async (payload: AutomationInput) => {
         .eq("id", contactId)
         .select("total_messages_sent") // Trigger for RPC update if needed
         .single();
+
+      // Update daily_metrics for real-time analytics cards
+      try {
+        const todayDate = new Date().toISOString().slice(0, 10);
+        const { data: existingMetric } = await supabase
+          .from("daily_metrics")
+          .select("id, messages_sent, total_clicks")
+          .eq("instagram_account_id", selectedAccount.id)
+          .eq("date", todayDate)
+          .maybeSingle();
+
+        if (existingMetric) {
+          await supabase
+            .from("daily_metrics")
+            .update({
+              messages_sent: (existingMetric.messages_sent || 0) + 1,
+              total_clicks: continuationSession ? (existingMetric.total_clicks || 0) + 1 : (existingMetric.total_clicks || 0),
+            })
+            .eq("id", existingMetric.id);
+        } else if (automationOwnerUserId) {
+          await supabase
+            .from("daily_metrics")
+            .insert({
+              user_id: automationOwnerUserId,
+              instagram_account_id: selectedAccount.id,
+              date: todayDate,
+              messages_sent: 1,
+              messages_seen: 1,
+              total_clicks: continuationSession ? 1 : 0,
+            });
+        }
+      } catch (metricErr) {
+        logInfo("Daily metrics update skipped", { error: String(metricErr) });
+      }
     } catch (msgError) {
       logError("Failed to record messages", {
         requestId: payload.requestId,
