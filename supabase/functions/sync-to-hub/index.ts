@@ -46,7 +46,7 @@ const TABLE_NAME_MAP: Record<string, string> = {};
 const TABLE_CONFLICT_KEYS: Record<string, string> = {
   users: "id",
   social_payments: "id",
-  social_tokens: "user_id,provider",
+  social_tokens: "id",
   broadcasts: "id",
   user_onboarding: "user_id",
 };
