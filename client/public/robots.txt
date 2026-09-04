@@ -1,0 +1,17 @@
+# https://www.robotstxt.org/robotstxt.html
+User-agent: *
+Allow: /
+Allow: /pricing
+Allow: /privacy
+Allow: /terms
+Allow: /login
+
+# Disallow private user/dashboard and auth callbacks
+Disallow: /dashboard/
+Disallow: /auth/
+Disallow: /social-sso
+Disallow: /onboarding
+Disallow: /connect/
+Disallow: /api/
+
+Sitemap: https://social.getaipilot.in/sitemap.xml
