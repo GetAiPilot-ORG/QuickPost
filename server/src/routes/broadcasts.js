@@ -81,6 +81,36 @@ router.get('/broadcasts', authenticateUser, async (req, res) => {
             // Merge live posts, deduplicating with existing broadcasts by video ID or URL
             const existingVideoIds = new Set(broadcasts.map(b => b.youtube_video_id).filter(Boolean));
             const newLive = livePosts.filter(p => !existingVideoIds.has(p.youtube_video_id));
+            const liveVideoIds = new Set(livePosts.map(p => String(p.youtube_video_id)));
+            const oldestYtTimestamp = livePosts.length > 0
+              ? Math.min(...livePosts.map(p => new Date(p.posted_at).getTime()).filter(Boolean))
+              : null;
+
+            // Prune / Deactivate YouTube videos deleted externally on YouTube
+            const deletedYtDbIds = [];
+            broadcasts = broadcasts.filter(b => {
+              if (!b.youtube_video_id || String(b.id).startsWith('yt_live_')) return true;
+              const postTime = new Date(b.posted_at || b.created_at).getTime();
+              const isWithinLiveWindow = oldestYtTimestamp ? (postTime >= oldestYtTimestamp - 60000) : true;
+              if (isWithinLiveWindow && !liveVideoIds.has(String(b.youtube_video_id))) {
+                console.log(`🗑️ [BROADCASTS] Detected YouTube video deleted externally: ${b.youtube_video_id} (broadcast ${b.id})`);
+                const hasOtherLiveChannels = b.instagram_success || b.facebook_success || b.pinterest_success || b.linkedin_success || b.x_success || b.threads_success;
+                if (!hasOtherLiveChannels) {
+                  deletedYtDbIds.push(b.id);
+                  return false;
+                } else {
+                  b.youtube_success = false;
+                  b.youtube_video_id = null;
+                  b.youtube_url = null;
+                  supabase.from('broadcasts').update({ youtube_success: false, youtube_video_id: null, youtube_url: null }).eq('id', b.id).then();
+                  return true;
+                }
+              }
+              return true;
+            });
+            if (deletedYtDbIds.length > 0) {
+              supabase.from('broadcasts').delete().in('id', deletedYtDbIds).then();
+            }
 
             // Enrich existing broadcasts with fresh live YouTube metrics & thumbnails
             broadcasts = broadcasts.map(b => {
@@ -123,7 +153,8 @@ router.get('/broadcasts', authenticateUser, async (req, res) => {
 
       // 1. Live Sync for connected Instagram accounts via Meta Graph API
       for (const account of igAccounts) {
-        if (!account.id) continue;
+        const targetIgId = account.instagram_business_id || account.id;
+        if (!targetIgId) continue;
         try {
           // Fetch token from social_tokens
           const { data: tokenRow } = await supabase
@@ -131,23 +162,41 @@ router.get('/broadcasts', authenticateUser, async (req, res) => {
             .select('access_token')
             .eq('user_id', userId)
             .eq('provider', 'instagram')
-            .eq('account_id', account.id)
+            .order('updated_at', { ascending: false })
+            .limit(1)
             .maybeSingle();
 
           const accessToken = tokenRow?.access_token || process.env.INSTAGRAM_ACCESS_TOKEN;
           if (accessToken) {
-            const igRes = await axios.get(
-              `https://graph.facebook.com/v19.0/${account.id}/media`,
-              {
+            const isDirectToken = accessToken.startsWith('IG') || accessToken.startsWith('IGA');
+            const graphEndpoint = isDirectToken
+              ? `https://graph.instagram.com/v24.0/${targetIgId}/media`
+              : `https://graph.facebook.com/v19.0/${targetIgId}/media`;
+
+            let igRes;
+            try {
+              igRes = await axios.get(graphEndpoint, {
                 params: {
                   access_token: accessToken,
                   fields: 'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count',
-                  limit: 20
+                  limit: 50
                 }
+              });
+            } catch (fetchErr) {
+              if (isDirectToken) {
+                igRes = await axios.get(`https://graph.instagram.com/v24.0/me/media`, {
+                  params: {
+                    access_token: accessToken,
+                    fields: 'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count',
+                    limit: 50
+                  }
+                });
+              } else {
+                throw fetchErr;
               }
-            );
+            }
 
-            const liveIgMedia = igRes.data?.data || [];
+            const liveIgMedia = igRes?.data?.data || [];
             const liveIgPosts = liveIgMedia.map(item => ({
               id: `ig_live_${item.id}`,
               user_id: userId,
@@ -158,7 +207,7 @@ router.get('/broadcasts', authenticateUser, async (req, res) => {
               status: 'sent',
               posted_at: item.timestamp,
               created_at: item.timestamp,
-              selected_channels: [`instagram:${account.id}`, 'instagram'],
+              selected_channels: [`instagram:${targetIgId}`, 'instagram'],
               instagram_success: true,
               instagram_post_id: item.id,
               instagram_url: item.permalink,
@@ -175,6 +224,50 @@ router.get('/broadcasts', authenticateUser, async (req, res) => {
                 }
               }
             }));
+
+            const liveIgIds = new Set(liveIgMedia.map(m => String(m.id)));
+            const oldestTimestamp = liveIgMedia.length > 0
+              ? Math.min(...liveIgMedia.map(m => new Date(m.timestamp).getTime()).filter(Boolean))
+              : null;
+
+            // Prune / Deactivate Instagram posts deleted externally on Instagram
+            const deletedDbPostIds = [];
+            const deletedMediaIds = [];
+            
+            broadcasts = broadcasts.filter(b => {
+              if (!b.instagram_post_id || String(b.id).startsWith('ig_live_')) return true;
+              const postTime = new Date(b.posted_at || b.created_at).getTime();
+              const isWithinLiveWindow = oldestTimestamp ? (postTime >= oldestTimestamp - 60000) : true;
+              
+              if (isWithinLiveWindow && !liveIgIds.has(String(b.instagram_post_id))) {
+                console.log(`🗑️ [BROADCASTS] Detected Instagram post deleted externally: ${b.instagram_post_id} (broadcast ${b.id})`);
+                deletedMediaIds.push(b.instagram_post_id);
+                
+                const hasOtherLiveChannels = b.youtube_success || b.facebook_success || b.pinterest_success || b.linkedin_success || b.x_success || b.threads_success;
+                if (!hasOtherLiveChannels) {
+                  deletedDbPostIds.push(b.id);
+                  return false; // Remove from returned list
+                } else {
+                  b.instagram_success = false;
+                  b.instagram_post_id = null;
+                  b.instagram_url = null;
+                  supabase.from('broadcasts').update({ instagram_success: false, instagram_post_id: null, instagram_url: null }).eq('id', b.id).then();
+                  return true;
+                }
+              }
+              return true;
+            });
+
+            // Asynchronously delete from DB and deactivate linked AutoDM automations
+            if (deletedDbPostIds.length > 0) {
+              supabase.from('broadcasts').delete().in('id', deletedDbPostIds).then();
+            }
+            if (deletedMediaIds.length > 0) {
+              supabase.from('automations')
+                .update({ is_active: false, expired_at: new Date().toISOString() })
+                .in('media_id', deletedMediaIds)
+                .then();
+            }
 
             const existingIgIds = new Set(broadcasts.map(b => b.instagram_post_id).filter(Boolean));
             const newIgLive = liveIgPosts.filter(p => !existingIgIds.has(p.instagram_post_id));
@@ -225,7 +318,7 @@ router.get('/broadcasts', authenticateUser, async (req, res) => {
                 params: {
                   access_token: accessToken,
                   fields: 'id,message,created_time,permalink_url,full_picture,reactions.summary(true),comments.summary(true)',
-                  limit: 20
+                  limit: 50
                 }
               }
             );
@@ -252,9 +345,41 @@ router.get('/broadcasts', authenticateUser, async (req, res) => {
                 facebook: {
                   postId: item.id,
                   url: item.permalink_url,
+                  reactions: item.reactions?.summary?.total_count || 0,
+                  comments: item.comments?.summary?.total_count || 0,
                 }
               }
             }));
+
+            const liveFbIds = new Set(liveFbPosts.map(p => String(p.facebook_post_id)));
+            const oldestFbTimestamp = liveFbPosts.length > 0
+              ? Math.min(...liveFbPosts.map(p => new Date(p.posted_at).getTime()).filter(Boolean))
+              : null;
+
+            const deletedFbDbIds = [];
+            broadcasts = broadcasts.filter(b => {
+              if (!b.facebook_post_id || String(b.id).startsWith('fb_live_')) return true;
+              const postTime = new Date(b.posted_at || b.created_at).getTime();
+              const isWithinLiveWindow = oldestFbTimestamp ? (postTime >= oldestFbTimestamp - 60000) : true;
+              if (isWithinLiveWindow && !liveFbIds.has(String(b.facebook_post_id))) {
+                console.log(`🗑️ [BROADCASTS] Detected Facebook post deleted externally: ${b.facebook_post_id} (broadcast ${b.id})`);
+                const hasOtherLiveChannels = b.instagram_success || b.youtube_success || b.pinterest_success || b.linkedin_success || b.x_success || b.threads_success;
+                if (!hasOtherLiveChannels) {
+                  deletedFbDbIds.push(b.id);
+                  return false;
+                } else {
+                  b.facebook_success = false;
+                  b.facebook_post_id = null;
+                  b.facebook_url = null;
+                  supabase.from('broadcasts').update({ facebook_success: false, facebook_post_id: null, facebook_url: null }).eq('id', b.id).then();
+                  return true;
+                }
+              }
+              return true;
+            });
+            if (deletedFbDbIds.length > 0) {
+              supabase.from('broadcasts').delete().in('id', deletedFbDbIds).then();
+            }
 
             const existingFbIds = new Set(broadcasts.map(b => b.facebook_post_id).filter(Boolean));
             const newFbLive = liveFbPosts.filter(p => !existingFbIds.has(p.facebook_post_id));
