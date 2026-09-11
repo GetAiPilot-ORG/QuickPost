@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Outlet, Navigate, useNavigate } from "react-router-dom";
+import { Outlet, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { CircleDollarSign, X } from "lucide-react";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
@@ -85,7 +85,7 @@ function DashboardShellSkeleton({ isDesktop }) {
       <section style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         <header
           style={{
-            height: 56,
+            height: 64,
             flexShrink: 0,
             borderBottom: "1px solid var(--dust, #d3cec6)",
             background: "var(--canvas, #f5f1ec)",
@@ -159,13 +159,14 @@ function DashboardShellSkeleton({ isDesktop }) {
 }
 
 const DashboardLayout = () => {
-  const { isAuthenticated, loading, user } = useAuth();
+  const { isAuthenticated, loading, profileLoading, refreshAccounts, user } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 1024);
   const [hideUpgradeBanner, setHideUpgradeBanner] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const showDashboardChrome = true;
-  const showUpgradeBanner = showDashboardChrome && !hideUpgradeBanner && isFreePlan(user);
+  const showUpgradeBanner = showDashboardChrome && !hideUpgradeBanner && !profileLoading && isFreePlan(user);
   const bannerHeight = showUpgradeBanner ? 52 : 0;
 
   useEffect(() => {
@@ -177,6 +178,12 @@ const DashboardLayout = () => {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const success = new URLSearchParams(location.search).get("success");
+    if (success?.endsWith("_connected")) refreshAccounts();
+  }, [isAuthenticated, location.search, refreshAccounts]);
 
   // ── Wait for Supabase to restore session before deciding ──
   if (loading) {

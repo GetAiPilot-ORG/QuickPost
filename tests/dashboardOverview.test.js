@@ -6,6 +6,7 @@ process.env.TOKEN_ENCRYPTION_KEY_BASE64 ||= Buffer.alloc(32).toString('base64');
 
 const {
   normalizeDashboardRange,
+  sumInsightValues,
   summarizeBroadcasts,
   summarizeConnectedAccounts,
 } = await import('../server/src/services/dashboardOverview.js');
@@ -54,5 +55,11 @@ describe('dashboard overview aggregation', () => {
     expect(summary.operations.nextScheduled).toBeNull();
     expect(accounts.totalConnected).toBe(2);
     expect(accounts.needsReconnect).toHaveLength(1);
+  });
+
+  it('does not report missing Meta insight rows as zero', () => {
+    expect(sumInsightValues([])).toBeNull();
+    expect(sumInsightValues([{ value: undefined }])).toBeNull();
+    expect(sumInsightValues([{ value: 0 }, { value: '3' }])).toBe(3);
   });
 });

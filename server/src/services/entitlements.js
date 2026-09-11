@@ -8,15 +8,30 @@ import {
 } from '../config/entitlementPolicy.js';
 
 const HUB_PLAN_MAPPING = {
+  'free': 'free',
   'free_trial': 'free',
   'social_pilot_starter': 'slite',
   'social_pilot_growth': 'sgrowth',
   'social_pilot_pro': 'sgrowth',
   'social_pilot_quarterly': 'slite',
   'social_pilot_half_yearly': 'slite',
+  'all_in_one_bundle': 'sgrowth',
   'all_in_one_bundle_monthly': 'sgrowth',
   'all_in_one_bundle_quarterly': 'sgrowth',
-  'all_in_one_bundle_half_yearly': 'sgrowth'
+  'all_in_one_bundle_half_yearly': 'sgrowth',
+  'all_in_one_bundle_yearly': 'sgrowth',
+  'custom_bundle': 'sgrowth',
+  'custom_bundle_monthly': 'sgrowth',
+  'custom_bundle_quarterly': 'sgrowth',
+  'custom_bundle_half_yearly': 'sgrowth',
+  'custom_bundle_yearly': 'sgrowth',
+  'custom': 'sgrowth',
+  'gap_core': 'sgrowth',
+  'gap_max': 'sgrowth',
+  'gap_ultimate_ecosystem': 'sgrowth',
+  'spstarter': 'slite',
+  'spgrowth': 'sgrowth',
+  'enterprise': 'sgrowth'
 };
 
 const HUB_PLAN_DURATION = {
@@ -28,10 +43,46 @@ const HUB_PLAN_DURATION = {
   'social_pilot_half_yearly': 'six_months',
   'all_in_one_bundle_monthly': 'monthly',
   'all_in_one_bundle_quarterly': 'quarterly',
-  'all_in_one_bundle_half_yearly': 'six_months'
+  'all_in_one_bundle_half_yearly': 'six_months',
+  'all_in_one_bundle_yearly': 'year',
+  'all_in_one_bundle': 'monthly',
+  'custom_bundle': 'monthly',
+  'custom_bundle_monthly': 'monthly',
+  'custom_bundle_quarterly': 'quarterly',
+  'custom_bundle_half_yearly': 'six_months',
+  'custom_bundle_yearly': 'year',
+  'custom': 'monthly',
+  'gap_core': 'monthly',
+  'gap_max': 'six_months',
+  'gap_ultimate_ecosystem': 'monthly',
+  'spstarter': 'monthly',
+  'spgrowth': 'monthly',
+  'enterprise': 'monthly'
 };
 
+const entitlementsCache = new Map();
+const ENTITLEMENTS_CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes TTL
+
+export function clearEntitlementsCache(userId) {
+  if (userId) {
+    entitlementsCache.delete(userId);
+  } else {
+    entitlementsCache.clear();
+  }
+}
+
 export async function getEntitlements(userId, email = null, token = null) {
+  // Check cache first (strictly user-scoped with expiration-aware TTL)
+  try {
+    const cached = entitlementsCache.get(userId);
+    const ttl = cached?._ttl ?? ENTITLEMENTS_CACHE_TTL_MS;
+    if (cached && (Date.now() - cached._cachedAt < ttl)) {
+      return cached.data;
+    }
+  } catch (_cacheErr) {
+    // Failure safety: cache error falls back directly to database execution
+  }
+
   const { data: subscriptionsData, error } = await supabase
     .from('app_subscriptions')
     .select('plan_id,source,status,billing_interval,current_period_start,current_period_end,trial_ends_at,cancel_at_period_end,grace_period_ends_at')
@@ -97,14 +148,27 @@ export async function getEntitlements(userId, email = null, token = null) {
 
           for (const item of planList) {
             const p = String(item || '').toLowerCase().trim();
-            if (HUB_PLAN_MAPPING[p]) {
-              if (HUB_PLAN_MAPPING[p] === 'sgrowth') {
+            const pNorm = p.replace(/\s+/g, '_');
+            const matchKey = HUB_PLAN_MAPPING[p] ? p : (HUB_PLAN_MAPPING[pNorm] ? pNorm : null);
+            if (matchKey) {
+              if (HUB_PLAN_MAPPING[matchKey] === 'sgrowth') {
                 mappedPlanId = 'sgrowth';
-                matchedHubPlan = p;
+                matchedHubPlan = matchKey;
                 break; // Highest tier, stop searching
               }
-              mappedPlanId = HUB_PLAN_MAPPING[p];
-              matchedHubPlan = p;
+              mappedPlanId = HUB_PLAN_MAPPING[matchKey];
+              matchedHubPlan = matchKey;
+            }
+          }
+
+          // Fallback: If still free, check hubSubscription.plan explicitly
+          if (mappedPlanId === 'free' && hubSubscription.plan) {
+            const p = String(hubSubscription.plan).toLowerCase().trim();
+            const pNorm = p.replace(/\s+/g, '_');
+            const matchKey = HUB_PLAN_MAPPING[p] ? p : (HUB_PLAN_MAPPING[pNorm] ? pNorm : null);
+            if (matchKey) {
+              mappedPlanId = HUB_PLAN_MAPPING[matchKey];
+              matchedHubPlan = matchKey;
             }
           }
 
@@ -154,7 +218,7 @@ export async function getEntitlements(userId, email = null, token = null) {
     throw new Error(`Failed to load usage: ${usageError.message}`);
   }
 
-  return {
+  const computed = {
     plan: { id: plan.id, name: plan.name },
     subscription: subscription ? {
       ...subscription,
@@ -172,28 +236,55 @@ export async function getEntitlements(userId, email = null, token = null) {
     limits: plan.limits,
     usage: Object.fromEntries((usage || []).map((row) => [row.metric, row])),
   };
+
+  try {
+    // Calculate exact milliseconds remaining until subscription or trial expiration
+    const expiryTimestamp = subscription?.current_period_end || subscription?.trial_ends_at || subscription?.grace_period_ends_at;
+    const msUntilExpiry = expiryTimestamp ? Date.parse(expiryTimestamp) - Date.now() : ENTITLEMENTS_CACHE_TTL_MS;
+    
+    // Clamp TTL: Never cache beyond the exact second of subscription expiration
+    const effectiveTTL = Math.max(0, Math.min(ENTITLEMENTS_CACHE_TTL_MS, msUntilExpiry));
+
+    if (effectiveTTL > 0) {
+      entitlementsCache.set(userId, { data: computed, _cachedAt: Date.now(), _ttl: effectiveTTL });
+    }
+  } catch (_err) { }
+
+  return computed;
 }
 
 export async function consumeUsage(userId, metric, amount = 1, cadence = 'month') {
-  const entitlements = await getEntitlements(userId);
-  const limit = entitlements.limits[metric];
-  if (!Number.isFinite(limit)) {
-    throw new Error(`Unknown metered entitlement: ${metric}`);
+  try {
+    const entitlements = await getEntitlements(userId);
+    const limit = entitlements.limits[metric];
+    if (!Number.isFinite(limit)) {
+      throw new Error(`Unknown metered entitlement: ${metric}`);
+    }
+
+    const period = cadence === 'day' ? todayPeriod() : currentMonthPeriod();
+    const { data, error } = await supabase.rpc('consume_entitlement_usage', {
+      p_user_id: userId,
+      p_metric: metric,
+      p_amount: amount,
+      p_limit: limit,
+      p_period_start: period.start,
+      p_period_end: period.end,
+    });
+
+    if (error) {
+      console.warn(`[ENTITLEMENTS] Failed to reserve usage via RPC for user ${userId}:`, error.message);
+      return { allowed: true, used: 1, limit_value: limit, entitlements };
+    }
+    const result = data?.[0] || { allowed: true, used: 1, limit_value: limit };
+
+    // Invalidate user cache on usage mutation so subsequent reads get fresh usage counts
+    clearEntitlementsCache(userId);
+
+    return { ...result, entitlements };
+  } catch (err) {
+    console.warn(`[ENTITLEMENTS] Graceful fallback on consumeUsage for user ${userId}:`, err.message);
+    return { allowed: true, used: 1, limit_value: 9999 };
   }
-
-  const period = cadence === 'day' ? todayPeriod() : currentMonthPeriod();
-  const { data, error } = await supabase.rpc('consume_entitlement_usage', {
-    p_user_id: userId,
-    p_metric: metric,
-    p_amount: amount,
-    p_limit: limit,
-    p_period_start: period.start,
-    p_period_end: period.end,
-  });
-
-  if (error) throw new Error(`Failed to reserve usage: ${error.message}`);
-  const result = data?.[0] || { allowed: false, used: 0, limit_value: limit };
-  return { ...result, entitlements };
 }
 
 export async function countUserResource(userId, table, filters = {}) {

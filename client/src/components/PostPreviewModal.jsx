@@ -977,7 +977,7 @@ export default function PostPreviewModal({ post, onClose, onDelete }) {
              <div>
               <h2 className="post-preview-title text-lg font-bold text-gray-900 leading-tight">{post.caption?.split('\n')[0] || 'Post Preview'}</h2>
               <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-xs text-gray-400 font-medium">{formatDate(post.posted_at)}</span>
+                <span className="text-xs text-gray-400 font-medium">{formatDate(post.scheduled_for || post.posted_at || post.created_at)}</span>
                 <span className="w-1 h-1 rounded-full bg-gray-300" />
                 <span className="text-[10px] font-bold text-blue-500 uppercase tracking-tight">{post.media_type}</span>
               </div>
@@ -1034,13 +1034,13 @@ export default function PostPreviewModal({ post, onClose, onDelete }) {
                         ) : (
                           <img src={p.icon} alt={p.name} className="w-8 h-8 object-contain" />
                         )}
-                        <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-[2.5px] border-white shadow-sm ${p.success ? 'bg-green-500' : 'bg-red-500'}`} />
+                        <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-[2.5px] border-white shadow-sm ${p.success ? 'bg-green-500' : post.status === 'scheduled' ? 'bg-blue-500' : 'bg-red-500'}`} />
                       </div>
                       <div className="flex-1 min-w-0 text-left">
                         <p className={`text-[13px] font-bold ${i === activePlatformIdx ? 'text-gray-900' : 'text-gray-600'}`}>{p.name}</p>
                         {rowName && <p className="truncate text-[11px] font-semibold text-gray-500">{rowName}</p>}
-                        <p className={`text-[10px] font-bold uppercase tracking-wider ${p.success ? 'text-green-600' : 'text-red-500'}`}>
-                          {p.success ? 'Success' : 'Failed'}
+                        <p className={`text-[10px] font-bold uppercase tracking-wider ${p.success ? 'text-green-600' : post.status === 'scheduled' ? 'text-blue-600' : 'text-red-500'}`}>
+                          {p.success ? 'Success' : post.status === 'scheduled' ? 'Scheduled' : 'Failed'}
                         </p>
                       </div>
                     </button>
@@ -1079,6 +1079,99 @@ export default function PostPreviewModal({ post, onClose, onDelete }) {
                         const isImage = post.media_type === 'image' || /\.(jpg|jpeg|png|gif|webp)$/i.test(post.video_filename || '');
                         const displayUrl = post.thumbnail_url || post.media_url;
                         const isThreadsPreview = activePlatform?.id === 'threads';
+
+                        const activePlatId = activePlatform?.id;
+                        const activeResult = getPlatformResult(post, activePlatId, activePlatform?.channel);
+                        const liveUrl = activeResult?.url || post[`${activePlatId}_url`] || post[`${activePlatId}_shorts_url`];
+                        const ytVideoId = activeResult?.videoId || post.youtube_video_id;
+
+                        // ── Live Embeds for Published Posts ──
+                        if (post.status !== 'scheduled' && activePlatId === 'youtube' && (ytVideoId || liveUrl)) {
+                          const embedId = ytVideoId || (liveUrl ? liveUrl.match(/(?:v=|\/shorts\/|\/embed\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/)?.[1] : null);
+                          // If post has direct video file URL or image, prefer direct media player to prevent YouTube third-party embed restriction errors
+                          if (embedId && !post.media_url && !post.thumbnail_url) {
+                            return (
+                              <iframe
+                                src={`https://www.youtube-nocookie.com/embed/${embedId}?autoplay=0&rel=0&enablejsapi=1`}
+                                className="w-full h-full border-0"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                                referrerPolicy="strict-origin-when-cross-origin"
+                                title="YouTube Live Embed"
+                              />
+                            );
+                          }
+                        }
+
+                        if (post.status !== 'scheduled' && activePlatId === 'instagram' && (liveUrl || post.instagram_url)) {
+                          const igUrl = liveUrl || post.instagram_url;
+                          const cleanIgUrl = igUrl.replace(/\/$/, '') + '/embed';
+                          return (
+                            <iframe
+                              src={cleanIgUrl}
+                              className="w-full h-full border-0 bg-white"
+                              allowTransparency="true"
+                              title="Instagram Live Embed"
+                            />
+                          );
+                        }
+
+                        if (post.status !== 'scheduled' && activePlatId === 'facebook' && (liveUrl || post.facebook_url)) {
+                          const fbUrl = encodeURIComponent(liveUrl || post.facebook_url);
+                          return (
+                            <iframe
+                              src={`https://www.facebook.com/plugins/post.php?href=${fbUrl}&show_text=true&width=500`}
+                              className="w-full h-full border-0 bg-white"
+                              scrolling="no"
+                              allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+                              title="Facebook Live Embed"
+                            />
+                          );
+                        }
+
+                        if (post.status !== 'scheduled' && (activePlatId === 'x' || activePlatId === 'twitter') && (liveUrl || post.x_url)) {
+                          const xUrl = encodeURIComponent(liveUrl || post.x_url);
+                          return (
+                            <iframe
+                              src={`https://platform.twitter.com/embed/Tweet.html?url=${xUrl}`}
+                              className="w-full h-full border-0 bg-white"
+                              title="X Live Embed"
+                            />
+                          );
+                        }
+
+                        if (post.status !== 'scheduled' && activePlatId === 'pinterest' && (liveUrl || post.pinterest_url)) {
+                          const pinUrl = encodeURIComponent(liveUrl || post.pinterest_url);
+                          return (
+                            <iframe
+                              src={`https://assets.pinterest.com/ext/embed.html?id=${pinUrl}`}
+                              className="w-full h-full border-0 bg-white"
+                              title="Pinterest Live Embed"
+                            />
+                          );
+                        }
+
+                        if (post.status !== 'scheduled' && activePlatId === 'bluesky' && (liveUrl || post.bluesky_url)) {
+                          const bskyUrl = encodeURIComponent(liveUrl || post.bluesky_url);
+                          return (
+                            <iframe
+                              src={`https://embed.bsky.app/embed/${bskyUrl}`}
+                              className="w-full h-full border-0 bg-white"
+                              title="Bluesky Live Embed"
+                            />
+                          );
+                        }
+
+                        if (post.status !== 'scheduled' && activePlatId === 'reddit' && liveUrl) {
+                          const cleanRedditUrl = liveUrl.replace(/\/$/, '') + '/embed';
+                          return (
+                            <iframe
+                              src={cleanRedditUrl}
+                              className="w-full h-full border-0 bg-white"
+                              title="Reddit Live Embed"
+                            />
+                          );
+                        }
 
                         if (displayUrl) {
                           if (!isImage) {

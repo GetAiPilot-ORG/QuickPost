@@ -155,7 +155,7 @@ function Header({ onMenuClick, sidebarOpen, isDesktop, topOffset = 0 }) {
         right: 0,
         left: isDesktop ? 240 : 0,
         zIndex: 39,
-        height: 56,
+        height: 64,
         background: "rgba(245, 241, 236, 0.94)",
         backdropFilter: "blur(12px)",
         WebkitBackdropFilter: "blur(12px)",

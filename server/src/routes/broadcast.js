@@ -279,7 +279,10 @@ async function processBroadcastJob({
   let autoCoverImageUrl = null;
 
   try {
-    if (isCloudinaryConfigured()) {
+    const nonYoutubeChannels = (channels || []).filter((c) => !String(c).startsWith("youtube"));
+    const needsCloudinary = isScheduled || nonYoutubeChannels.length > 0;
+
+    if (isCloudinaryConfigured() && needsCloudinary) {
       console.log(
         `☁️  [JOB:${jobId}] Uploading ${uploadedFiles.length} file(s) to Cloudinary...`,
       );
@@ -380,6 +383,25 @@ async function processBroadcastJob({
       });
 
       console.log(`✓ [JOB:${jobId}] All files uploaded. URLs:`, mediaUrls);
+    } else if (isCloudinaryConfigured() && !needsCloudinary) {
+      console.log(`⚡ [JOB:${jobId}] Direct YouTube route: Bypassing Cloudinary video upload for immediate publishing.`);
+      const serverPublicUrl = process.env.SERVER_PUBLIC_URL || "http://localhost:5000";
+      mediaUrls = filenames.map((name) => `${serverPublicUrl}/uploads/${name}`);
+
+      if (thumbnailFile) {
+        updateJob(jobId, { step: "Uploading custom thumbnail…", progress: 28 });
+        const thumbUpload = await uploadToCloudinary(thumbnailFile.path, "image");
+        finalThumbnailUrl = thumbUpload.url;
+      }
+
+      updateJob(jobId, {
+        progress: 30,
+        step: "Direct streaming to YouTube…",
+        meta: {
+          ...(getJob(jobId)?.meta || {}),
+          previewUrl: finalThumbnailUrl || null,
+        },
+      });
     } else {
       // Fallback to local URLs if No Cloudinary
       const serverPublicUrl =

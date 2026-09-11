@@ -5,6 +5,7 @@ coverage/
 .env
 .env.production
 .env.staging
+production.env
 .env*.local
 .env.vercel
 .env.vercel.*

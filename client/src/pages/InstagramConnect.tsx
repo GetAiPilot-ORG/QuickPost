@@ -16,7 +16,7 @@ export default function InstagramConnect() {
             <h1 className="mt-1 text-3xl font-semibold tracking-[-0.03em] text-[var(--ink)]">Instagram Connect</h1>
           </div>
           <Button type="button" variant="outline" asChild className="gap-2">
-            <Link to="/dashboard/instapilot">
+            <Link to="/dashboard/instapilot?mode=builder">
               <ArrowLeft className="h-4 w-4" />
               Bot Builder
             </Link>

@@ -14,6 +14,8 @@ const supabaseAdmin = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
+const userSyncCache = new Map();
+
 function isUsableBearerToken(token) {
   return (
     typeof token === 'string' &&
@@ -73,24 +75,31 @@ export async function authenticateUser(req, res, next) {
       profilePicture: user.user_metadata?.avatar_url || null
     };
 
-    // Sync with public.users table (important for identity consistency)
-    try {
-      const dbUser = await createOrUpdateUser(
-        userInfo.email,
-        userInfo.name,
-        userInfo.userId,
-        userInfo.profilePicture
-      );
-      
-      // ✅ IMPORTANT: Use the ID from our database record.
-      // If a user has multiple identity providers (Google, Email) for the same email,
-      // Supabase gives them different internal IDs, but we want to map them to the same
-      // record in our public.users table.
-      if (dbUser && dbUser.id) {
-        userInfo.userId = dbUser.id;
+    // Cache for user DB sync (60 second TTL per user) to avoid 4 DB queries + 2 HTTP calls on EVERY request
+    const now = Date.now();
+    const cacheKey = user.id || user.email;
+    let dbUser = userSyncCache.get(cacheKey);
+
+    if (!dbUser || (now - dbUser._cachedAt > 60000)) {
+      try {
+        const synced = await createOrUpdateUser(
+          userInfo.email,
+          userInfo.name,
+          userInfo.userId,
+          userInfo.profilePicture
+        );
+        if (synced && synced.id) {
+          synced._cachedAt = now;
+          userSyncCache.set(cacheKey, synced);
+          dbUser = synced;
+        }
+      } catch (syncError) {
+        console.warn('⚠️ [AUTH] Failed to sync user to public.users:', syncError.message);
       }
-    } catch (syncError) {
-      console.warn('⚠️ [AUTH] Failed to sync user to public.users:', syncError.message);
+    }
+
+    if (dbUser && dbUser.id) {
+      userInfo.userId = dbUser.id;
     }
 
     req.user = userInfo;

@@ -250,11 +250,22 @@ export default function ProfilePage() {
 
   return (
     <div className="w-full max-w-full px-5 md:px-8 xl:px-12 py-8">
-      <div className="flex justify-between items-end mb-8">
+      <div className="relative flex justify-between items-end mb-8">
         <div>
           <h3 className="text-[10px] font-bold text-[#888888] uppercase tracking-[0.2em] mb-1.5">Account Center</h3>
           <h1 className="text-[28px] font-bold text-[#1a1a1a] tracking-tight leading-tight">Profile Settings</h1>
         </div>
+        {activeTab === 'platforms' ? (
+          <video
+            className="pointer-events-none absolute -top-20 right-0 hidden h-[270px] w-[440px] object-contain lg:block"
+            src="/icons/Account_Connect_Page.webm"
+            autoPlay
+            loop
+            muted
+            playsInline
+            aria-hidden="true"
+          />
+        ) : null}
       </div>
 
       <div className="w-full border-b border-black/10 mb-6">

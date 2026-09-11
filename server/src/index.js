@@ -1,4 +1,4 @@
-import express from 'express'; // trigger restart
+import express from 'express'; // Server reloaded - fixed text deduplication bug
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -17,6 +17,7 @@ import instapilotRouter from './routes/instapilot.js';
 import autodmRouter from './routes/autodm.js';
 import billingRouter from './routes/billing.js';
 import youtubeRouter from './routes/youtube.js';
+import inboxRouter from './routes/inbox.js';
 import { initScheduler } from './services/scheduler.js';
 import supabase from './services/supabase.js';
 import { processInstagramWebhook } from './services/instapilot.js';
@@ -87,6 +88,7 @@ app.use('/api/instapilot', instapilotRouter);
 app.use('/api/autodm', autodmRouter);
 app.use('/api/billing', billingRouter);
 app.use('/api/youtube', youtubeRouter);
+app.use('/api', inboxRouter);
 
 // Global SSE clients list for Realtime Frontend Updates
 const sseClients = [];
@@ -158,9 +160,9 @@ const server = app.listen(PORT, () => {
   console.log(`\n🚀 Server running on http://localhost:${PORT}`);
   console.log(`🌐 Client URL: ${CLIENT_URL}`);
   console.log(`📁 Uploads directory: ${path.join(__dirname, '../uploads')}`);
-  
+
   // Initialize Post Scheduler
-initScheduler();
+  initScheduler();
 
   console.log(`\n✨ Ready to broadcast!\n`);
 });

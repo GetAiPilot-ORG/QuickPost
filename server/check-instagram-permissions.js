@@ -18,7 +18,7 @@ async function debugToken(accessToken) {
   console.log("🧪 IG Token Debug Info:");
   console.log(JSON.stringify(res.data.data, null, 2));
   console.log("\n🔐 Scopes:", res.data?.data?.scopes);
-  console.log("\n✅ Has instagram_content_publish:", res.data?.data?.scopes?.includes('instagram_content_publish'));
+  console.log("\n✅ Has instagram_business_content_publish:", res.data?.data?.scopes?.includes('instagram_business_content_publish'));
   return res.data?.data?.scopes || [];
 }
 

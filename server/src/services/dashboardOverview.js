@@ -236,6 +236,9 @@ async function readInstagramInsights(account, accessToken, range) {
         timeout: 10000,
       });
       values[metric] = sumInsightValues(data?.data?.[0]?.values || []);
+      if (values[metric] === null) {
+        unavailable.push(`${metric} was not returned by Meta for this period.`);
+      }
     } catch (error) {
       unavailable.push(cleanMetaInsightError(metric, error.response?.data?.error?.message || error.message));
     }
@@ -266,11 +269,10 @@ function cleanInstagramGrowthError(message) {
   return 'Instagram insights are unavailable from Meta right now.';
 }
 
-function sumInsightValues(rows) {
-  return rows.reduce((sum, row) => {
-    const value = row?.value;
-    return sum + (Number.isFinite(Number(value)) ? Number(value) : 0);
-  }, 0);
+export function sumInsightValues(rows = []) {
+  const numbers = rows.map((row) => Number(row?.value)).filter(Number.isFinite);
+  if (numbers.length === 0) return null;
+  return numbers.reduce((sum, value) => sum + value, 0);
 }
 
 async function readTopInstagramMedia(account, accessToken) {

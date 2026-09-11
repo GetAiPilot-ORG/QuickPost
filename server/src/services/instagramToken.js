@@ -1,4 +1,4 @@
-import instagramOAuth from './instagramOAuth.js';
+import axios from 'axios';
 import supabase from './supabase.js';
 
 const RECONNECT_MESSAGE =
@@ -90,6 +90,51 @@ function hasUsableTokenWindow(tokenExpiry, bufferMs = REFRESH_BUFFER_MS) {
   return expiryMs !== null && expiryMs - Date.now() > bufferMs;
 }
 
+async function refreshInstagramAccessToken(currentToken) {
+  try {
+    const response = await axios.get('https://graph.instagram.com/refresh_access_token', {
+      params: {
+        grant_type: 'ig_refresh_token',
+        access_token: currentToken,
+      },
+    });
+
+    return {
+      accessToken: response.data.access_token,
+      expiresIn: response.data.expires_in,
+    };
+  } catch (error) {
+    const graphMessage =
+      error.response?.data?.error?.message ||
+      error.response?.data?.error?.error_user_msg ||
+      error.response?.data?.error?.type ||
+      error.message;
+    throw new Error(`Failed to refresh Instagram token: ${graphMessage}`);
+  }
+}
+
+async function saveRefreshedInstagramToken(userId, currentTokens, refreshed) {
+  const newExpiry = new Date(Date.now() + (refreshed.expiresIn || 60 * 24 * 60 * 60) * 1000);
+  let query = supabase
+    .from('social_tokens')
+    .update({
+      access_token: refreshed.accessToken,
+      token_expiry: newExpiry.toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('user_id', userId)
+    .eq('provider', 'instagram');
+
+  if (currentTokens.businessId) {
+    query = query.eq('instagram_business_id', currentTokens.businessId);
+  }
+
+  const { error } = await query;
+  if (error) throw new Error(`Failed updating Instagram token: ${error.message}`);
+
+  return newExpiry.toISOString();
+}
+
 export async function getValidInstagramTokensForPosting(userId, currentTokens) {
   if (!currentTokens?.accessToken || !currentTokens?.businessId) {
     throw buildInstagramReconnectError('missing Instagram credentials');
@@ -101,13 +146,13 @@ export async function getValidInstagramTokensForPosting(userId, currentTokens) {
   }
 
   try {
-    const valid = await instagramOAuth.getValidAccessToken(userId);
+    const refreshed = await refreshInstagramAccessToken(currentTokens.accessToken);
+    const tokenExpiry = await saveRefreshedInstagramToken(userId, currentTokens, refreshed);
+
     return {
       ...currentTokens,
-      accessToken: valid.accessToken,
-      businessId: valid.instagramBusinessId || currentTokens.businessId,
-      pageId: valid.pageId || currentTokens.pageId,
-      tokenExpiry: valid.tokenExpiry || currentTokens.tokenExpiry,
+      accessToken: refreshed.accessToken,
+      tokenExpiry,
     };
   } catch (error) {
     const message = error?.message || String(error);

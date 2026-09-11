@@ -389,7 +389,11 @@ export default function DashboardOverview() {
           <div className="dash-growth-stats">
             <MetricInline label="Followers" value={formatNumber(growthSummary.followers)} detail={formatDelta(growthSummary.followerDelta)} />
             <MetricInline label="Reach" value={formatNumber(growthSummary.reach)} detail={`Last ${range} days`} />
-            <MetricInline label="Profile views" value={formatNumber(growthSummary.profileViews)} detail="From Meta insights" />
+            <MetricInline
+              label="Profile views"
+              value={formatNumber(growthSummary.profileViews)}
+              detail={growthSummary.profileViews == null ? "Not returned by Meta" : "From Meta insights"}
+            />
           </div>
 
           {growthSummary.unavailableReason ? (

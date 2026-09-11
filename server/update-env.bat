@@ -17,14 +17,15 @@ if errorlevel 1 (
     echo SESSION_SECRET=session-secret-change-in-production-09876543210987654321 >> .env
 )
 
-REM Add Instagram credentials if not present
-findstr /C:"INSTAGRAM_APP_ID" .env >nul 2>&1
+REM Add Instagram Login for Business credentials if not present
+findstr /C:"IG_APP_ID" .env >nul 2>&1
 if errorlevel 1 (
     echo. >> .env
-    echo # Instagram/Facebook OAuth >> .env
-    echo INSTAGRAM_APP_ID=your-facebook-app-id >> .env
-    echo INSTAGRAM_APP_SECRET=your-facebook-app-secret >> .env
-    echo INSTAGRAM_REDIRECT_URI=http://localhost:5000/auth/instagram/callback >> .env
+    echo # Instagram Login for Business OAuth >> .env
+    echo IG_APP_ID=your-instagram-app-id >> .env
+    echo IG_APP_SECRET=your-instagram-app-secret >> .env
+    echo IG_OAUTH_CALLBACK_URL=https://your-project.supabase.co/functions/v1/oauth-callback >> .env
+    echo FACEBOOK_LOGIN_CONFIG_ID=your-facebook-login-for-business-config-id >> .env
 )
 
 echo ✓ Environment variables updated!

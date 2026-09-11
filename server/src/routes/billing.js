@@ -1,7 +1,7 @@
 import express from 'express';
 import { authenticateUser } from '../middleware/authenticateUser.js';
 import { PLANS } from '../config/plans.js';
-import { getEntitlements } from '../services/entitlements.js';
+import { getEntitlements, clearEntitlementsCache } from '../services/entitlements.js';
 import supabase from '../services/supabase.js';
 
 const router = express.Router();

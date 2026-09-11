@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import Masonry from "react-masonry-css";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -26,6 +26,8 @@ import {
   X,
   Lock,
   ShieldCheck,
+  Link2Off,
+  Edit3,
 } from "lucide-react";
 import apiClient from "../utils/apiClient";
 import ComposerModal from "./ComposerModal";
@@ -64,6 +66,16 @@ const PLATFORM_COLORS = {
   "google-business": "#4285F4",
 };
 
+const PLATFORM_HERO_LOGOS = {
+  instagram: "/assets/voxel-instagram-logo.png",
+  facebook: "/assets/voxel-facebook-logo.png",
+  linkedin: "/assets/voxel-linkedin-logo.png",
+  youtube: "/assets/voxel-youtube-logo.png",
+  threads: "/assets/voxel-thread-logo.png",
+  bluesky: "/assets/voxel-bludesky-logo.png",
+  mastodon: "/assets/voxel-mastdon-logo.png",
+};
+
 const DASHBOARD_MASONRY_COLS = {
   default: 4,
   1500: 4,
@@ -79,8 +91,8 @@ const SKELETON_HEIGHTS = [
 const LOAD_MORE_SKELETON_HEIGHTS = [260, 190, 315, 225, 285, 205, 335, 240];
 
 /* ── Platform helpers ── */
-function getPlatformIcon(id) {
-  const s = { width: 14, height: 14, objectFit: "contain" };
+function getPlatformIcon(id, size = 14) {
+  const s = { width: size, height: size, objectFit: "contain", display: "block" };
   const baseId = id.split(':')[0];
   switch (baseId) {
     case "facebook":
@@ -137,6 +149,56 @@ function getPlatformIcon(id) {
   }
 }
 
+function getPlatformName(id, connectedAccounts) {
+  const baseId = id.split(":")[0];
+  if (baseId === "instagram") {
+    if (id.includes(":")) {
+      const igId = id.split(":")[1];
+      const acc = connectedAccounts?.instagramAccounts?.find((a) => a.id === igId);
+      return acc?.username ? `Instagram (@${acc.username})` : "Instagram Account";
+    }
+    return "Instagram";
+  }
+  if (baseId === "google-business") return "Google Business";
+  if (baseId === "x") return "X";
+  return baseId.charAt(0).toUpperCase() + baseId.slice(1);
+}
+
+function PlatformHeroLogo({ platformId, label }) {
+  const baseId = platformId.split(":")[0];
+  const logo = PLATFORM_HERO_LOGOS[baseId];
+
+  if (logo) {
+    return (
+      <img
+        src={logo}
+        alt={`${label} logo`}
+        style={{
+          width: "clamp(128px, 14vw, 184px)",
+          height: "auto",
+          maxHeight: "clamp(92px, 10vw, 128px)",
+          objectFit: "contain",
+          display: "block",
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      aria-label={`${label} logo`}
+      style={{
+        width: "clamp(96px, 10vw, 132px)",
+        height: "clamp(96px, 10vw, 132px)",
+        display: "grid",
+        placeItems: "center",
+      }}
+    >
+      {getPlatformIcon(baseId, 86)}
+    </div>
+  );
+}
+
 function getPostPreviewRatio(post) {
   const savedRatio =
     post.platform_data?.selected_aspect_ratio ||
@@ -156,90 +218,70 @@ function getPostPreviewRatio(post) {
 }
 
 function buildPlatforms(post) {
-  let instagramChannels = post.selected_channels && Array.isArray(post.selected_channels)
-    ? Array.from(new Set(post.selected_channels.filter(c => c === 'instagram' || c.startsWith('instagram:'))))
-    : [];
+  const selectedChannels = Array.isArray(post.selected_channels) ? post.selected_channels : [];
+  const isScheduled = post.status === 'scheduled';
+
+  const platformMeta = [
+    { id: "linkedin", name: "LinkedIn", success: isScheduled ? false : post.linkedin_success, error: isScheduled ? null : post.linkedin_error, url: post.linkedin_url },
+    { id: "youtube", name: "YouTube", success: isScheduled ? false : post.youtube_success, error: isScheduled ? null : post.youtube_error, url: post.youtube_shorts_url || post.youtube_url },
+    { id: "facebook", name: "Facebook", success: isScheduled ? false : post.facebook_success, error: isScheduled ? null : post.facebook_error, url: post.facebook_url },
+    { id: "mastodon", name: "Mastodon", success: isScheduled ? false : post.mastodon_success, error: isScheduled ? null : post.mastodon_error, url: post.mastodon_url },
+    { id: "bluesky", name: "Bluesky", success: isScheduled ? false : post.bluesky_success, error: isScheduled ? null : post.bluesky_error, url: post.bluesky_url },
+    { id: "pinterest", name: "Pinterest", success: isScheduled ? false : post.pinterest_success, error: isScheduled ? null : post.pinterest_error, url: post.pinterest_url },
+    { id: "threads", name: "Threads", success: isScheduled ? false : post.threads_success, error: isScheduled ? null : post.threads_error, url: post.threads_url },
+    { id: "x", name: "X", success: isScheduled ? false : post.x_success, error: isScheduled ? null : post.x_error, url: post.x_url },
+    { id: "reddit", name: "Reddit", success: isScheduled ? false : post.reddit_success, error: isScheduled ? null : post.reddit_error, url: post.reddit_url },
+  ];
+
+  const results = [];
+
+  // Instagram channels (generic + account specific)
+  let instagramChannels = selectedChannels.filter(c => c === 'instagram' || c.startsWith('instagram:'));
   if (instagramChannels.some(c => c.startsWith('instagram:'))) {
     instagramChannels = instagramChannels.filter(c => c !== 'instagram');
   }
-  
   if (instagramChannels.length === 0 && (post.instagram_success || post.instagram_error)) {
     instagramChannels = ['instagram'];
   }
-
-  return [
-    {
-      id: "linkedin",
-      name: "LinkedIn",
-      success: post.linkedin_success,
-      error: post.linkedin_error,
-      url: post.linkedin_url,
-    },
-    {
-      id: "youtube",
-      name: "YouTube",
-      success: post.youtube_success,
-      error: post.youtube_error,
-      url: post.youtube_shorts_url || post.youtube_url,
-    },
-    ...instagramChannels.map(igId => ({
+  instagramChannels.forEach(igId => {
+    results.push({
       id: igId,
       name: "Instagram",
-      success: post.instagram_success,
-      error: post.instagram_error,
+      success: isScheduled ? false : post.instagram_success,
+      error: isScheduled ? null : post.instagram_error,
       url: post.instagram_url,
-    })),
-    {
-      id: "facebook",
-      name: "Facebook",
-      success: post.facebook_success,
-      error: post.facebook_error,
-      url: post.facebook_url,
-    },
+    });
+  });
 
-    {
-      id: "mastodon",
-      name: "Mastodon",
-      success: post.mastodon_success,
-      error: post.mastodon_error,
-      url: post.mastodon_url,
-    },
-    {
-      id: "bluesky",
-      name: "Bluesky",
-      success: post.bluesky_success,
-      error: post.bluesky_error,
-      url: post.bluesky_url,
-    },
-    {
-      id: "pinterest",
-      name: "Pinterest",
-      success: post.pinterest_success,
-      error: post.pinterest_error,
-      url: post.pinterest_url,
-    },
-    {
-      id: "threads",
-      name: "Threads",
-      success: post.threads_success,
-      error: post.threads_error,
-      url: post.threads_url,
-    },
-    {
-      id: "x",
-      name: "X",
-      success: post.x_success,
-      error: post.x_error,
-      url: post.x_url,
-    },
-    {
-      id: "reddit",
-      name: "Reddit",
-      success: post.reddit_success,
-      error: post.reddit_error,
-      url: post.reddit_url,
-    },
-  ].filter((p) => p.success || (p.error && p.error !== "Not selected"));
+  // Standard platforms (matching generic ID or specific sub-channel IDs)
+  platformMeta.forEach(pm => {
+    let subChannels = selectedChannels.filter(c => c === pm.id || c.startsWith(`${pm.id}:`));
+    if (subChannels.some(c => c.startsWith(`${pm.id}:`))) {
+      // Prefer specific account channel over generic platform name
+      subChannels = subChannels.filter(c => c !== pm.id);
+    }
+    if (subChannels.length > 0) {
+      subChannels.forEach(scId => {
+        results.push({
+          id: scId,
+          name: pm.name,
+          success: pm.success,
+          error: pm.error,
+          url: pm.url,
+        });
+      });
+    } else if (pm.success || (pm.error && pm.error !== "Not selected")) {
+      results.push(pm);
+    }
+  });
+
+  // Unique by channel ID to prevent double badges
+  const seenIds = new Set();
+  return results.filter(item => {
+    if (seenIds.has(item.id)) return false;
+    seenIds.add(item.id);
+    return true;
+  });
 }
 
 /* ── Media thumbnail ── */
@@ -421,7 +463,7 @@ function PlatformBadge({ platform }) {
         transition: "all 0.2s",
       }}
     >
-      {getPlatformIcon(platform.id)}
+      {getPlatformIcon(platform.id, 18)}
       <span style={{ opacity: 0.8 }}>{platform.name}</span>
       <div
         style={{
@@ -755,7 +797,7 @@ function PinterestCard({ post, onOpen, formatDate }) {
                       <img
                         src={`/icons/${ICON_MAP[p.id.split(':')[0]]}`}
                         alt={p.name}
-                        style={{ width: 13, height: 13, objectFit: "contain" }}
+                        style={{ width: 19, height: 19, objectFit: "contain", display: "block" }}
                       />
                     ) : (
                       <Share2 size={9} style={{ color: "#fff" }} />
@@ -786,17 +828,17 @@ function PinterestCard({ post, onOpen, formatDate }) {
                     background: post.status === 'processing'
                       ? "#eab308"
                       : isScheduled
-                      ? "#f97316"
-                      : allSuccess
-                        ? "#22c55e"
-                        : "#ef4444",
+                        ? "#f97316"
+                        : allSuccess
+                          ? "#22c55e"
+                          : "#ef4444",
                     boxShadow: post.status === 'processing'
                       ? "0 0 6px rgba(234,179,8,0.7)"
                       : isScheduled
-                      ? "0 0 6px rgba(249,115,22,0.7)"
-                      : allSuccess
-                        ? "0 0 6px rgba(34,197,94,0.7)"
-                        : "0 0 6px rgba(239,68,68,0.7)",
+                        ? "0 0 6px rgba(249,115,22,0.7)"
+                        : allSuccess
+                          ? "0 0 6px rgba(34,197,94,0.7)"
+                          : "0 0 6px rgba(239,68,68,0.7)",
                   }}
                 />
                 <span
@@ -972,7 +1014,10 @@ function PinterestCard({ post, onOpen, formatDate }) {
 
 /* ── List row ── */
 function getPostDateValue(post) {
-  return post.status === "scheduled" ? post.scheduled_for : post.posted_at;
+  if (post.status === "scheduled") {
+    return post.scheduled_for || post.created_at || post.posted_at || new Date().toISOString();
+  }
+  return post.posted_at || post.scheduled_for || post.created_at || new Date().toISOString();
 }
 
 function formatTimelineDay(dateString) {
@@ -1014,7 +1059,8 @@ function resolvePlatformLabel(platform, connectedAccounts) {
   return handle ? `${platform.name} @${handle}` : platform.name;
 }
 
-function ListRow({ post, expanded, onToggle, connectedAccounts }) {
+function ListRow({ post, expanded, onToggle, connectedAccounts, onEdit, selectedPlatform }) {
+  const navigate = useNavigate();
   const platforms = buildPlatforms(post);
   const isScheduled = post.status === "scheduled";
   const primaryPlatform = platforms.find((p) => p.success) || platforms[0];
@@ -1044,10 +1090,10 @@ function ListRow({ post, expanded, onToggle, connectedAccounts }) {
       <div
         className="timeline-card-main"
         style={{
-          padding: "16px 18px",
+          padding: "12px 14px",
           display: "grid",
-          gridTemplateColumns: "minmax(0, 1fr) 240px",
-          gap: 22,
+          gridTemplateColumns: "minmax(0, 1fr) 160px",
+          gap: 14,
           cursor: "pointer",
         }}
         onClick={onToggle}
@@ -1058,29 +1104,26 @@ function ListRow({ post, expanded, onToggle, connectedAccounts }) {
               display: "flex",
               alignItems: "center",
               gap: 8,
-              marginBottom: 18,
+              marginBottom: 8,
             }}
           >
             <div
               style={{
-                width: 34,
-                height: 34,
-                borderRadius: 8,
-                background: "#f3eee8",
-                border: `1px solid ${css.hairline}`,
+                width: 26,
+                height: 26,
+                borderRadius: 6,
+                background: "transparent",
+                border: 0,
                 display: "grid",
                 placeItems: "center",
                 flexShrink: 0,
               }}
             >
-              {primaryPlatform ? getPlatformIcon(primaryPlatform.id) : <Share2 size={14} />}
+              {primaryPlatform ? getPlatformIcon(primaryPlatform.id, 22) : <Share2 size={22} />}
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 750, color: css.ink }}>
+              <div style={{ fontSize: 13, fontWeight: 750, color: css.ink, lineHeight: 1.2 }}>
                 {primaryPlatform ? resolvePlatformLabel(primaryPlatform, connectedAccounts) : "Social post"}
-              </div>
-              <div style={{ fontSize: 11, color: css.slate }}>
-                {isScheduled ? "Scheduled" : "Published"} via {primaryPlatform?.name || "channel"}
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1103,11 +1146,11 @@ function ListRow({ post, expanded, onToggle, connectedAccounts }) {
           </div>
           <p
             style={{
-              fontSize: 15,
+              fontSize: 13,
               fontWeight: 500,
               color: css.ink,
               margin: 0,
-              lineHeight: 1.5,
+              lineHeight: 1.4,
               whiteSpace: "pre-wrap",
               maxWidth: 680,
             }}
@@ -1118,32 +1161,20 @@ function ListRow({ post, expanded, onToggle, connectedAccounts }) {
               </span>
             )}
           </p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 14 }}>
-            {platforms.slice(0, 5).map((p) => (
-              <PlatformBadge key={p.id} platform={p} />
-            ))}
-            {platforms.length > 5 && (
-              <div
-                style={{
-                  padding: "4px 10px",
-                  borderRadius: css.r_pill,
-                  background: "rgba(20,20,19,0.04)",
-                  color: css.slate,
-                  fontSize: 10,
-                  fontWeight: 700,
-                }}
-              >
-                +{platforms.length - 5}
-              </div>
-            )}
-          </div>
+          {selectedPlatform === "all" && platforms.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+              {platforms.slice(0, 5).map((p) => (
+                <PlatformBadge key={p.id} platform={p} />
+              ))}
+            </div>
+          )}
         </div>
         <MediaThumb
           post={post}
           className="timeline-thumb"
           style={{
             width: "100%",
-            height: 132,
+            height: 96,
             borderRadius: 7,
             flexShrink: 0,
             border: `1px solid ${css.hairline}`,
@@ -1151,44 +1182,55 @@ function ListRow({ post, expanded, onToggle, connectedAccounts }) {
         />
       </div>
 
-      {metrics.length > 0 && (
-        <div
-          className="timeline-metrics"
-          style={{
-            borderTop: `1px solid ${css.hairline}`,
-            display: "grid",
-            gridTemplateColumns: `repeat(${Math.min(metrics.length, 6)}, minmax(0, 1fr))`,
-            padding: "12px 18px",
-            gap: 8,
-          }}
-        >
-          {metrics.map((metric) => (
-            <div key={metric.label} style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 12, fontWeight: 650, color: css.slate }}>
-                {metric.label}
-              </div>
-              <div style={{ fontSize: 15, fontWeight: 750, color: css.ink, marginTop: 3 }}>
-                {metric.value}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
       <div
         style={{
           borderTop: `1px solid ${css.hairline}`,
-          padding: "12px 18px",
+          padding: "8px 14px",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           gap: 12,
+          background: "rgba(20,20,19,0.01)"
         }}
       >
-        <span style={{ fontSize: 13, color: css.ink }}>
-          {isScheduled ? "Scheduled for" : "Published via"} {primaryPlatform?.name || "channel"}
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          {metrics.map((metric) => (
+            <div key={metric.label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: css.slate }}>{metric.label}:</span>
+              <span style={{ fontSize: 12, fontWeight: 750, color: css.ink }}>{metric.value}</span>
+            </div>
+          ))}
+        </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {isScheduled && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onEdit) {
+                  onEdit(post);
+                } else {
+                  navigate("/dashboard/queue");
+                }
+              }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 14px",
+                borderRadius: 7,
+                border: `1px solid ${css.hairline}`,
+                color: css.ink,
+                fontSize: 13,
+                fontWeight: 700,
+                background: css.white,
+                cursor: "pointer",
+                transition: "all 0.2s",
+              }}
+            >
+              <Edit3 size={14} style={{ color: css.arc }} /> Edit
+            </button>
+          )}
           {liveUrl && (
             <a
               href={liveUrl}
@@ -1286,8 +1328,8 @@ function ListRow({ post, expanded, onToggle, connectedAccounts }) {
                     <div style={{ fontSize: 13, fontWeight: 700, color: css.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {resolvePlatformLabel(p, connectedAccounts)}
                     </div>
-                    <div style={{ fontSize: 11, fontWeight: 650, color: p.success ? "#15803d" : "#b91c1c" }}>
-                      {p.success ? "Success" : p.error || "Failed"}
+                    <div style={{ fontSize: 11, fontWeight: 650, color: p.success ? "#15803d" : isScheduled ? css.slate : "#b91c1c" }}>
+                      {p.success ? "Success" : isScheduled ? "Scheduled" : (p.error || "Failed")}
                     </div>
                   </div>
                 </div>
@@ -1323,6 +1365,19 @@ function ListRow({ post, expanded, onToggle, connectedAccounts }) {
                       <Clock size={12} /> Pending Sync
                     </div>
                   )
+                ) : isScheduled ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      fontSize: 11,
+                      color: css.arc,
+                      fontWeight: 600,
+                    }}
+                  >
+                    <Clock size={12} /> Scheduled
+                  </div>
                 ) : (
                   <span
                     style={{
@@ -1423,33 +1478,56 @@ function Dashboard() {
   const [viewMode, setViewMode] = useState("list");
   const [selectedPost, setSelectedPost] = useState(null);
   const [queueCount, setQueueCount] = useState(0);
+  const [disconnectConfirmOpen, setDisconnectConfirmOpen] = useState(false);
+  const [isDisconnectingAccount, setIsDisconnectingAccount] = useState(false);
 
   const BATCH_SIZE = 20;
   const [displayCount, setDisplayCount] = useState(BATCH_SIZE);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const loadMoreRef = useRef(null);
 
+  const selectedPlatform = searchParams.get("platform") || "all";
+
+  const filtered = useMemo(() => broadcasts.filter((b) => {
+    if (activeTab === "queue" && b.status === "sent") return false;
+    if (activeTab === "sent" && b.status !== "sent") return false;
+    const matchesSearch = (b.caption || "")
+      .toLowerCase()
+      .includes(searchTerm.toLowerCase());
+    if (selectedPlatform === "all") return matchesSearch;
+
+    const isSpecificAccount = selectedPlatform.includes(":");
+    const baseSelected = selectedPlatform.split(":")[0];
+
+    let matchesPlatform = buildPlatforms(b).some((p) => {
+      if (p.id === selectedPlatform) return true;
+      if (p.id.split(":")[0] === baseSelected) return true;
+      return false;
+    }) || (Array.isArray(b.selected_channels) && b.selected_channels.some(c => {
+      if (c === selectedPlatform) return true;
+      if (c.split(":")[0] === baseSelected) return true;
+      return false;
+    }));
+
+    return matchesSearch && matchesPlatform;
+  }), [broadcasts, searchTerm, selectedPlatform, activeTab]);
+
   const tabs = [
     {
       id: "sent",
       label: "Sent",
-      count: activeTab === "sent" ? broadcasts.length : 0,
+      count: activeTab === "sent" ? filtered.length : 0,
     },
     {
       id: "queue",
       label: "Queue",
-      count:
-        activeTab === "queue"
-          ? broadcasts.length
-          : activeTab === "sent"
-            ? queueCount
-            : 0,
+      count: activeTab === "queue" ? filtered.length : 0,
     },
     { id: "drafts", label: "Drafts", count: 0 },
     {
       id: "history",
       label: "History",
-      count: activeTab === "history" ? broadcasts.length : 0,
+      count: activeTab === "history" ? filtered.length : 0,
     },
   ];
 
@@ -1457,19 +1535,19 @@ function Dashboard() {
     const params = new URLSearchParams(window.location.search);
     const oauthError = params.get("error");
     const oauthMessage = params.get("message") || params.get("details");
-    
+
     const verifyPayment = async () => {
       const paymentLinkStatus = params.get("razorpay_payment_link_status");
       const paymentLinkId = params.get("razorpay_payment_link_id");
-      
+
       if (params.get("payment") === "success" && paymentLinkId) {
         try {
           const { data, error } = await supabase.functions.invoke('verify-subscription', {
             body: { razorpayPaymentLinkId: paymentLinkId }
           });
-          
+
           if (error) throw error;
-          
+
           if (data.success) {
             if (data.status === "paid") {
               await supabase.auth.refreshSession();
@@ -1505,11 +1583,11 @@ function Dashboard() {
       refreshAccounts();
       window.history.replaceState({}, "", "/dashboard");
     }
-    
+
     apiClient
       .get("/api/broadcasts/stats")
       .then((r) => setQueueCount(r.data.pending || 0))
-      .catch(() => {});
+      .catch(() => { });
   }, [refreshAccounts]);
 
   useEffect(() => {
@@ -1526,7 +1604,7 @@ function Dashboard() {
       if (!silent) setLoading(true);
       let params = {};
       if (activeTab === "sent") params.status = "sent";
-      else if (activeTab === "queue") params.status = "scheduled";
+      // Note: activeTab === "queue" fetches all broadcasts for client-side filtering of non-sent or scheduled posts
 
       const [resBroadcasts, resJobs] = await Promise.all([
         apiClient.get("/api/broadcasts", { params }),
@@ -1586,20 +1664,93 @@ function Dashboard() {
   const toggleExpand = (id) =>
     setExpandedId((prev) => (prev === id ? null : id));
 
-  const selectedPlatform = searchParams.get("platform") || "all";
+  const handleDisconnectSelectedAccount = async () => {
+    if (!selectedAccountInfo) return;
+    setIsDisconnectingAccount(true);
+    try {
+      const { provider, accountId } = selectedAccountInfo;
+      const response = await apiClient.delete(
+        `/api/auth/disconnect/${provider}?accountId=${accountId}`
+      );
+      if (response.data.success) {
+        await refreshAccounts();
+        setDisconnectConfirmOpen(false);
+        navigate("/dashboard");
+      } else {
+        alert(`Failed to disconnect: ${response.data.error || "Unknown error"}`);
+      }
+    } catch (error) {
+      console.error("Failed to disconnect account:", error);
+      alert("Failed to disconnect account. Please try again.");
+    } finally {
+      setIsDisconnectingAccount(false);
+    }
+  };
+  const selectedPlatformName = useMemo(
+    () => getPlatformName(selectedPlatform, connectedAccounts),
+    [selectedPlatform, connectedAccounts],
+  );
 
-  const filtered = useMemo(() => broadcasts.filter((b) => {
-    const matchesSearch = (b.caption || "")
-      .toLowerCase()
-      .includes(searchTerm.toLowerCase());
-    if (selectedPlatform === "all") return matchesSearch;
-    const matchesPlatform = buildPlatforms(b).some((p) => {
-      if (p.id === selectedPlatform) return true;
-      if (selectedPlatform === "instagram" && p.id.startsWith("instagram")) return true;
-      return false;
-    });
-    return matchesSearch && matchesPlatform;
-  }), [broadcasts, searchTerm, selectedPlatform]);
+  const selectedAccountInfo = useMemo(() => {
+    if (selectedPlatform === "all") return null;
+
+    const multiAccountProviders = [
+      "facebook",
+      "youtube",
+      "linkedin",
+      "threads",
+      "mastodon",
+      "bluesky",
+      "reddit",
+      "x",
+      "pinterest",
+      "googleBusiness",
+    ];
+
+    const connectedRows = [
+      ...(connectedAccounts?.instagramAccounts || []).map((account) => ({
+        id: `instagram:${account.id}`,
+        provider: "instagram",
+        accountId: account.id,
+        label: "Instagram",
+        username: account.username,
+        profilePicture: account.profilePicture,
+      })),
+      ...multiAccountProviders.flatMap((provider) =>
+        (connectedAccounts?.[`${provider}Accounts`] || []).map((account) => ({
+          id: `${provider}:${account.id}`,
+          provider,
+          accountId: account.id,
+          label: provider.charAt(0).toUpperCase() + provider.slice(1),
+          username: account.username || account.name || account.channelTitle || account.title,
+          profilePicture: account.profilePicture || account.avatarUrl || account.avatar,
+        })),
+      ),
+      ...Object.entries(connectedAccounts || {})
+        .filter(([id, data]) =>
+          id !== "instagram" &&
+          id !== "instagramAccounts" &&
+          !id.endsWith("Accounts") &&
+          !multiAccountProviders.includes(id) &&
+          data?.connected
+        )
+        .map(([id, data]) => ({
+          id,
+          provider: id,
+          accountId: null,
+          label: id.charAt(0).toUpperCase() + id.slice(1),
+          username: data.username || data.name || data.title,
+          profilePicture: data.profilePicture || data.avatarUrl || data.avatar,
+        })),
+    ];
+
+    let match = connectedRows.find(r => r.id === selectedPlatform);
+    if (!match) {
+      const baseId = selectedPlatform.split(":")[0];
+      match = connectedRows.find(r => r.provider === baseId);
+    }
+    return match;
+  }, [selectedPlatform, connectedAccounts]);
 
   const displayedItems = useMemo(
     () => filtered.slice(0, displayCount),
@@ -1722,6 +1873,12 @@ function Dashboard() {
           .timeline-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
         }
         @media (max-width: 620px) {
+          .analytics-platform-hero {
+            order: 3;
+            width: 100%;
+            justify-content: flex-start !important;
+            min-height: 0 !important;
+          }
           .timeline-group {
             display: block;
             margin-bottom: 18px;
@@ -1751,7 +1908,7 @@ function Dashboard() {
         style={{
           background: css.lifted,
           borderBottom: `1px solid ${css.hairline}`,
-          padding: "clamp(24px, 4vw, 40px) clamp(18px, 3vw, 32px)",
+          padding: "clamp(22px, 2.5vw, 26px) clamp(18px, 3vw, 32px)",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -1786,48 +1943,221 @@ function Dashboard() {
             </h1>
 
           </div>
+        </div>
+        <AnimatePresence>
           {selectedPlatform !== "all" && (
-            <div
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="analytics-platform-hero"
               style={{
-                padding: "4px 10px",
-                background: "var(--canvas)",
-              borderRadius: css.r_btn,
+                minHeight: 0,
                 display: "flex",
                 alignItems: "center",
-                gap: 6,
-                border: "1px solid rgba(20,20,19,0.08)",
+                justifyContent: "center",
+                gap: "18px",
+                flexWrap: "wrap",
               }}
             >
-              <span style={{ fontSize: 11, fontWeight: 700, color: css.ink }}>
-                {(() => {
-                  if (selectedPlatform.startsWith("instagram:")) {
-                    const igId = selectedPlatform.split(":")[1];
-                    const acc = connectedAccounts?.instagramAccounts?.find((a) => a.id === igId);
-                    if (acc && acc.username) return `Instagram (@${acc.username})`;
-                    return "Instagram Account";
-                  }
-                  if (selectedPlatform === "instagram") return "Instagram";
-                  return (
-                    selectedPlatform.charAt(0).toUpperCase() +
-                    selectedPlatform.slice(1)
-                  );
-                })()}
-              </span>
-              <button
-                onClick={() => navigate("/dashboard")}
+              <div
                 style={{
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: 0,
+                  background: "rgba(255, 255, 255, 0.45)",
+                  backdropFilter: "blur(20px) saturate(140%)",
+                  WebkitBackdropFilter: "blur(20px) saturate(140%)",
+                  borderRadius: "16px",
+                  border: "1px solid rgba(255, 255, 255, 0.5)",
+                  padding: "10px 40px 10px 16px",
                   display: "flex",
+                  alignItems: "center",
+                  boxShadow: "0 8px 32px 0 rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.6)",
+                  width: "280px",
+                  position: "relative",
+                  overflow: "hidden",
                 }}
               >
-                <X size={12} />
-              </button>
-            </div>
+                <div style={{ flex: 1, minWidth: 0, position: "relative" }}>
+                  <AnimatePresence mode="popLayout">
+                    <motion.div
+                      key={selectedPlatform}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "12px",
+                        width: "100%",
+                      }}
+                    >
+                      {/* Profile Image or platform logo */}
+                      <div style={{ position: "relative", flexShrink: 0 }}>
+                        {selectedAccountInfo?.profilePicture ? (
+                          <div style={{ position: "relative", width: 40, height: 40 }}>
+                            <img
+                              src={selectedAccountInfo.profilePicture}
+                              alt={selectedAccountInfo.username || "Profile"}
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                borderRadius: "50%",
+                                objectFit: "cover",
+                                border: "2px solid #ffffff",
+                                boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                              }}
+                            />
+                            <div
+                              style={{
+                                position: "absolute",
+                                bottom: -2,
+                                right: -2,
+                                background: "#ffffff",
+                                borderRadius: "50%",
+                                padding: 2,
+                                boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                              }}
+                            >
+                              {getPlatformIcon(selectedPlatform, 12)}
+                            </div>
+                          </div>
+                        ) : (
+                          <div
+                            style={{
+                              width: 40,
+                              height: 40,
+                              borderRadius: "10px",
+                              background: "rgba(255, 255, 255, 0.75)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+                              overflow: "hidden",
+                            }}
+                          >
+                            {PLATFORM_HERO_LOGOS[selectedPlatform.split(":")[0]] ? (
+                              <img
+                                src={PLATFORM_HERO_LOGOS[selectedPlatform.split(":")[0]]}
+                                alt={selectedPlatformName}
+                                style={{
+                                  width: 28,
+                                  height: 28,
+                                  objectFit: "contain",
+                                }}
+                              />
+                            ) : (
+                              getPlatformIcon(selectedPlatform, 20)
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Account details */}
+                      <div style={{ display: "flex", flexDirection: "column", minWidth: 0, flex: 1 }}>
+                        <span
+                          style={{
+                            fontSize: "9px",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.06em",
+                            color: css.slate,
+                            fontWeight: 700,
+                            marginBottom: 1,
+                          }}
+                        >
+                          {selectedAccountInfo?.label || selectedPlatformName.split(" ")[0]} Active
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "13px",
+                            fontWeight: 750,
+                            color: css.ink,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            lineHeight: 1.25,
+                          }}
+                        >
+                          {selectedAccountInfo?.username ? `@${selectedAccountInfo.username}` : selectedPlatformName}
+                        </span>
+                      </div>
+                    </motion.div>
+                  </AnimatePresence>
+                </div>
+
+                {/* Red Disconnect button */}
+                <button
+                  onClick={() => setDisconnectConfirmOpen(true)}
+                  style={{
+                    position: "absolute",
+                    right: 14,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "rgba(239, 68, 68, 0.08)",
+                    border: "none",
+                    borderRadius: "50%",
+                    width: 24,
+                    height: 24,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                    color: "#ef4444",
+                    padding: 0,
+                    transition: "all 0.2s",
+                    zIndex: 10,
+                  }}
+                  title="Disconnect Account"
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "rgba(239, 68, 68, 0.15)";
+                    e.currentTarget.style.transform = "translateY(-50%) scale(1.05)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "rgba(239, 68, 68, 0.08)";
+                    e.currentTarget.style.transform = "translateY(-50%) scale(1)";
+                  }}
+                >
+                  <Link2Off size={12} />
+                </button>
+              </div>
+
+              {/* Voxel platform logo container */}
+              <div
+                style={{
+                  flexShrink: 0,
+                  position: "relative",
+                  width: "clamp(100px, 12vw, 148px)",
+                  height: "clamp(70px, 8.5vw, 104px)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <AnimatePresence mode="popLayout">
+                  {PLATFORM_HERO_LOGOS[selectedPlatform.split(":")[0]] && (
+                    <motion.img
+                      key={selectedPlatform.split(":")[0]}
+                      src={PLATFORM_HERO_LOGOS[selectedPlatform.split(":")[0]]}
+                      alt={selectedPlatformName}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1], delay: 0.04 }}
+                      style={{
+                        position: "absolute",
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "contain",
+                      }}
+                    />
+                  )}
+                </AnimatePresence>
+              </div>
+            </motion.div>
           )}
-        </div>
+        </AnimatePresence>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <button
             onClick={() => setComposerOpen(true)}
@@ -1869,10 +2199,6 @@ function Dashboard() {
             <button
               key={tab.id}
               onClick={() => {
-                if (tab.id === "queue" && activeTab !== "queue") {
-                  navigate("/dashboard/queue");
-                  return;
-                }
                 setActiveTab(tab.id);
               }}
               style={{
@@ -1962,7 +2288,7 @@ function Dashboard() {
                 style={{
                   width: 1,
                   height: 16,
-                background: css.hairline,
+                  background: css.hairline,
                   flexShrink: 0,
                 }}
               />
@@ -2084,8 +2410,8 @@ function Dashboard() {
             ))}
           </Masonry>
         ) : (activeTab === "sent" ||
-            activeTab === "queue" ||
-            activeTab === "history") &&
+          activeTab === "queue" ||
+          activeTab === "history") &&
           filtered.length > 0 ? (
           <>
             {viewMode === "grid" ? (
@@ -2157,6 +2483,10 @@ function Dashboard() {
                               toggleExpand(post.id);
                             }}
                             connectedAccounts={connectedAccounts}
+                            selectedPlatform={selectedPlatform}
+                            onEdit={(p) => {
+                              navigate(`/dashboard/queue?edit=${p.id}`);
+                            }}
                           />
                         </div>
                       </div>
@@ -2169,7 +2499,7 @@ function Dashboard() {
             {/* ── Infinite scroll sentinel + skeletons ── */}
             <div ref={loadMoreRef} style={{ marginTop: 8 }} />
 
-            
+
             {isLoadingMore && viewMode === "list" && (
               <div
                 style={{
@@ -2295,7 +2625,7 @@ function Dashboard() {
             </div>
             <h3
               style={{
-              fontSize: 28,
+                fontSize: 28,
                 fontWeight: 500,
                 color: css.ink,
                 margin: "0 0 10px",
@@ -2376,6 +2706,260 @@ function Dashboard() {
               }
             }}
           />
+        )}
+      </AnimatePresence>
+
+      {/* Disconnect Confirmation Modal */}
+      <AnimatePresence>
+        {disconnectConfirmOpen && selectedAccountInfo && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 9999,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 20,
+            }}
+          >
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => !isDisconnectingAccount && setDisconnectConfirmOpen(false)}
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: "rgba(20, 20, 19, 0.4)",
+                backdropFilter: "blur(8px)",
+                WebkitBackdropFilter: "blur(8px)",
+              }}
+            />
+
+            {/* Modal Card */}
+            <motion.div
+              initial={{ opacity: 0, y: 30, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.98 }}
+              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+              style={{
+                position: "relative",
+                background: "#ffffff",
+                borderRadius: "24px",
+                padding: "28px 28px 24px",
+                width: "100%",
+                maxWidth: "420px",
+                boxShadow: "0 20px 50px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.8)",
+                border: "1px solid rgba(20, 20, 19, 0.08)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "20px",
+                zIndex: 10,
+              }}
+            >
+              <div>
+                <h3
+                  style={{
+                    fontSize: "20px",
+                    fontWeight: 750,
+                    color: css.ink,
+                    margin: "0 0 8px",
+                    letterSpacing: "-0.015em",
+                  }}
+                >
+                  Disconnect Account
+                </h3>
+                <p
+                  style={{
+                    fontSize: "14px",
+                    color: css.slate,
+                    lineHeight: 1.5,
+                    margin: 0,
+                  }}
+                >
+                  Are you sure you want to disconnect this account? This will stop all scheduled posts and automated replies for this page.
+                </p>
+              </div>
+
+              {/* Account Card Preview inside modal */}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                  padding: "12px",
+                  background: css.canvas,
+                  borderRadius: "16px",
+                  border: `1px solid ${css.hairline}`,
+                }}
+              >
+                <div
+                  style={{
+                    background: "#ffffff",
+                    borderRadius: "16px",
+                    border: "1px solid rgba(255, 255, 255, 0.5)",
+                    padding: "10px 16px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px",
+                    boxShadow: "0 8px 24px rgba(0, 0, 0, 0.02), inset 0 1px 0 rgba(255, 255, 255, 0.6)",
+                    width: "280px",
+                  }}
+                >
+                  <div style={{ position: "relative", flexShrink: 0 }}>
+                    {selectedAccountInfo.profilePicture ? (
+                      <div style={{ position: "relative", width: 40, height: 40 }}>
+                        <img
+                          src={selectedAccountInfo.profilePicture}
+                          alt={selectedAccountInfo.username || "Profile"}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            borderRadius: "50%",
+                            objectFit: "cover",
+                            border: "2px solid #ffffff",
+                            boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                          }}
+                        />
+                        <div
+                          style={{
+                            position: "absolute",
+                            bottom: -2,
+                            right: -2,
+                            background: "#ffffff",
+                            borderRadius: "50%",
+                            padding: 2,
+                            boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          {getPlatformIcon(selectedPlatform, 12)}
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: "10px",
+                          background: "rgba(255, 255, 255, 0.75)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+                          overflow: "hidden",
+                        }}
+                      >
+                        {PLATFORM_HERO_LOGOS[selectedPlatform.split(":")[0]] ? (
+                          <img
+                            src={PLATFORM_HERO_LOGOS[selectedPlatform.split(":")[0]]}
+                            alt={selectedPlatformName}
+                            style={{
+                              width: 28,
+                              height: 28,
+                              objectFit: "contain",
+                            }}
+                          />
+                        ) : (
+                          getPlatformIcon(selectedPlatform, 20)
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", minWidth: 0, flex: 1 }}>
+                    <span
+                      style={{
+                        fontSize: "9px",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.06em",
+                        color: css.slate,
+                        fontWeight: 700,
+                        marginBottom: 1,
+                      }}
+                    >
+                      {selectedAccountInfo.label || selectedPlatformName.split(" ")[0]} Active
+                    </span>
+                    <span
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: 750,
+                        color: css.ink,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        lineHeight: 1.25,
+                      }}
+                    >
+                      {selectedAccountInfo.username ? `@${selectedAccountInfo.username}` : selectedPlatformName}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div style={{ display: "flex", gap: "10px", marginTop: "4px" }}>
+                <button
+                  type="button"
+                  disabled={isDisconnectingAccount}
+                  onClick={() => setDisconnectConfirmOpen(false)}
+                  style={{
+                    flex: 1,
+                    padding: "12px 18px",
+                    borderRadius: "12px",
+                    border: `1px solid ${css.hairline}`,
+                    background: "#ffffff",
+                    color: css.slate,
+                    fontSize: "14px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "#fcfbfa";
+                    e.currentTarget.style.color = css.ink;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "#ffffff";
+                    e.currentTarget.style.color = css.slate;
+                  }}
+                >
+                  Keep Connected
+                </button>
+                <button
+                  type="button"
+                  disabled={isDisconnectingAccount}
+                  onClick={handleDisconnectSelectedAccount}
+                  style={{
+                    flex: 1,
+                    padding: "12px 18px",
+                    borderRadius: "12px",
+                    border: "none",
+                    background: "#ef4444",
+                    color: "#ffffff",
+                    fontSize: "14px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "#dc2626";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "#ef4444";
+                  }}
+                >
+                  {isDisconnectingAccount ? "Disconnecting..." : "Disconnect"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

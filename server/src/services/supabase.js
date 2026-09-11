@@ -141,6 +141,14 @@ async function syncUserToHub(opts) {
   }
 }
 
+const tokensCache = new Map();
+const TOKENS_CACHE_TTL_MS = 60 * 1000; // 60 seconds
+
+export function clearTokensCache(userId) {
+  if (userId) tokensCache.delete(userId);
+  else tokensCache.clear();
+}
+
 /**
  * Fetch social media tokens for a user (all providers)
  * @param {string} userId
@@ -148,6 +156,12 @@ async function syncUserToHub(opts) {
  */
 export async function getTokensForUser(userId) {
   try {
+    const now = Date.now();
+    const cached = tokensCache.get(userId);
+    if (cached && (now - cached._cachedAt < TOKENS_CACHE_TTL_MS)) {
+      return cached.data;
+    }
+
     const { data, error } = await supabase
       .from('social_tokens')
       .select('*')
@@ -207,6 +221,7 @@ export async function getTokensForUser(userId) {
       tokens.instagramAccounts = [];
     }
 
+    tokensCache.set(userId, { data: tokens, _cachedAt: Date.now() });
     return tokens;
   } catch (err) {
     console.error('💥 [SUPABASE] getTokensForUser error:', err?.message || err);

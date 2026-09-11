@@ -4,7 +4,6 @@ import crypto from "crypto";
 
 import googleOAuth from "../services/googleOAuth.js";
 import googleBusinessOAuth from "../services/googleBusinessOAuth.js";
-import instagramOAuth from "../services/instagramOAuth.js";
 import pinterestOAuth from "../services/pinterestOAuth.js";
 import facebookOAuth from "../services/facebookOAuth.js";
 import blueskyAuth from "../services/blueskyAuth.js";
@@ -73,6 +72,14 @@ function decodeState(state) {
   }
 }
 
+function dashboardRedirect(params) {
+  const url = new URL("/dashboard", CLIENT_URL);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value) url.searchParams.set(key, value);
+  });
+  return url.toString();
+}
+
 function requireJwtSecret() {
   if (!process.env.JWT_SECRET) {
     console.error("❌ JWT_SECRET missing in env");
@@ -81,27 +88,48 @@ function requireJwtSecret() {
 requireJwtSecret();
 
 async function getConnectedTargetCount(userId) {
-  const [{ count: socialCount, error: socialError }, { count: instagramCount, error: instagramError }] = await Promise.all([
+  const [{ data: socialRows, error: socialError }, { data: instagramRows, error: instagramError }] = await Promise.all([
     supabase
       .from("social_tokens")
-      .select("id", { count: "exact", head: true })
+      .select("provider, account_id, page_id, instagram_business_id, username")
       .eq("user_id", userId)
       .neq("provider", "instagram"),
     supabase
       .from("instagram_accounts")
-      .select("id", { count: "exact", head: true })
+      .select("instagram_business_account_id")
       .eq("user_id", userId)
       .eq("is_connected", true),
   ]);
   if (socialError) throw socialError;
   if (instagramError) throw instagramError;
-  return (socialCount || 0) + (instagramCount || 0);
+
+  const targets = new Set();
+  for (const row of socialRows || []) {
+    targets.add([
+      row.provider,
+      row.account_id || row.page_id || row.instagram_business_id || row.username,
+    ].filter(Boolean).join(":"));
+  }
+  for (const row of instagramRows || []) {
+    targets.add(`instagram:${row.instagram_business_account_id}`);
+  }
+  return targets.size;
 }
 
 async function assertCanConnectTarget({ user, provider, accountId }) {
   const userId = user.userId;
   const entitlementUserId = user.authUserId || userId;
-  const entitlements = await getEntitlements(entitlementUserId, user.email, user.token);
+  let email = user.email;
+  if (!email) {
+    const { data, error } = await supabase
+      .from("users")
+      .select("email")
+      .eq("id", userId)
+      .maybeSingle();
+    if (error) throw error;
+    email = data?.email || null;
+  }
+  const entitlements = await getEntitlements(entitlementUserId, email, user.token);
   const limit = entitlements.limits.social_accounts;
 
   if (!Number.isFinite(limit)) return;
@@ -355,43 +383,12 @@ router.get("/instagram", async (req, res) => {
 });
 
 router.get("/instagram/callback", async (req, res) => {
-  const { code, error, state } = req.query;
-
-  console.log("\n🔵 Instagram OAuth Callback Received");
-  console.log("Query params:", {
-    code: code ? "present" : "missing",
-    error,
-    state: state ? "present" : "missing",
-  });
-
-  if (error) return res.redirect(`${CLIENT_URL}/dashboard?error=access_denied`);
-  if (!code || !state)
-    return res.redirect(`${CLIENT_URL}/dashboard?error=invalid_callback`);
-
-  const parsed = decodeState(state);
-  if (!parsed?.userId)
-    return res.redirect(`${CLIENT_URL}/dashboard?error=invalid_state`);
-
-  try {
-    const tokenData = await instagramOAuth.exchangeCodeForToken(code);
-    await assertCanConnectTarget({
-      user: { userId: parsed.userId },
-      provider: "instagram",
-      accountId: tokenData.instagramBusinessId,
-    });
-    await instagramOAuth.storeTokens(parsed.userId, tokenData);
-    notifyAccountConnected(parsed.userId, "Instagram", tokenData.username);
-
-    res.redirect(`${CLIENT_URL}/dashboard?success=instagram_connected`);
-  } catch (err) {
-    console.error("❌ IG callback error:", err.message);
-    const message = encodeURIComponent(
-      err?.message || "Failed to connect Instagram account",
-    );
-    res.redirect(
-      `${CLIENT_URL}/dashboard?error=instagram_connection_failed&message=${message}`,
-    );
-  }
+  const message = encodeURIComponent(
+    "This legacy Instagram callback is disabled. Use Instagram Login for Business.",
+  );
+  return res.redirect(
+    `${CLIENT_URL}/dashboard?error=legacy_instagram_callback_disabled&message=${message}`,
+  );
 });
 
 /* ---------------- FACEBOOK ---------------- */
@@ -433,12 +430,15 @@ router.get("/facebook", async (req, res) => {
     return res.redirect(authUrl);
   } catch (error) {
     console.error("Facebook init error:", error);
-    res.redirect(`${CLIENT_URL}/dashboard?error=facebook_oauth_failed`);
+    res.redirect(dashboardRedirect({
+      error: "facebook_oauth_failed",
+      message: error.message,
+    }));
   }
 });
 
 router.get("/facebook/callback", async (req, res) => {
-  const { code, error, state } = req.query;
+  const { code, error, error_description: errorDescription, error_reason: errorReason, state } = req.query;
 
   console.log("\n🔵 Facebook OAuth Callback Received");
   console.log("Query params:", {
@@ -447,7 +447,12 @@ router.get("/facebook/callback", async (req, res) => {
     state: state ? "present" : "missing",
   });
 
-  if (error) return res.redirect(`${CLIENT_URL}/dashboard?error=access_denied`);
+  if (error) {
+    return res.redirect(dashboardRedirect({
+      error: "facebook_access_denied",
+      message: errorDescription || errorReason || error,
+    }));
+  }
   if (!code || !state)
     return res.redirect(`${CLIENT_URL}/dashboard?error=invalid_callback`);
 
@@ -457,33 +462,21 @@ router.get("/facebook/callback", async (req, res) => {
 
   try {
     const tokenData = await facebookOAuth.exchangeCodeForToken(code);
-    if (tokenData.pages?.length > 1) {
-      const pendingId = crypto.randomUUID();
-      pendingOAuthSelections.set(pendingId, {
-        provider: "facebook",
-        userId: parsed.userId,
-        tokenData,
-        expiresAt: Date.now() + 10 * 60 * 1000,
-      });
-      return res.redirect(`${CLIENT_URL}/connect/select?provider=facebook&pending=${pendingId}`);
-    }
-    const page = tokenData.pages?.[0];
-    await assertCanConnectTarget({
-      user: { userId: parsed.userId },
+    const pendingId = crypto.randomUUID();
+    pendingOAuthSelections.set(pendingId, {
       provider: "facebook",
-      accountId: page?.pageId || tokenData.pageId,
+      userId: parsed.userId,
+      tokenData,
+      expiresAt: Date.now() + 10 * 60 * 1000,
     });
-    await facebookOAuth.storeTokens(parsed.userId, tokenData);
-    notifyAccountConnected(
-      parsed.userId,
-      "Facebook",
-      page?.pageName || tokenData.pageName,
-    );
-
-    res.redirect(`${CLIENT_URL}/dashboard?success=facebook_connected`);
+    console.log(`FB: pending page selection created (${tokenData.pages?.length || 0} pages): ${pendingId}`);
+    return res.redirect(`${CLIENT_URL}/connect/select?provider=facebook&pending=${pendingId}`);
   } catch (err) {
     console.error("❌ FB callback error:", err.message);
-    res.redirect(`${CLIENT_URL}/dashboard?error=facebook_connection_failed`);
+    res.redirect(dashboardRedirect({
+      error: "facebook_connection_failed",
+      message: err.message,
+    }));
   }
 });
 
@@ -803,7 +796,10 @@ router.get("/threads", async (req, res) => {
       );
     }
 
-    const state = threadsOAuth.makeState(userId);
+    const state = threadsOAuth.makeState({
+      userId,
+      authUserId: jwt.decode(String(token))?.sub,
+    });
     const authUrl = threadsOAuth.getAuthorizationUrl(state);
     return res.redirect(authUrl);
   } catch (error) {
@@ -826,7 +822,7 @@ router.get("/threads/callback", async (req, res) => {
   try {
     const tokenData = await threadsOAuth.exchangeCodeForToken(code);
     await assertCanConnectTarget({
-      user: { userId: parsed.userId },
+      user: { userId: parsed.userId, authUserId: parsed.authUserId },
       provider: "threads",
       accountId: tokenData.threadsUserId,
     });
@@ -1190,23 +1186,67 @@ router.get("/accounts", authenticateUser, async (req, res) => {
 });
 
 router.get("/pending-selection/:id", authenticateUser, async (req, res) => {
-  const pending = pendingOAuthSelections.get(req.params.id);
-  if (!pending || pending.expiresAt < Date.now()) {
-    pendingOAuthSelections.delete(req.params.id);
-    return res.status(404).json({ success: false, error: "Selection expired. Please reconnect." });
+  try {
+    const pending = pendingOAuthSelections.get(req.params.id);
+    if (!pending || pending.expiresAt < Date.now()) {
+      pendingOAuthSelections.delete(req.params.id);
+      return res.status(404).json({ success: false, error: "Selection expired. Please reconnect." });
+    }
+    if (pending.userId !== req.user.userId) {
+      return res.status(403).json({ success: false, error: "Selection does not belong to this user." });
+    }
+    console.log(`FB: pending page selection fetched: ${req.params.id}`);
+
+    const userIds = [...new Set([req.user.userId, req.user.authUserId].filter(Boolean))];
+    const { data: existingRows, error: existingError } = await supabase
+      .from("social_tokens")
+      .select("account_id,page_id")
+      .in("user_id", userIds)
+      .eq("provider", pending.provider);
+
+    if (existingError) {
+      console.warn("Error fetching existing social tokens:", existingError);
+    }
+
+    let accountLimit = Infinity;
+    let connectedCount = 0;
+    let availableSlots = Number.MAX_SAFE_INTEGER;
+
+    try {
+      const entitlements = await getEntitlements(req.user.authUserId || req.user.userId, req.user.email, req.token);
+      accountLimit = entitlements?.limits?.social_accounts ?? Infinity;
+      connectedCount = await getConnectedTargetCount(req.user.userId);
+      availableSlots = Number.isFinite(accountLimit)
+        ? Math.max(0, accountLimit - connectedCount)
+        : Number.MAX_SAFE_INTEGER;
+    } catch (entErr) {
+      console.warn("Could not fetch entitlements for pending selection, defaulting to unlimited:", entErr);
+    }
+
+    const connectedIds = new Set(
+      (existingRows || [])
+        .flatMap((row) => [row.account_id, row.page_id])
+        .filter(Boolean)
+        .map(String),
+    );
+
+    res.json({
+      success: true,
+      provider: pending.provider,
+      accountLimit,
+      connectedCount,
+      availableSlots,
+      accounts: (pending.tokenData.pages || []).map((page) => ({
+        id: page.pageId,
+        name: page.userInfo?.pageName,
+        picture: page.userInfo?.picture?.data?.url || page.userInfo?.picture?.url || null,
+        alreadyConnected: connectedIds.has(String(page.pageId)),
+      })),
+    });
+  } catch (err) {
+    console.error("Error in pending-selection GET route:", err);
+    res.status(500).json({ success: false, error: err.message || "Failed to retrieve pending accounts." });
   }
-  if (pending.userId !== req.user.userId) {
-    return res.status(403).json({ success: false, error: "Selection does not belong to this user." });
-  }
-  res.json({
-    success: true,
-    provider: pending.provider,
-    accounts: (pending.tokenData.pages || []).map((page) => ({
-      id: page.pageId,
-      name: page.userInfo?.pageName,
-      picture: page.userInfo?.picture?.data?.url || page.userInfo?.picture?.url || null,
-    })),
-  });
 });
 
 router.post("/pending-selection/:id", authenticateUser, async (req, res) => {
@@ -1224,7 +1264,34 @@ router.post("/pending-selection/:id", authenticateUser, async (req, res) => {
     if (!pages.length) {
       return res.status(400).json({ success: false, error: "Select at least one account." });
     }
-    for (const page of pages) {
+
+    const { data: existingRows, error: existingError } = await supabase
+      .from("social_tokens")
+      .select("account_id,page_id")
+      .eq("user_id", req.user.userId)
+      .eq("provider", "facebook");
+    if (existingError) throw existingError;
+
+    const connectedIds = new Set(
+      (existingRows || [])
+        .flatMap((row) => [row.account_id, row.page_id])
+        .filter(Boolean)
+        .map(String),
+    );
+    const newPages = pages.filter((page) => !connectedIds.has(String(page.pageId)));
+    const entitlements = await getEntitlements(req.user.authUserId || req.user.userId, req.user.email, req.token);
+    const accountLimit = entitlements.limits.social_accounts;
+
+    if (Number.isFinite(accountLimit)) {
+      const used = await getConnectedTargetCount(req.user.userId);
+      if (used + newPages.length > accountLimit) {
+        const error = new Error(`Your plan allows ${accountLimit} connected social account${accountLimit === 1 ? "" : "s"}. Deselect accounts or upgrade to connect more.`);
+        error.code = "PLAN_LIMIT_REACHED";
+        throw error;
+      }
+    }
+
+    for (const page of newPages) {
       await assertCanConnectTarget({
         user: req.user,
         provider: "facebook",
@@ -1233,6 +1300,7 @@ router.post("/pending-selection/:id", authenticateUser, async (req, res) => {
     }
     await facebookOAuth.storeTokens(req.user.userId, { ...pending.tokenData, pages });
     pendingOAuthSelections.delete(req.params.id);
+    console.log(`FB: saved selected pages: ${pages.map((page) => page.pageId).join(", ")}`);
     res.json({ success: true });
   } catch (error) {
     res.status(error.code === "PLAN_LIMIT_REACHED" ? 403 : 500).json({

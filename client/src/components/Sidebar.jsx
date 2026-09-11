@@ -35,24 +35,13 @@ import MastodonConnectModal from "./MastodonConnectModal";
 import FacebookSetupModal from "./FacebookSetupModal";
 import apiClient from "../utils/apiClient";
 import { startAutoDMInstagramOAuth } from "../services/autodm/supabaseClient";
+import { countConnectedTargets } from "../utils/connectedAccounts";
 
 // Helper to determine if the user is on the free plan
 function isFree(plan) {
   if (!plan) return true;
   return plan.toLowerCase() === 'free';
 }
-
-const countConnectedTargets = (accounts = {}) => {
-  const arrayCount = Object.keys(accounts)
-    .filter((key) => key.endsWith("Accounts"))
-    .reduce((sum, key) => sum + (Array.isArray(accounts[key]) ? accounts[key].length : 0), 0);
-
-  const singleCount = Object.entries(accounts).filter(
-    ([key, value]) => !key.endsWith("Accounts") && value?.connected && !(accounts[`${key}Accounts`]?.length > 0),
-  ).length;
-
-  return arrayCount + singleCount;
-};
 
 const platformDetails = {
   facebook: {
@@ -266,6 +255,19 @@ function Sidebar() {
     }
     setShowFacebookModal(true);
   };
+  const canConnectNewPlatform = async (platformId) => {
+    const limit = user?.entitlements?.limits?.social_accounts ?? Infinity;
+    const platformAccounts = connectedAccounts?.[`${platformId}Accounts`] || [];
+    const alreadyConnected = Boolean(connectedAccounts?.[platformId]?.connected || platformAccounts.length);
+    if (alreadyConnected || countConnectedTargets(connectedAccounts) < limit) return true;
+
+    await alert(
+      "Upgrade Required",
+      `You have reached your limit of ${limit} social account${limit === 1 ? "" : "s"} on the ${user?.entitlements?.plan?.name || "Free"} plan. Please upgrade to connect more channels.`,
+      { intent: "warning" },
+    );
+    return false;
+  };
   const handleConnectThreads = () => {
     const token = localStorage.getItem("quickpost_token");
     if (!token) {
@@ -274,8 +276,11 @@ function Sidebar() {
       });
       return;
     }
-    const apiUrl = import.meta.env.VITE_API_URL || "";
-    window.location.href = `${apiUrl}/api/auth/threads?token=${token}`;
+    canConnectNewPlatform("threads").then((allowed) => {
+      if (!allowed) return;
+      const apiUrl = import.meta.env.VITE_API_URL || "";
+      window.location.href = `${apiUrl}/api/auth/threads?token=${token}`;
+    });
   };
   const handleConnectX = () => {
     const token = localStorage.getItem("quickpost_token");
@@ -285,9 +290,12 @@ function Sidebar() {
       });
       return;
     }
-    const apiUrl = import.meta.env.VITE_API_URL || "";
-    setConnectingPlatform("x");
-    window.location.href = `${apiUrl}/api/auth/x?token=${token}`;
+    canConnectNewPlatform("x").then((allowed) => {
+      if (!allowed) return;
+      const apiUrl = import.meta.env.VITE_API_URL || "";
+      setConnectingPlatform("x");
+      window.location.href = `${apiUrl}/api/auth/x?token=${token}`;
+    });
   };
   const handleConnectReddit = () => {
     const token = localStorage.getItem("quickpost_token");
@@ -631,14 +639,18 @@ function Sidebar() {
         width: 240,
         height: "100%",
         background: "var(--canvas)",
-        borderRight: "1px solid rgba(20,20,19,0.06)",
+        borderRight: "1px solid #d3cec6",
       }}
     >
       {/* ── Brand ── */}
       <div
         style={{
-          padding: "20px 20px 16px",
-          borderBottom: "1px solid rgba(20,20,19,0.08)",
+          height: 64,
+          boxSizing: "border-box",
+          padding: "0 20px",
+          display: "flex",
+          alignItems: "center",
+          borderBottom: "1px solid #d3cec6",
         }}
       >
         <Link
@@ -731,9 +743,14 @@ function Sidebar() {
               icon: <Flame size={16} />,
             },
             {
+              to: "/dashboard/inbox",
+              label: "Social Inbox",
+              icon: <MessagesSquare size={16} />,
+            },
+            {
               to: "/dashboard/auto-dm",
               label: "GAP AutoDM",
-              icon: <MessagesSquare size={16} />,
+              icon: <Workflow size={16} />,
             },
           ].map(({ to, label, icon }) => {
             const active = isActive(to);
@@ -1005,7 +1022,7 @@ function Sidebar() {
 
                   // Check if any target in this platform is selected
                   const isAnySelected = targets.some((target) => {
-                    const dashboardPlatform = target.providerId || target.id;
+                    const dashboardPlatform = target.id;
                     return (
                       (selectedDashboardPlatform === platformId ||
                         selectedDashboardPlatform === dashboardPlatform) &&
@@ -1103,7 +1120,7 @@ function Sidebar() {
                             className="qp-sidebar-connected-children"
                           >
                             {targets.map((target) => {
-                              const dashboardPlatform = target.providerId || target.id;
+                              const dashboardPlatform = target.id;
                               const isSelected =
                                 selectedDashboardPlatform === dashboardPlatform &&
                                 location.pathname.startsWith("/dashboard/analytics");

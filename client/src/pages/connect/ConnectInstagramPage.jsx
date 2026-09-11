@@ -11,12 +11,13 @@ import LinkedInConnectModal from '../../components/LinkedInConnectModal';
 import MastodonConnectModal from '../../components/MastodonConnectModal';
 import BlueskyConnectModal from '../../components/BlueskyConnectModal';
 import PinterestConnectModal from '../../components/PinterestConnectModal';
+import { countConnectedTargets } from '../../utils/connectedAccounts';
 
 export default function ConnectInstagramPage() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const { user } = useAuth();
+  const { user, connectedAccounts } = useAuth();
   const [instagramAccounts, setInstagramAccounts] = useState([]);
   const [activeInstagramAccount, setActiveInstagramAccount] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -92,6 +93,17 @@ export default function ConnectInstagramPage() {
     }
   };
 
+  const handleConnectFacebook = () => {
+    const token = localStorage.getItem('quickpost_token');
+    if (!token) {
+      toast.error('Please sign in again');
+      return;
+    }
+    setShowFacebookModal(false);
+    const apiUrl = import.meta.env.VITE_API_URL || '';
+    window.location.href = `${apiUrl}/api/auth/facebook?token=${token}`;
+  };
+
   const handleDisconnect = async () => {
     const accountId = activeInstagramAccount?.id || instagramAccounts[0]?.id;
     if (!accountId) return;
@@ -119,6 +131,13 @@ export default function ConnectInstagramPage() {
     const token = localStorage.getItem("quickpost_token");
     if (!token) {
       toast.error("Authentication token missing. Please log in again.");
+      return;
+    }
+    const limit = user?.entitlements?.limits?.social_accounts ?? Infinity;
+    const platformAccounts = connectedAccounts?.[`${endpoint}Accounts`] || [];
+    const alreadyConnected = Boolean(connectedAccounts?.[endpoint]?.connected || platformAccounts.length);
+    if (!alreadyConnected && countConnectedTargets(connectedAccounts) >= limit) {
+      toast.error(`Your plan allows ${limit} connected social account${limit === 1 ? "" : "s"}. Disconnect one account or upgrade to connect more.`);
       return;
     }
     const apiUrl = import.meta.env.VITE_API_URL || "";
@@ -381,7 +400,11 @@ export default function ConnectInstagramPage() {
       </div>
 
       {/* Render Modals */}
-      <FacebookSetupModal isOpen={showFacebookModal} onClose={() => setShowFacebookModal(false)} />
+      <FacebookSetupModal
+        isOpen={showFacebookModal}
+        onClose={() => setShowFacebookModal(false)}
+        onProceed={handleConnectFacebook}
+      />
       <LinkedInConnectModal isOpen={showLinkedInModal} onClose={() => setShowLinkedInModal(false)} />
       <MastodonConnectModal isOpen={showMastodonModal} onClose={() => setShowMastodonModal(false)} />
       <BlueskyConnectModal isOpen={showBlueskyModal} onClose={() => setShowBlueskyModal(false)} />

@@ -170,7 +170,6 @@ export const exchangeIGCodeForShortLivedToken = async (code: string, redirectUri
 export const exchangeIGForLongLivedToken = async (shortLivedToken: string) => {
   const clientSecret = requireEnv('IG_APP_SECRET');
 
-  // Try GET request first as per official Instagram Basic Display API / Graph API documentation
   const url = new URL(`${IG_GRAPH_BASE_URL}/access_token`);
   url.searchParams.set('grant_type', 'ig_exchange_token');
   url.searchParams.set('client_secret', clientSecret);
@@ -185,7 +184,6 @@ export const exchangeIGForLongLivedToken = async (shortLivedToken: string) => {
     const getMessage = getError instanceof Error ? getError.message : String(getError);
     logInfo('Instagram long-lived token exchange via GET failed, trying POST fallback...', { error: getMessage });
 
-    // Fallback to POST if GET fails
     const formData = new URLSearchParams();
     formData.append('grant_type', 'ig_exchange_token');
     formData.append('client_secret', clientSecret);
@@ -206,7 +204,6 @@ export const exchangeIGForLongLivedToken = async (shortLivedToken: string) => {
     }
   }
 };
-
 
 export const refreshIGLongLivedToken = async (currentToken: string) => {
   const url = new URL(`${IG_GRAPH_BASE_URL}/refresh_access_token`);
@@ -589,6 +586,33 @@ const sendInstagramMessagePayload = async (
   };
 };
 
+export const splitMessageIntoChunks = (text: string, maxChunkLength = 950): string[] => {
+  if (!text || text.length <= maxChunkLength) return [text || ''];
+  const chunks: string[] = [];
+  let remaining = text;
+
+  while (remaining.length > 0) {
+    if (remaining.length <= maxChunkLength) {
+      chunks.push(remaining);
+      break;
+    }
+
+    let splitIdx = remaining.lastIndexOf('\n', maxChunkLength);
+    if (splitIdx < maxChunkLength * 0.4) {
+      splitIdx = remaining.lastIndexOf(' ', maxChunkLength);
+    }
+    if (splitIdx <= 0) {
+      splitIdx = maxChunkLength;
+    }
+
+    const chunk = remaining.slice(0, splitIdx).trim();
+    if (chunk) chunks.push(chunk);
+    remaining = remaining.slice(splitIdx).trim();
+  }
+
+  return chunks.filter(Boolean);
+};
+
 export const sendInstagramTextPayload = async (
   igId: string,
   recipientId: string,
@@ -597,19 +621,39 @@ export const sendInstagramTextPayload = async (
   requestId?: string,
   quickReplies?: Array<{ content_type: 'text'; title: string; payload: string }>,
   maxAttempts = 3
-) =>
-  sendInstagramMessagePayload(
-    igId,
-    { id: recipientId },
-    {
-      text: messageText,
-      ...(quickReplies?.length ? { quick_replies: quickReplies } : {}),
-    },
-    accessToken,
-    requestId,
-    'RESPONSE',
-    maxAttempts
-  );
+) => {
+  const chunks = splitMessageIntoChunks(messageText, 950);
+  let lastResult: any = null;
+
+  for (let i = 0; i < chunks.length; i++) {
+    const isLastChunk = i === chunks.length - 1;
+    const chunkReplies = isLastChunk ? quickReplies : undefined;
+
+    if (i > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+
+    const result = await sendInstagramMessagePayload(
+      igId,
+      { id: recipientId },
+      {
+        text: chunks[i],
+        ...(chunkReplies?.length ? { quick_replies: chunkReplies } : {}),
+      },
+      accessToken,
+      requestId,
+      'RESPONSE',
+      maxAttempts
+    );
+
+    if (!result.ok) {
+      return result;
+    }
+    lastResult = result;
+  }
+
+  return lastResult ?? { ok: true, result: {} };
+};
 
 export const sendInstagramPrivateReplyPayload = async (
   igId: string,
@@ -619,12 +663,13 @@ export const sendInstagramPrivateReplyPayload = async (
   requestId?: string,
   quickReplies?: Array<{ content_type: 'text'; title: string; payload: string }>,
   maxAttempts = 3
-) =>
-  sendInstagramMessagePayload(
+) => {
+  const chunks = splitMessageIntoChunks(messageText, 950);
+  return sendInstagramMessagePayload(
     igId,
     { comment_id: commentId },
     {
-      text: messageText,
+      text: chunks[0] || messageText,
       ...(quickReplies?.length ? { quick_replies: quickReplies } : {}),
     },
     accessToken,
@@ -632,6 +677,7 @@ export const sendInstagramPrivateReplyPayload = async (
     'RESPONSE',
     maxAttempts
   );
+};
 
 export const sendInstagramImage = async (
   igId: string,

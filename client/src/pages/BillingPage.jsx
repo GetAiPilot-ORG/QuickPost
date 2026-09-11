@@ -306,13 +306,30 @@ export default function BillingPage({ embedded = false }) {
   return (
     <div style={{ padding: embedded ? 0 : '32px', maxWidth: embedded ? 'none' : 1100, margin: '0 auto', fontFamily: 'var(--font)' }}>
       {/* Header */}
-      {!embedded && <div style={{ marginBottom: 40 }}>
+      {!embedded && <div style={{ marginBottom: 40, position: 'relative', minHeight: 82 }}>
         <h1 style={{ fontSize: 28, fontWeight: 600, color: 'var(--ink)', margin: '0 0 8px', letterSpacing: '-0.02em' }}>
           Billing & Plans
         </h1>
         <p style={{ fontSize: 14, color: 'var(--slate)', margin: 0 }}>
           Manage your subscription and billing details.
         </p>
+        <video
+          src="/assets/piggy-bank.webm"
+          autoPlay
+          loop
+          muted
+          playsInline
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            top: -28,
+            right: 0,
+            width: 260,
+            height: 150,
+            objectFit: 'contain',
+            pointerEvents: 'none',
+          }}
+        />
       </div>}
 
       {/* Current Plan Banner */}

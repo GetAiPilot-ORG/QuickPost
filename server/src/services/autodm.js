@@ -1580,73 +1580,73 @@ export async function listMessagesForContact(user, contactId) {
 
 export async function getDailyMetrics(user, { instagramAccountId, startDate } = {}) {
   const autoDMSupabase = getAutoDMSupabaseAdmin();
-  const userIds = getUserIds(user);
   const ownedAccountIds = await getOwnedInstagramAccountIds(autoDMSupabase, user, { includeDisconnected: true });
 
+  const targetAccountIds = instagramAccountId
+    ? (ownedAccountIds.includes(instagramAccountId) ? [instagramAccountId] : [])
+    : ownedAccountIds;
+
+  if (instagramAccountId && targetAccountIds.length === 0) {
+    throw new Error('Instagram account is not connected to this user.');
+  }
+
+  // 1. Fetch from daily_metrics table
+  let query = autoDMSupabase.from('daily_metrics').select('*');
   if (instagramAccountId) {
-    if (!ownedAccountIds.includes(instagramAccountId)) {
-      throw new Error('Instagram account is not connected to this user.');
-    }
-    let query = autoDMSupabase
-      .from('daily_metrics')
-      .select('*')
-      .eq('instagram_account_id', instagramAccountId)
-      .order('date', { ascending: false });
-
-    if (startDate) {
-      query = query.gte('date', startDate);
-    }
-
-    const { data, error } = await query;
-    if (error) throw new Error(`Failed to load daily metrics: ${error.message}`);
-    return data || [];
+    query = query.eq('instagram_account_id', instagramAccountId);
+  } else if (targetAccountIds.length > 0) {
+    query = query.in('instagram_account_id', targetAccountIds);
   }
-
-  const metricsQueries = [
-    userIds.length > 0
-      ? autoDMSupabase
-          .from('daily_metrics')
-          .select('*')
-          .in('user_id', userIds)
-          .order('date', { ascending: false })
-      : Promise.resolve({ data: [], error: null }),
-    ownedAccountIds.length > 0
-      ? autoDMSupabase
-          .from('daily_metrics')
-          .select('*')
-          .in('instagram_account_id', ownedAccountIds)
-          .order('date', { ascending: false })
-      : Promise.resolve({ data: [], error: null }),
-  ];
-
   if (startDate) {
-    metricsQueries[0] = userIds.length > 0
-      ? autoDMSupabase
-          .from('daily_metrics')
-          .select('*')
-          .in('user_id', userIds)
-          .gte('date', startDate)
-          .order('date', { ascending: false })
-      : Promise.resolve({ data: [], error: null });
-    metricsQueries[1] = ownedAccountIds.length > 0
-      ? autoDMSupabase
-          .from('daily_metrics')
-          .select('*')
-          .in('instagram_account_id', ownedAccountIds)
-          .gte('date', startDate)
-          .order('date', { ascending: false })
-      : Promise.resolve({ data: [], error: null });
+    query = query.gte('date', startDate);
   }
 
-  const [{ data: userRows, error: userError }, { data: accountRows, error: accountError }] =
-    await Promise.all(metricsQueries);
-
-  if (userError) throw new Error(`Failed to load daily metrics: ${userError.message}`);
-  if (accountError) throw new Error(`Failed to load daily account metrics: ${accountError.message}`);
+  const { data: dbRows, error: dbError } = await query;
+  if (dbError) {
+    console.error('[AUTODM] Error fetching daily_metrics table:', dbError);
+  }
 
   const rowMap = new Map();
-  for (const row of [...(userRows || []), ...(accountRows || [])]) {
-    rowMap.set(row.id || `${row.instagram_account_id}:${row.date}`, row);
+  for (const row of dbRows || []) {
+    rowMap.set(`${row.instagram_account_id}:${row.date}`, { ...row });
+  }
+
+  // 2. Fetch live aggregations from messages table to supplement/fallback
+  if (targetAccountIds.length > 0) {
+    let msgQuery = autoDMSupabase
+      .from('messages')
+      .select('instagram_account_id, direction, status, created_at')
+      .in('instagram_account_id', targetAccountIds);
+
+    if (startDate) {
+      msgQuery = msgQuery.gte('created_at', `${startDate}T00:00:00Z`);
+    }
+
+    const { data: msgRows } = await msgQuery;
+    for (const msg of msgRows || []) {
+      const date = (msg.created_at || '').split('T')[0];
+      if (!date) continue;
+      const key = `${msg.instagram_account_id}:${date}`;
+      const existing = rowMap.get(key) || {
+        instagram_account_id: msg.instagram_account_id,
+        date,
+        messages_sent: 0,
+        messages_seen: 0,
+        total_clicks: 0,
+        followers_gained: 0,
+        leads_captured: 0,
+      };
+
+      if (!rowMap.has(key)) {
+        if (msg.direction === 'outbound') {
+          existing.messages_sent += 1;
+          existing.messages_seen += 1;
+        } else if (msg.direction === 'inbound') {
+          existing.total_clicks += 1;
+        }
+        rowMap.set(key, existing);
+      }
+    }
   }
 
   return sortByMetricDateDesc(Array.from(rowMap.values()));

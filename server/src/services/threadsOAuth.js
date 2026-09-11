@@ -15,23 +15,24 @@ function base64urlEncode(obj) {
 }
 
 class ThreadsOAuth {
-  constructor() {
-    this.appId = 
-      process.env.THREADS_APP_ID || 
-      process.env.FACEBOOK_APP_ID || 
-      process.env.INSTAGRAM_APP_ID;
-    this.appSecret = 
-      process.env.THREADS_APP_SECRET || 
-      process.env.FACEBOOK_APP_SECRET || 
-      process.env.INSTAGRAM_APP_SECRET;
-    this.redirectUri =
-      (process.env.THREADS_REDIRECT_URI ||
-      'http://localhost:5000/api/auth/threads/callback').trim();
+  get appId() {
+    return process.env.THREADS_APP_ID;
+  }
+  get appSecret() {
+    return process.env.THREADS_APP_SECRET;
+  }
+  get redirectUri() {
+    return (
+      process.env.THREADS_REDIRECT_URI ||
+      'http://localhost:5000/api/auth/threads/callback'
+    ).trim();
   }
 
-  makeState(userId) {
+  makeState(user) {
+    const payload = typeof user === 'string' ? { userId: user } : user;
     return base64urlEncode({
-      userId,
+      userId: payload.userId,
+      authUserId: payload.authUserId,
       provider: 'threads',
       nonce: crypto.randomUUID(),
       ts: Date.now()

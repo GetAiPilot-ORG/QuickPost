@@ -194,13 +194,14 @@ export async function executeBroadcast(broadcastId, userId, caption, mediaUrls, 
             } catch (tokenErr) {
               console.warn(`⚠️ [postingService] Could not refresh YouTube token: ${tokenErr.message}. Using stored token.`);
             }
-            const isShort = (platformData?.youtube?.type === "short");
-            const visibility = platformData?.youtube?.visibility || "public";
-            const description = platformData?.youtube?.description || "";
+            const isShort = (platData?.youtube?.type === "short");
+            const visibility = platData?.youtube?.visibility || "public";
+            const description = platData?.youtube?.description || "";
             return postToYouTube(primaryVideoPath, resolveMentions(caption, 'youtube', ytTokens), ytTokens, null, visibility, isShort, description)
               .then(async result => {
-                if (result.success && result.mediaId && coverImagePath && fs.existsSync(coverImagePath)) {
-                  await setVideoThumbnail(result.mediaId, coverImagePath, ytTokens);
+                const vId = result.videoId || result.mediaId;
+                if (result.success && vId && coverImagePath && fs.existsSync(coverImagePath)) {
+                  await setVideoThumbnail(vId, coverImagePath, ytTokens);
                 }
                 return {
                   platform: account.channel,

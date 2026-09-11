@@ -18,6 +18,7 @@ import {
   getDeliveryPlan,
   stripBrandingWatermark,
 } from "./deliveryPolicy.ts";
+import { syncSocialContactToEcosystemSoon } from "./ecosystemContactSync.ts";
 
 interface AutomationRecord {
   id: string;
@@ -305,25 +306,84 @@ type MessageAction =
 const resolveDeliveryPlan = async (userId: string) => {
   const supabase = getSupabaseAdmin();
   const now = Date.now();
-  const { data, error } = await supabase
-    .from("app_subscriptions")
-    .select(
-      "plan_id,status,current_period_end,trial_ends_at,grace_period_ends_at,updated_at",
-    )
-    .eq("user_id", userId)
-    .in("status", ["active", "trialing"])
-    .order("updated_at", { ascending: false });
 
-  // Missing entitlement infrastructure must never remove Free-plan branding.
-  if (error) {
+  try {
+    let email: string | null = null;
+    let userProfilePlan: string | null = null;
+    let userProfileStatus: string | null = null;
+
+    // 1. Check users profile by id
+    const { data: userProfile } = await supabase
+      .from("users")
+      .select("email,plan,subscription_status")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (userProfile) {
+      email = userProfile.email;
+      userProfilePlan = userProfile.plan;
+      userProfileStatus = userProfile.subscription_status;
+    } else {
+      // Fallback: check auth.users by id to find the user's email
+      try {
+        const { data: authUser } = await supabase.auth.admin.getUserById(userId);
+        if (authUser?.user?.email) {
+          email = authUser.user.email;
+          const { data: userByEmail } = await supabase
+            .from("users")
+            .select("plan,subscription_status")
+            .eq("email", email)
+            .maybeSingle();
+          if (userByEmail) {
+            userProfilePlan = userByEmail.plan;
+            userProfileStatus = userByEmail.subscription_status;
+          }
+        }
+      } catch (authErr) {
+        logInfo("Auth admin lookup skipped", { userId });
+      }
+    }
+
+    // 2. Check Central Hub subscriptions by email
+    let hubSubs: any[] = [];
+    if (email) {
+      const { data: hData } = await supabase
+        .from("hub_subscriptions")
+        .select("plan,plan_id,subscription_status,expires_at")
+        .eq("email", email)
+        .in("subscription_status", ["active", "trialing"]);
+      hubSubs = (hData || []).map((s) => ({
+        plan_id: s.plan_id || s.plan,
+        status: s.subscription_status,
+        current_period_end: s.expires_at,
+      }));
+    }
+
+    // 3. Add user profile plan
+    const userSubs: any[] = [];
+    if (userProfilePlan) {
+      userSubs.push({
+        plan_id: userProfilePlan,
+        status: userProfileStatus || "active",
+      });
+    }
+
+    const combined = [...hubSubs, ...userSubs];
+    const plan = getDeliveryPlan(combined, now);
+    logInfo("Resolved delivery plan", {
+      userId,
+      email,
+      combinedCount: combined.length,
+      planId: plan.id,
+    });
+    return plan;
+  } catch (error: any) {
     logError("Entitlement lookup failed; applying Free plan delivery rules", {
       userId,
-      error: error.message,
+      error: error?.message || String(error),
     });
     return { id: "free", replyLimit: 50 };
   }
-
-  return getDeliveryPlan(data ?? [], now);
 };
 
 const reserveMonthlyAutoDmReply = async (userId: string, limit: number) => {
@@ -545,11 +605,15 @@ const buildResponseActions = (
           break;
         }
 
+        const quickReplies = buildQuickReplies(node.buttons);
         actions.push({
           type: "text",
           text,
-          quickReplies: buildQuickReplies(node.buttons),
+          quickReplies,
         });
+        if (quickReplies && quickReplies.length > 0) {
+          return actions; // Wait for user to click button before sending subsequent nodes
+        }
         break;
       }
 
@@ -591,6 +655,9 @@ const buildResponseActions = (
           text: message,
           quickReplies,
         });
+        if (quickReplies && quickReplies.length > 0) {
+          return actions; // Wait for user to click button before sending subsequent nodes
+        }
         break;
       }
 
@@ -740,6 +807,58 @@ const buildExpectedKeywordsFromFirstNode = (
   }
 
   return Array.from(new Set(["setup", ...buttonKeywords].filter(Boolean)));
+};
+
+const computeNextSessionState = (
+  automation: AutomationRecord,
+  startNodeIndex: number,
+  includeOpening: boolean,
+) => {
+  const flow = normalizeFlow(automation);
+  if (!flow) return null;
+
+  if (
+    includeOpening &&
+    flow.opening_message_enabled &&
+    cleanText(flow.opening_message) &&
+    flow.opening_button
+  ) {
+    return {
+      nextNodeIndex: 0,
+      expectedKeywords: Array.from(
+        new Set([
+          "setup",
+          cleanText(flow.opening_button).toLowerCase(),
+        ].filter(Boolean)),
+      ),
+    };
+  }
+
+  const nodes = flow.nodes ?? [];
+  for (let i = startNodeIndex; i < nodes.length; i++) {
+    const node = nodes[i];
+    const interactiveButtons = (node.buttons ?? []).filter(
+      (b) => b.type !== "url" && (b.payload || b.title),
+    );
+
+    if (interactiveButtons.length > 0) {
+      const buttonKeywords = interactiveButtons
+        .flatMap((b) => [
+          cleanText(b.payload || "").toLowerCase(),
+          cleanText(b.title || "").toLowerCase(),
+        ])
+        .filter(Boolean);
+
+      if (i + 1 < nodes.length) {
+        return {
+          nextNodeIndex: i + 1,
+          expectedKeywords: Array.from(new Set(["setup", ...buttonKeywords])),
+        };
+      }
+    }
+  }
+
+  return null;
 };
 
 const templateToFallbackText = (
@@ -934,7 +1053,7 @@ const getContinuationAutomation = async (
 ) => {
   const supabase = getSupabaseAdmin();
 
-  const { data: sessions, error: sessionError } = await supabase
+  let { data: sessions, error: sessionError } = await supabase
     .from("automation_sessions")
     .select(
       "id,automation_id,instagram_account_id,contact_id,sender_id,expected_keywords,next_node_index",
@@ -944,6 +1063,29 @@ const getContinuationAutomation = async (
     .eq("status", "pending")
     .gt("expires_at", new Date().toISOString())
     .order("created_at", { ascending: false });
+
+  // Fallback: If no sessions on exact account, search any pending session for this sender
+  if ((!sessions || sessions.length === 0) && senderId) {
+    const { data: fallbackSessions } = await supabase
+      .from("automation_sessions")
+      .select(
+        "id,automation_id,instagram_account_id,contact_id,sender_id,expected_keywords,next_node_index",
+      )
+      .eq("sender_id", senderId)
+      .eq("status", "pending")
+      .gt("expires_at", new Date().toISOString())
+      .order("created_at", { ascending: false });
+
+    if (fallbackSessions && fallbackSessions.length > 0) {
+      sessions = fallbackSessions;
+      logInfo("Found continuation session via senderId fallback", {
+        requestId,
+        senderId,
+        fallbackAccountId: fallbackSessions[0].instagram_account_id,
+        providedAccountId: instagramAccountId,
+      });
+    }
+  }
 
   if (sessionError) {
     logError("Failed loading automation sessions", {
@@ -1543,6 +1685,28 @@ export const processAutomationEvent = async (payload: AutomationInput) => {
       if (continuation) {
         continuationSession = continuation.session;
         continuationAutomation = continuation.automation;
+
+        if (!accountIds.includes(continuationSession.instagram_account_id)) {
+          const { data: sessionAccount } = await supabase
+            .from("instagram_accounts")
+            .select(instagramAccountSelectFields)
+            .eq("id", continuationSession.instagram_account_id)
+            .maybeSingle();
+
+          if (sessionAccount) {
+            connectedAccounts = [sessionAccount as any, ...connectedAccounts];
+            accountIds = [sessionAccount.id, ...accountIds];
+            primaryAccount = sessionAccount as any;
+
+            await supabase
+              .from("instagram_accounts")
+              .update({
+                webhook_instagram_user_id: payload.igId,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", sessionAccount.id);
+          }
+        }
         break;
       }
     }
@@ -1930,6 +2094,17 @@ export const processAutomationEvent = async (payload: AutomationInput) => {
           });
         } else {
           contactId = newContact.id;
+          syncSocialContactToEcosystemSoon({
+            supabase,
+            contactId,
+            userId: automationOwnerUserId,
+            instagramAccountId: selectedAccount.id,
+            instagramUserId: payload.senderId,
+            username,
+            fullName: contactProfileFields.full_name,
+            profilePictureUrl: contactProfileFields.profile_picture_url,
+            requestId: payload.requestId,
+          });
           logInfo("New contact created", {
             requestId: payload.requestId,
             contactId,
@@ -1962,6 +2137,17 @@ export const processAutomationEvent = async (payload: AutomationInput) => {
             code: updateError.code,
           });
         } else {
+          syncSocialContactToEcosystemSoon({
+            supabase,
+            contactId,
+            userId: automationOwnerUserId,
+            instagramAccountId: selectedAccount.id,
+            instagramUserId: payload.senderId,
+            username: updatedUsername,
+            fullName: contactProfileFields.full_name,
+            profilePictureUrl: contactProfileFields.profile_picture_url,
+            requestId: payload.requestId,
+          });
           logInfo("Existing contact updated", {
             requestId: payload.requestId,
             contactId,
@@ -2244,38 +2430,42 @@ export const processAutomationEvent = async (payload: AutomationInput) => {
     }
   }
 
-  if (!sendResult.ok) {
-    logError("Message send failed — contact was already saved", {
-      requestId: payload.requestId,
-      contactId,
-      sendError: sendResult.error,
-    });
-    throw new Error(sendResult.error);
-  }
+  const currentStartNodeIndex = continuationSession
+    ? continuationSession.next_node_index
+    : 0;
+  const currentIncludeOpening = !continuationSession && payload.triggerType === "comment";
+  const nextSession = contactId
+    ? computeNextSessionState(matched, currentStartNodeIndex, currentIncludeOpening)
+    : null;
 
-  if (payload.triggerType === "comment" && contactId) {
-    const flow = normalizeFlow(matched);
-    const usesOpeningButton =
-      flow?.opening_message_enabled !== false &&
-      Boolean(cleanText(flow?.opening_message)) &&
-      Boolean(cleanText(flow?.opening_button));
-    const nextNodeIndex = usesOpeningButton ? 0 : 1;
-    const hasFollowUpNodes = (flow?.nodes?.length ?? 0) > nextNodeIndex;
+  if (nextSession) {
+    const sessionPayload = {
+      automation_id: matched.id,
+      instagram_account_id: selectedAccount.id,
+      contact_id: contactId,
+      sender_id: payload.senderId,
+      expected_keywords: nextSession.expectedKeywords,
+      next_node_index: nextSession.nextNodeIndex,
+      status: "pending",
+      expires_at: new Date(
+        Date.now() + 1000 * 60 * 60 * 24 * 7,
+      ).toISOString(),
+    };
 
-    if (hasFollowUpNodes) {
-      const sessionPayload = {
-        automation_id: matched.id,
-        instagram_account_id: selectedAccount.id,
-        contact_id: contactId,
-        sender_id: payload.senderId,
-        expected_keywords: buildExpectedKeywordsFromFirstNode(matched),
-        next_node_index: nextNodeIndex,
-        status: "pending",
-        expires_at: new Date(
-          Date.now() + 1000 * 60 * 60 * 24 * 7,
-        ).toISOString(),
-      };
+    if (continuationSession?.id) {
+      const { error: updateSessionErr } = await supabase
+        .from("automation_sessions")
+        .update(sessionPayload)
+        .eq("id", continuationSession.id);
 
+      if (updateSessionErr) {
+        logError("Failed advancing continuation automation session", {
+          requestId: payload.requestId,
+          sessionId: continuationSession.id,
+          error: updateSessionErr.message,
+        });
+      }
+    } else {
       const { data: existingSession, error: existingSessionError } =
         await supabase
           .from("automation_sessions")
@@ -2325,9 +2515,7 @@ export const processAutomationEvent = async (payload: AutomationInput) => {
         }
       }
     }
-  }
-
-  if (continuationSession) {
+  } else if (continuationSession?.id) {
     const { error: sessionCompleteError } = await supabase
       .from("automation_sessions")
       .update({ status: "completed", updated_at: new Date().toISOString() })
@@ -2406,6 +2594,40 @@ export const processAutomationEvent = async (payload: AutomationInput) => {
         .eq("id", contactId)
         .select("total_messages_sent") // Trigger for RPC update if needed
         .single();
+
+      // Update daily_metrics for real-time analytics cards
+      try {
+        const todayDate = new Date().toISOString().slice(0, 10);
+        const { data: existingMetric } = await supabase
+          .from("daily_metrics")
+          .select("id, messages_sent, total_clicks")
+          .eq("instagram_account_id", selectedAccount.id)
+          .eq("date", todayDate)
+          .maybeSingle();
+
+        if (existingMetric) {
+          await supabase
+            .from("daily_metrics")
+            .update({
+              messages_sent: (existingMetric.messages_sent || 0) + 1,
+              total_clicks: continuationSession ? (existingMetric.total_clicks || 0) + 1 : (existingMetric.total_clicks || 0),
+            })
+            .eq("id", existingMetric.id);
+        } else if (automationOwnerUserId) {
+          await supabase
+            .from("daily_metrics")
+            .insert({
+              user_id: automationOwnerUserId,
+              instagram_account_id: selectedAccount.id,
+              date: todayDate,
+              messages_sent: 1,
+              messages_seen: 1,
+              total_clicks: continuationSession ? 1 : 0,
+            });
+        }
+      } catch (metricErr) {
+        logInfo("Daily metrics update skipped", { error: String(metricErr) });
+      }
     } catch (msgError) {
       logError("Failed to record messages", {
         requestId: payload.requestId,

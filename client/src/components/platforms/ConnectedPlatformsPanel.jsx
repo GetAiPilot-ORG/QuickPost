@@ -12,6 +12,7 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { useDialog } from "../../context/DialogContext";
 import apiClient from "../../utils/apiClient";
+import { countConnectedTargets } from "../../utils/connectedAccounts";
 import FacebookSetupModal from "../FacebookSetupModal";
 
 const PLATFORM_META = [
@@ -122,22 +123,7 @@ export default function ConnectedPlatformsPanel({
   const [busy, setBusy] = useState(null);
   const [showFacebookModal, setShowFacebookModal] = useState(false);
 
-  const connectedCount = useMemo(() => {
-    let count = 0;
-    PLATFORM_META.forEach((platform) => {
-      if (platform.id === "instagram") {
-        if (connectedAccounts?.instagramAccounts?.length > 0) {
-          count += connectedAccounts.instagramAccounts.length;
-        } else if (connectedAccounts?.instagram?.connected) {
-          count += 1;
-        }
-      } else {
-        const accounts = connectedAccounts?.[`${platform.id}Accounts`] || [];
-        count += accounts.length || (connectedAccounts?.[platform.id]?.connected ? 1 : 0);
-      }
-    });
-    return count;
-  }, [connectedAccounts]);
+  const connectedCount = useMemo(() => countConnectedTargets(connectedAccounts), [connectedAccounts]);
 
   const { connectedPlatforms, unconnectedPlatforms } = useMemo(() => {
     const connected = [];
@@ -423,7 +409,8 @@ export default function ConnectedPlatformsPanel({
           onProceed={() => {
             setShowFacebookModal(false);
             const token = localStorage.getItem("quickpost_token");
-            if (token) window.location.href = `/api/auth/facebook?token=${token}`;
+            const apiUrl = import.meta.env.VITE_API_URL || "";
+            if (token) window.location.href = `${apiUrl}/api/auth/facebook?token=${token}`;
           }}
         />
       )}

@@ -76,10 +76,10 @@ export default function PrivacyPolicy() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--canvas)', fontFamily: 'var(--font)', display: 'flex', flexDirection: 'column' }}>
       <LandingNav />
-
+      
       <main style={{ flexGrow: 1, padding: '48px 24px', maxWidth: 1280, margin: '0 auto', width: '100%' }}>
         <div className="flex flex-col lg:flex-row gap-12">
-
+          
           {/* Sidebar */}
           <aside className="hidden lg:block w-full max-w-[300px] shrink-0">
             <div className="custom-scrollbar" style={{ position: 'sticky', top: 100, display: 'flex', flexDirection: 'column', gap: 24, maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' }}>
@@ -267,7 +267,7 @@ export default function PrivacyPolicy() {
                       <Facebook size={16} /> Meta Platforms (Facebook, Instagram & Threads)
                     </div>
                     <div style={{ fontSize: 15, color: 'var(--ink)', lineHeight: 1.6, fontWeight: 500, margin: 0, position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      <p style={{ margin: 0 }}>We comply strictly with Meta Platform Terms and Developer Policies. Access is restricted to permissions explicitly granted, including <code>public_profile</code>, <code>pages_show_list</code>, <code>pages_read_engagement</code>, <code>pages_manage_metadata</code>, <code>pages_manage_posts</code>, <code>pages_messaging</code>, <code>instagram_basic</code>, <code>instagram_content_publish</code>, <code>instagram_manage_messages</code>, <code>instagram_manage_comments</code>, <code>instagram_manage_insights</code>, <code>threads_basic</code>, and <code>threads_content_publish</code>, depending on which features you connect. We use these permissions to list authorized Pages and Instagram Business accounts, publish posts/Reels/Stories, manage comments and inbox conversations, read insights, and publish Threads content at your direction.</p>
+                      <p style={{ margin: 0 }}>We comply strictly with Meta Platform Terms and Developer Policies. Access is restricted to permissions explicitly granted, including <code>public_profile</code>, <code>pages_show_list</code>, <code>pages_read_engagement</code>, <code>pages_manage_metadata</code>, <code>pages_manage_posts</code>, <code>instagram_business_basic</code>, <code>instagram_business_content_publish</code>, <code>instagram_business_manage_messages</code>, <code>instagram_business_manage_comments</code>, <code>instagram_business_manage_insights</code>, <code>threads_basic</code>, and <code>threads_content_publish</code>, depending on which features you connect. We use these permissions to list authorized Pages and Instagram Business accounts, publish posts/Reels/Stories, manage comments and inbox conversations, read insights, and publish Threads content at your direction.</p>
                       <ul style={{ margin: '0 0 0 20px', padding: 0, listStyleType: 'disc', display: 'flex', flexDirection: 'column', gap: 6 }}>
                         <li><strong>Profile Identity Data:</strong> Facebook user ID and name, page/profile names, handles, and profile picture URLs.</li>
                         <li><strong>Secure Access Credentials:</strong> OAuth Page/User Access Tokens, connected Page IDs, and linked Instagram Business account IDs to perform actions on your behalf.</li>
@@ -425,8 +425,8 @@ export default function PrivacyPolicy() {
                   </div>
                   <h2 style={{ fontSize: 28, fontWeight: 500, color: 'var(--ink)', letterSpacing: '-0.02em', margin: 0 }}>9. Policy Updates</h2>
                 </div>
-                <div style={{ padding: 32, background: 'var(--canvas)', border: '1px solid rgba(20,20,19,0.08)', borderRadius: 'var(--r-hero)' }}>
-                  <p style={{ fontSize: 16, fontWeight: 500, color: 'var(--ink)', lineHeight: 1.6, margin: 0 }}>
+                <div style={{ color: 'var(--Charcoal)', fontSize: 16, lineHeight: 1.6, fontWeight: 450 }}>
+                  <p style={{ margin: 0 }}>
                     We may update this Privacy Policy periodically to reflect changes in legal requirements or our operational practices. Any material changes will be notified by updating the "Last updated" date at the top of this policy and, if necessary, via a prominent notice on our website or email. Continued use of our services after updates signifies your acceptance of the revised policy.
                   </p>
                 </div>
@@ -472,6 +472,11 @@ export default function PrivacyPolicy() {
               © 2026 GAP Social-pilot. All rights reserved.
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+              <Link to="/dashboard/docs" style={{ fontSize: 13, fontWeight: 500, color: 'var(--slate)', textDecoration: 'none', transition: 'color 0.15s' }}
+                onMouseEnter={e => e.currentTarget.style.color = 'var(--ink)'}
+                onMouseLeave={e => e.currentTarget.style.color = 'var(--slate)'}>
+                Docs & Guide
+              </Link>
               <Link to="/privacy" style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink)', textDecoration: 'none' }}>
                 Privacy Policy
               </Link>

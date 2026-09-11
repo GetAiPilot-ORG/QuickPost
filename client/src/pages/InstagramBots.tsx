@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   ArrowLeft,
@@ -31,6 +31,10 @@ import { useInstagramBots } from "@/hooks/useInstagramBots";
 import { deleteInstagramBot, fetchInstagramAnalytics, updateInstagramBot } from "@/services/instagramApi";
 
 export default function InstagramBots() {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const isEditMode = searchParams.has("mode") || searchParams.has("edit");
+
   const { connectedAccounts } = useAuth();
   const { confirm } = useDialog();
   const hasPostingInstagram = Boolean(connectedAccounts.instagram?.connected);
@@ -57,6 +61,12 @@ export default function InstagramBots() {
   const accountsBusy = accountsLoading || syncing;
   const activeBots = bots.filter((bot) => bot.is_active).length;
   const hasBot = bots.length > 0;
+
+  useEffect(() => {
+    if (!loading && activeBots > 0 && !isEditMode) {
+      navigate("/dashboard/instapilot/inbox", { replace: true });
+    }
+  }, [loading, activeBots, isEditMode, navigate]);
 
   useEffect(() => {
     if (!userSetStep) {
@@ -91,6 +101,21 @@ export default function InstagramBots() {
       toast.error(err.response?.data?.error || err.message || "Failed to delete bot");
     }
   };
+
+  if (loading && !isEditMode) {
+    return (
+      <div className="flex min-h-[70vh] items-center justify-center bg-[#f7f5f2]">
+        <div className="flex items-center gap-3 rounded-xl border border-black/10 bg-white px-6 py-4 shadow-sm text-sm font-semibold text-[var(--ink)]">
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--arc)] border-t-transparent" />
+          <span>Checking active InstaPilot bot...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!loading && activeBots > 0 && !isEditMode) {
+    return null;
+  }
 
   return (
     <div className="min-h-full bg-[#f7f5f2] px-4 py-5 lg:px-8">

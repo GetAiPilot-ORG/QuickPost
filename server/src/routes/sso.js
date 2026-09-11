@@ -17,6 +17,7 @@
 import express from 'express';
 import crypto  from 'crypto';
 import { createClient } from '@supabase/supabase-js';
+import { clearEntitlementsCache } from '../services/entitlements.js';
 
 const router = express.Router();
 
@@ -173,6 +174,7 @@ router.post('/sso', async (req, res) => {
       return res.status(500).json({ success: false, error: 'Failed to generate login link' });
     }
 
+    clearEntitlementsCache(); // Refresh entitlement cache on SSO login
     console.log(`[SSO] ✅ Issued magic link for ${email}`);
     return res.json({ success: true, magic_link_url: linkData.properties.action_link });
 

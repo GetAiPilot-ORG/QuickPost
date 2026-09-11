@@ -71,6 +71,24 @@ function buildAuthenticatedUser(sessionUser, entitlements) {
   };
 }
 
+function buildSessionUser(sessionUser, previousUser) {
+  const previousEntitlements =
+    previousUser?.userId === sessionUser.id ? previousUser.entitlements : null;
+  const entitlements = previousEntitlements || FREE_ENTITLEMENTS;
+
+  return {
+    userId: sessionUser.id,
+    email: sessionUser.email,
+    name:
+      sessionUser.user_metadata?.full_name ||
+      sessionUser.email?.split("@")[0],
+    plan: entitlements?.plan?.name || null,
+    subscription_status: entitlements?.subscription?.status || null,
+    entitlements,
+    picture: sessionUser.user_metadata?.avatar_url || sessionUser.user_metadata?.picture,
+  };
+}
+
 async function syncUserToHub(sessionUser) {
   console.info("[HUB-SYNC] Skipping browser-side hub sync (handled securely by backend)");
   return;
@@ -112,7 +130,7 @@ export function AuthProvider({ children }) {
       } : null);
     } catch (err) {
       console.error("Error fetching user profile:", err);
-      setUser(buildAuthenticatedUser(sessionUser, FREE_ENTITLEMENTS));
+      setUser(prev => prev?.userId === sessionUser.id ? prev : buildAuthenticatedUser(sessionUser, FREE_ENTITLEMENTS));
       return FREE_ENTITLEMENTS;
     } finally {
       setProfileLoading(false);
@@ -145,18 +163,7 @@ export function AuthProvider({ children }) {
     const hydrateSession = async (session) => {
       setSession(session);
       if (session) {
-        const userData = {
-          userId: session.user.id,
-          email: session.user.email,
-          name:
-            session.user.user_metadata?.full_name ||
-            session.user.email?.split("@")[0],
-          plan: 'Free',
-          subscription_status: 'active',
-          entitlements: FREE_ENTITLEMENTS,
-          picture: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture,
-        };
-        setUser(userData);
+        setUser(prev => buildSessionUser(session.user, prev));
         localStorage.setItem("quickpost_token", session.access_token);
         await Promise.all([
           fetchUserProfile(session.user),
@@ -225,7 +232,7 @@ export function AuthProvider({ children }) {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: window.location.origin + "/login",
+        redirectTo: window.location.origin + "/auth/callback",
       },
     });
     if (error) throw error;

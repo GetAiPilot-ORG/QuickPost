@@ -83,7 +83,7 @@ function getAccountPicture(channelId, connectedAccounts) {
   const accountId = parts[1];
   const accountsKey = `${provider}Accounts`;
   const accounts = connectedAccounts[accountsKey] || [];
-  
+
   let account = null;
   if (accountId) {
     account = accounts.find((acc) => String(acc.id) === String(accountId));
@@ -101,7 +101,7 @@ function getAccountName(channelId, connectedAccounts) {
   const accountId = parts[1];
   const accountsKey = `${provider}Accounts`;
   const accounts = connectedAccounts[accountsKey] || [];
-  
+
   let account = null;
   if (accountId) {
     account = accounts.find((acc) => String(acc.id) === String(accountId));
@@ -120,11 +120,11 @@ export default function CalendarView({
 }) {
   const { confirm, alert } = useDialog();
   const calendarRef = useRef(null);
-  
+
   const [isMobile, setIsMobile] = useState(false);
   const [activeMobileDate, setActiveMobileDate] = useState(() => new Date());
   const [currentDate, setCurrentDate] = useState(new Date());
-  
+
   const [slideDirection, setSlideDirection] = useState(1);
 
   useEffect(() => {
@@ -296,10 +296,10 @@ export default function CalendarView({
     if (calendarMode === "week" && gridDays.length === 7) {
       const first = gridDays[0].date;
       const last = gridDays[6].date;
-      
+
       const firstMonth = first.toLocaleString(undefined, { month: "short" });
       const lastMonth = last.toLocaleString(undefined, { month: "short" });
-      
+
       if (first.getFullYear() !== last.getFullYear()) {
         return `${firstMonth} ${first.getDate()}, ${first.getFullYear()} – ${lastMonth} ${last.getDate()}, ${last.getFullYear()}`;
       }
@@ -413,7 +413,7 @@ export default function CalendarView({
   const handleCancelPost = async () => {
     const postToCancel = editingPost || detailEvent;
     if (!postToCancel) return;
-    
+
     const confirmed = await confirm(
       "Cancel scheduled post?",
       "This post will be cancelled and removed from the active queue. You can review it in history later.",
@@ -474,11 +474,9 @@ export default function CalendarView({
           setDetailEvent(post);
         }}
         whileHover={{ y: -1, scale: 1.01 }}
-        className={`p-2 rounded-xl border text-left select-none shadow-sm transition-all flex flex-col gap-1.5 hover:shadow-md ${
-          post.status === "sent" ? "cursor-pointer" : "cursor-grab active:cursor-grabbing"
-        } ${
-          calendarMode === "week" ? "min-h-[96px]" : ""
-        } ${accent.bg} ${accent.border}`}
+        className={`p-2 rounded-xl border text-left select-none shadow-sm transition-all flex flex-col gap-1.5 hover:shadow-md ${post.status === "sent" ? "cursor-pointer" : "cursor-grab active:cursor-grabbing"
+          } ${calendarMode === "week" ? "min-h-[96px]" : ""
+          } ${accent.bg} ${accent.border}`}
       >
         {/* Top platform/account info bar */}
         <div className="flex items-center justify-between gap-1.5 min-w-0">
@@ -505,9 +503,8 @@ export default function CalendarView({
             </span>
             {hasMedia && <span className="text-[10px] leading-none shrink-0" title="Media post">📷</span>}
           </div>
-          <span className={`text-[11px] font-semibold text-gray-700 leading-tight mt-1 ${
-            calendarMode === "week" ? "line-clamp-3" : "truncate"
-          }`}>
+          <span className={`text-[11px] font-semibold text-gray-700 leading-tight mt-1 ${calendarMode === "week" ? "line-clamp-3" : "truncate"
+            }`}>
             {post.caption || "No caption"}
           </span>
         </div>
@@ -520,7 +517,7 @@ export default function CalendarView({
       ref={calendarRef}
       className="bg-white rounded-2xl border border-[#ebe7e1] overflow-hidden shadow-sm flex flex-col focus:outline-none"
     >
-      
+
       {/* ─── Calendar Navigation Header ─────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-[#ebe7e1] px-6 py-4 gap-4 bg-white z-10">
         <div className="flex items-center gap-3">
@@ -553,21 +550,19 @@ export default function CalendarView({
         <div className="flex items-center bg-gray-100 p-0.5 rounded-lg border border-gray-200 self-start sm:self-auto shadow-[inset_0_1px_2px_rgba(0,0,0,0.03)]">
           <button
             onClick={() => handleModeChange("month")}
-            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
-              calendarMode === "month"
-                ? "bg-white text-gray-900 shadow-sm"
-                : "text-gray-500 hover:text-gray-800"
-            }`}
+            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${calendarMode === "month"
+              ? "bg-white text-gray-900 shadow-sm"
+              : "text-gray-500 hover:text-gray-800"
+              }`}
           >
             Month
           </button>
           <button
             onClick={() => handleModeChange("week")}
-            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
-              calendarMode === "week"
-                ? "bg-white text-gray-900 shadow-sm"
-                : "text-gray-500 hover:text-gray-800"
-            }`}
+            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${calendarMode === "week"
+              ? "bg-white text-gray-900 shadow-sm"
+              : "text-gray-500 hover:text-gray-800"
+              }`}
           >
             Week
           </button>
@@ -590,11 +585,10 @@ export default function CalendarView({
                 <button
                   key={d.toISOString()}
                   onClick={() => setActiveMobileDate(d)}
-                  className={`flex flex-col items-center py-2 rounded-xl transition-all relative ${
-                    isSelected
-                      ? "bg-[#111111] text-white shadow-sm font-extrabold"
-                      : "text-gray-600 hover:bg-gray-50/50 active:bg-gray-100/50"
-                  }`}
+                  className={`flex flex-col items-center py-2 rounded-xl transition-all relative ${isSelected
+                    ? "bg-[#111111] text-white shadow-sm font-extrabold"
+                    : "text-gray-600 hover:bg-gray-50/50 active:bg-gray-100/50"
+                    }`}
                 >
                   <span className="text-[10px] uppercase font-bold tracking-wider opacity-60">
                     {dayName}
@@ -668,7 +662,7 @@ export default function CalendarView({
           </div>
         </div>
       ) : (
-        <div className="overflow-hidden relative w-full flex-1 min-h-[500px]">
+        <div className="overflow-hidden relative w-full flex-1 min-h-[520px]">
           <AnimatePresence initial={false} custom={slideDirection} mode="wait">
             <motion.div
               key={currentDate.toISOString() + calendarMode}
@@ -698,7 +692,7 @@ export default function CalendarView({
                 {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((day) => (
                   <div
                     key={day}
-                    className="py-3.5 text-center text-[10px] font-extrabold text-gray-400 uppercase tracking-wider truncate px-1"
+                    className="py-1.5 text-center text-[10px] font-extrabold text-gray-400 uppercase tracking-wider truncate px-1"
                   >
                     {calendarMode === "week" ? day : day.slice(0, 3)}
                   </div>
@@ -706,26 +700,25 @@ export default function CalendarView({
               </div>
 
               {/* ─── Grid Cells ─────────── */}
-              <div className={`grid grid-cols-7 bg-white border-b border-r border-[#ebe7e1]/60 ${
-                calendarMode === "week" ? "grid-rows-1" : "grid-rows-5 auto-rows-fr"
-              }`}>
+              <div className={`grid grid-cols-7 bg-white border-b border-r border-[#ebe7e1]/60 ${calendarMode === "week" ? "grid-rows-1" : "grid-rows-5 auto-rows-fr"
+                }`}>
                 {gridDays.map(({ date, isCurrentMonth }) => {
                   const dateStr = getLocalDateString(date);
                   const isToday = dateStr === todayStr;
                   const dayPosts = postsByDate[dateStr] || [];
                   const isExpanded = !!expandedDates[dateStr];
-                  
-                  // Limits display items to 2 in month view unless expanded. Week view displays all.
-                  const visiblePosts = (calendarMode === "week") ? dayPosts : dayPosts.slice(0, 2);
-                  const hasMore = calendarMode === "month" && dayPosts.length > 2;
-                  const moreCount = dayPosts.length - 2;
+
+                  // Limits display items to at most 1 in month view for super-compact single-screen fit. Week view displays all.
+                  const visiblePosts = (calendarMode === "week") ? dayPosts : dayPosts.slice(0, 1);
+                  const hasMore = calendarMode === "month" && dayPosts.length > 1;
+                  const moreCount = dayPosts.length - 1;
 
                   const isOver = dateStr === dragOverDate;
 
                   // Soft pastel contrasting backgrounds:
                   // Soothing pale slate blue for active days containing posts vs off-white for empty days
-                  const cellBackground = isCurrentMonth 
-                    ? (dayPosts.length > 0 ? "bg-[#f5f3ff] hover:bg-[#ede9fe]/70" : "bg-white hover:bg-gray-50/40") 
+                  const cellBackground = isCurrentMonth
+                    ? (dayPosts.length > 0 ? "bg-[#f5f3ff] hover:bg-[#ede9fe]/70" : "bg-white hover:bg-gray-50/40")
                     : "bg-[#fafafa]/40 text-gray-300/60";
 
                   return (
@@ -735,26 +728,23 @@ export default function CalendarView({
                       onDragEnter={(e) => handleDragEnter(e, dateStr)}
                       onDrop={(e) => handleDrop(e, date)}
                       onClick={() => onAddPost(date)}
-                      className={`p-2.5 flex flex-col justify-between group transition-all relative border-t border-l border-[#ebe7e1]/60 ${
-                        calendarMode === "week" ? "min-h-[440px] h-full" : "min-h-[136px]"
-                      } ${cellBackground} ${
-                        isOver ? "bg-[#eff6ff] ring-2 ring-[#bfdbfe]/50 border-blue-400 border-dashed z-10" : ""
-                      }`}
+                      className={`p-2 flex flex-col justify-between group transition-all relative border-t border-l border-[#ebe7e1]/60 ${calendarMode === "week" ? "min-h-[420px] h-full" : "min-h-[110px] sm:min-h-[120px]"
+                        } ${cellBackground} ${isOver ? "bg-[#eff6ff] ring-2 ring-[#bfdbfe]/50 border-blue-400 border-dashed z-10" : ""
+                        }`}
                     >
                       {/* Cell Header (Date number) */}
-                      <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center justify-between mb-1">
                         <span
-                          className={`text-xs font-extrabold w-6 h-6 flex items-center justify-center rounded-full ${
-                            isToday
-                              ? "bg-green-500 text-white shadow-sm shadow-green-200"
-                              : isCurrentMonth
+                          className={`text-[11px] font-extrabold w-5 h-5 flex items-center justify-center rounded-full ${isToday
+                            ? "bg-green-500 text-white shadow-sm shadow-green-200"
+                            : isCurrentMonth
                               ? "text-gray-900"
                               : "text-gray-300"
-                          }`}
+                            }`}
                         >
                           {date.getDate()}
                         </span>
-                        
+
                         {/* Add Post Plus button */}
                         <button
                           onClick={(e) => {
@@ -794,13 +784,12 @@ export default function CalendarView({
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.95, y: 5 }}
                             onClick={(e) => e.stopPropagation()}
-                            className={`absolute ${
-                              date.getDay() === 0 
-                                ? "left-1" 
-                                : date.getDay() === 6 
-                                ? "right-1" 
+                            className={`absolute ${date.getDay() === 0
+                              ? "left-1"
+                              : date.getDay() === 6
+                                ? "right-1"
                                 : "left-1/2 -translate-x-1/2"
-                            } -top-6 w-[260px] z-[45] bg-white shadow-2xl border border-gray-200/90 rounded-2xl p-4 flex flex-col gap-3 max-h-[300px] overflow-y-auto cursor-default select-none [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-200 hover:[&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent`}
+                              } -top-6 w-[260px] z-[45] bg-white shadow-2xl border border-gray-200/90 rounded-2xl p-4 flex flex-col gap-3 max-h-[300px] overflow-y-auto cursor-default select-none [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-200 hover:[&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent`}
                           >
                             <div className="flex items-center justify-between border-b border-gray-100 pb-2.5 shrink-0">
                               <span className="text-xs font-extrabold text-gray-900 flex items-center gap-1.5 uppercase tracking-wider">

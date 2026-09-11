@@ -37,7 +37,7 @@ import { useAuth } from './AuthContext';
 
 const UploadJobContext = createContext(null);
 
-const POLL_INTERVAL_MS = 1500;
+const POLL_INTERVAL_MS = 3000;
 const MAX_POLL_ERRORS  = 12; // give slow uploads/server cold starts enough time before declaring status unavailable
 
 export function UploadJobProvider({ children }) {

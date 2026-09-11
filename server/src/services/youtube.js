@@ -91,17 +91,22 @@ export async function postToYouTube(videoPath, caption, tokens, onProgress, visi
     const videoId = response.data.id;
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
     const shortsUrl = `https://www.youtube.com/shorts/${videoId}`;
+    const embedUrl = `https://www.youtube.com/embed/${videoId}`;
+    const embedHtml = `<iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`;
 
     console.log(`✓ Video uploaded: ${videoId}`);
     console.log(`URL: ${shortsUrl}`);
+    console.log(`Embed: ${embedUrl}`);
 
     return {
       success: true,
       videoId: videoId,
       videoUrl: videoUrl,
       shortsUrl: shortsUrl,
+      embedUrl: embedUrl,
+      embedHtml: embedHtml,
       platform: 'YouTube',
-      message: 'Successfully uploaded to YouTube Shorts'
+      message: 'Successfully uploaded to YouTube'
     };
 
   } catch (error) {

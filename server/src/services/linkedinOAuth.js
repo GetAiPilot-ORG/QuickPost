@@ -23,6 +23,10 @@ class LinkedInOAuth {
       state: state
     });
 
+    if (process.env.LINKEDIN_ENABLE_EXTENDED_LOGIN === 'true') {
+      params.set('enable_extended_login', 'true');
+    }
+
     return `https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`;
   }
 
