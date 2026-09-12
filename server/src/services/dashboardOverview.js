@@ -478,17 +478,130 @@ async function buildAutomationSummary(user, range) {
   return { instapilot, autodm };
 }
 
+async function reconcileBroadcastsWithLivePlatforms(broadcasts, connectedAccounts, userIds) {
+  let activeBroadcasts = [...broadcasts];
+  const igAccounts = connectedAccounts?.instagramAccounts || [];
+
+  for (const account of igAccounts) {
+    const targetIgId = account.instagram_business_id || account.id;
+    if (!targetIgId) continue;
+    try {
+      const { data: tokenRow } = await supabase
+        .from('social_tokens')
+        .select('access_token')
+        .in('user_id', userIds)
+        .eq('provider', 'instagram')
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const accessToken = tokenRow?.access_token || process.env.INSTAGRAM_ACCESS_TOKEN;
+      if (accessToken) {
+        const isDirectToken = accessToken.startsWith('IG') || accessToken.startsWith('IGA');
+        const graphEndpoint = isDirectToken
+          ? `https://graph.instagram.com/v24.0/${targetIgId}/media`
+          : `https://graph.facebook.com/v19.0/${targetIgId}/media`;
+
+        let igRes;
+        try {
+          igRes = await axios.get(graphEndpoint, {
+            params: {
+              access_token: accessToken,
+              fields: 'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp',
+              limit: 50,
+            },
+            timeout: 8000,
+          });
+        } catch (fetchErr) {
+          if (isDirectToken) {
+            igRes = await axios
+              .get(`https://graph.instagram.com/v24.0/me/media`, {
+                params: {
+                  access_token: accessToken,
+                  fields: 'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp',
+                  limit: 50,
+                },
+                timeout: 8000,
+              })
+              .catch(() => null);
+          }
+        }
+
+        const liveIgMedia = igRes?.data?.data || [];
+        const liveIgIds = new Set(liveIgMedia.map((m) => String(m.id)));
+        const oldestTimestamp =
+          liveIgMedia.length > 0
+            ? Math.min(...liveIgMedia.map((m) => new Date(m.timestamp).getTime()).filter(Boolean))
+            : null;
+
+        const deletedDbPostIds = [];
+        const deletedMediaIds = [];
+
+        activeBroadcasts = activeBroadcasts.filter((b) => {
+          if (!b.instagram_post_id) return true;
+          const postTime = new Date(b.posted_at || b.created_at).getTime();
+          const isWithinLiveWindow = oldestTimestamp ? postTime >= oldestTimestamp - 60000 : true;
+
+          if (isWithinLiveWindow && !liveIgIds.has(String(b.instagram_post_id))) {
+            console.log(`🗑️ [DASHBOARD] Detected Instagram post deleted externally: ${b.instagram_post_id} (broadcast ${b.id})`);
+            deletedMediaIds.push(b.instagram_post_id);
+
+            const hasOtherLiveChannels =
+              b.youtube_success ||
+              b.facebook_success ||
+              b.pinterest_success ||
+              b.linkedin_success ||
+              b.x_success ||
+              b.threads_success;
+            if (!hasOtherLiveChannels) {
+              deletedDbPostIds.push(b.id);
+              return false;
+            } else {
+              b.instagram_success = false;
+              b.instagram_post_id = null;
+              b.instagram_url = null;
+              supabase
+                .from('broadcasts')
+                .update({ instagram_success: false, instagram_post_id: null, instagram_url: null })
+                .eq('id', b.id)
+                .then();
+              return true;
+            }
+          }
+          return true;
+        });
+
+        if (deletedDbPostIds.length > 0) {
+          supabase.from('broadcasts').delete().in('id', deletedDbPostIds).then();
+        }
+        if (deletedMediaIds.length > 0) {
+          supabase
+            .from('automations')
+            .update({ is_active: false, expired_at: new Date().toISOString() })
+            .in('media_id', deletedMediaIds)
+            .then();
+        }
+      }
+    } catch (err) {
+      console.warn('[DASHBOARD] Live IG reconciliation skipped:', err.message);
+    }
+  }
+
+  return activeBroadcasts;
+}
+
 export async function getDashboardOverview(user, query = {}) {
   const range = normalizeDashboardRange(query.range);
   const instagramAccountId = query.instagramAccountId || 'all';
   const userIds = getUserIds(user);
   if (userIds.length === 0) throw new Error('Missing dashboard user');
 
-  const [broadcasts, connectedAccounts] = await Promise.all([
+  const [rawBroadcasts, connectedAccounts] = await Promise.all([
     getBroadcastRows(userIds, range),
     getConnectedAccounts(user),
   ]);
 
+  const broadcasts = await reconcileBroadcastsWithLivePlatforms(rawBroadcasts, connectedAccounts, userIds);
   const broadcastSummary = summarizeBroadcasts(broadcasts, range);
   const [instagramGrowth, automation] = await Promise.all([
     buildInstagramGrowth(user, range, instagramAccountId),
