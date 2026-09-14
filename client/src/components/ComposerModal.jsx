@@ -1068,8 +1068,10 @@ const SmartWarnings = memo(function SmartWarnings({
   const isHorizontal = ratio > 1.2;
   const isVertical = ratio < 0.8;
 
+  const hasYoutube = selectedChannels.some((c) => c === "youtube" || String(c).startsWith("youtube:"));
+
   if (
-    selectedChannels.includes("youtube") &&
+    hasYoutube &&
     platformData.youtube?.type === "short" &&
     isHorizontal
   ) {
@@ -1234,6 +1236,7 @@ const SizeButton = memo(function SizeButton({ size, isSelected, onClick }) {
 function ComposerModal({
   isOpen,
   onClose,
+  onPostCreated,
   initialData = null,
   initialCaption = "",
   initialHashtags = [],
@@ -1726,6 +1729,9 @@ function ComposerModal({
     const hasImg = mediaFiles.some((m) => m.file?.type?.startsWith("image/"));
     const hasVid = mediaFiles.some((m) => m.file?.type?.startsWith("video/"));
 
+    const hasPlatform = (p) =>
+      selectedChannels.some((c) => c === p || String(c).startsWith(p + ":"));
+
     if (effectivePostType === "reel" && !hasVid) {
       setError("Reels require a video file.");
       return false;
@@ -1734,28 +1740,28 @@ function ComposerModal({
       setError("Stories support one image or video at a time.");
       return false;
     }
-    if (selectedChannels.includes("youtube") && hasImg && !hasVid) {
+    if (hasPlatform("youtube") && (!hasVid || hasImg)) {
       setError(
-        "YouTube only supports video — please upload a video or deselect YouTube.",
+        "YouTube only supports video files (.mp4, .mov, .webm, .mkv). Images and GIFs cannot be uploaded to YouTube.",
       );
       return false;
     }
     if (
-      selectedChannels.includes("pinterest") &&
+      hasPlatform("pinterest") &&
       !platformData.pinterest?.title?.trim()
     ) {
       setError("Pinterest requires a title in Platform Customization.");
       return false;
     }
     if (
-      selectedChannels.includes("pinterest") &&
+      hasPlatform("pinterest") &&
       !platformData.pinterest?.boardId
     ) {
       setError("Pinterest requires a board selection.");
       return false;
     }
     if (
-      selectedChannels.includes("reddit") &&
+      hasPlatform("reddit") &&
       !platformData.reddit?.subreddit?.trim()
     ) {
       setError("Reddit requires a subreddit.");
@@ -1878,17 +1884,26 @@ function ComposerModal({
         ? "video"
         : "image";
 
-      addJob(res.data.jobId, {
-        caption,
-        channels: publishChannels,
-        fileCount: mediaFiles.length,
-        mediaType: detectedMediaType,
-        previewUrl:
-          firstMedia?.preview ||
-          (firstMedia?.file ? URL.createObjectURL(firstMedia.file) : null),
-      });
+      addJob(
+        res.data.jobId,
+        {
+          caption,
+          channels: publishChannels,
+          fileCount: mediaFiles.length,
+          mediaType: detectedMediaType,
+          previewUrl:
+            firstMedia?.preview ||
+            (firstMedia?.file ? URL.createObjectURL(firstMedia.file) : null),
+        },
+        (completedJob) => {
+          if (completedJob?.status === "completed") {
+            onPostCreated && onPostCreated();
+          }
+        }
+      );
 
       // 4. Reset & Close
+      onPostCreated && onPostCreated();
       onClose();
       setCaption("");
       setMediaFiles([]);
@@ -3024,6 +3039,12 @@ function ComposerModal({
                   mediaFiles={mediaFiles}
                 />
 
+                {panelItems.length > 0 && (
+                  <div style={{ marginTop: 14 }}>
+                    <IntelligencePanel panelItems={panelItems} />
+                  </div>
+                )}
+
                 {/* ── Error ── */}
                 <AnimatePresence>
                   {error && (
@@ -3190,15 +3211,19 @@ function ComposerModal({
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   style={{
-                    fontSize: 10,
+                    fontSize: 12,
                     color: "#dc2626",
-                    fontWeight: 600,
+                    fontWeight: 700,
                     display: "flex",
                     alignItems: "center",
-                    gap: 4,
+                    gap: 5,
+                    maxWidth: isMobile ? 180 : 280,
+                    lineHeight: 1.2,
                   }}
                 >
-                  <AlertCircle size={11} /> {isMobile ? "Fix errors" : "Fix errors above"}
+                  <AlertCircle size={14} style={{ flexShrink: 0 }} />{" "}
+                  {panelItems.find((p) => p.kind === "error" || p.blocking)?.title ||
+                    (isMobile ? "Fix errors" : "Fix errors above")}
                 </motion.span>
               )}
 

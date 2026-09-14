@@ -213,6 +213,13 @@ export default function YouTubeManagerPage() {
 
   useEffect(() => {
     loadAccounts();
+    const handleBroadcastCompleted = () => {
+      loadAccounts();
+    };
+    window.addEventListener("quickpost_broadcast_completed", handleBroadcastCompleted);
+    return () => {
+      window.removeEventListener("quickpost_broadcast_completed", handleBroadcastCompleted);
+    };
   }, []);
 
   useEffect(() => {
@@ -438,7 +445,18 @@ export default function YouTubeManagerPage() {
             {latestVideo ? (
               <>
                 <a href={latestVideo.url} target="_blank" rel="noreferrer" style={{ marginTop: 18, height: 194, borderRadius: 8, overflow: "hidden", display: "block", position: "relative", background: "#111", color: "#fff" }}>
-                  {latestVideo.thumbnail && <img src={latestVideo.thumbnail} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
+                  {(latestVideo.thumbnail || latestVideo.id) && (
+                    <img
+                      src={latestVideo.thumbnail || `https://i.ytimg.com/vi/${latestVideo.id}/hqdefault.jpg`}
+                      alt={latestVideo.title}
+                      onError={(e) => {
+                        if (latestVideo.id && !e.target.src.includes('hqdefault.jpg')) {
+                          e.target.src = `https://i.ytimg.com/vi/${latestVideo.id}/hqdefault.jpg`;
+                        }
+                      }}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                  )}
                   <strong style={{ position: "absolute", left: 24, bottom: 22, width: "78%", fontSize: 16, lineHeight: 1.2 }}>{latestVideo.title}</strong>
                 </a>
                 <div style={{ display: "flex", gap: 22, marginTop: 14, color: "var(--slate)", alignItems: "center" }}>
@@ -570,7 +588,18 @@ export default function YouTubeManagerPage() {
                     <td style={{ padding: "10px", verticalAlign: "top" }}>
                       <a href={video.url} target="_blank" rel="noreferrer" style={{ display: "grid", gridTemplateColumns: "120px minmax(240px, 1fr)", gap: 16, color: "var(--ink)", textDecoration: "none" }}>
                         <span style={{ position: "relative", width: 120, height: 68, borderRadius: 7, overflow: "hidden", background: "#111", display: "block" }}>
-                          {video.thumbnail && <img src={video.thumbnail} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
+                          {(video.thumbnail || video.id) && (
+                            <img
+                              src={video.thumbnail || `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`}
+                              alt=""
+                              onError={(e) => {
+                                if (video.id && !e.target.src.includes('hqdefault.jpg')) {
+                                  e.target.src = `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`;
+                                }
+                              }}
+                              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                            />
+                          )}
                           {video.duration && <span style={{ position: "absolute", right: 5, bottom: 5, background: "rgba(0,0,0,0.85)", color: "#fff", borderRadius: 3, padding: "1px 5px", fontSize: 12, fontWeight: 500 }}>{parseDuration(video.duration)}</span>}
                         </span>
                         <span style={{ minWidth: 0, paddingTop: 4 }}>

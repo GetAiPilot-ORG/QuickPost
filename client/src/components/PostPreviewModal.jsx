@@ -987,7 +987,11 @@ export default function PostPreviewModal({ post, onClose, onDelete }) {
             {onDelete && (
               <button 
                 onClick={() => {
-                  if (window.confirm("Are you sure you want to delete this post from your history?")) {
+                  const hasYt = post.youtube_success || post.youtube_video_id || post.platform_data?.youtube?.videoId;
+                  const confirmMsg = hasYt
+                    ? "Are you sure you want to delete this post from QuickPost and YouTube?"
+                    : "Are you sure you want to delete this post?";
+                  if (window.confirm(confirmMsg)) {
                     onDelete(post.id);
                   }
                 }} 

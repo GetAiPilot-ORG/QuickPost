@@ -51,6 +51,112 @@ function timeAgo(dateString) {
   return `${days}d ago`;
 }
 
+function AuthorAvatar({ src, name, size = 40, style = {} }) {
+  const [imgError, setImgError] = useState(false);
+  const initial = (name || "U").replace(/^@/, "")[0]?.toUpperCase() || "U";
+
+  useEffect(() => {
+    setImgError(false);
+  }, [src]);
+
+  if (src && !imgError) {
+    return (
+      <img
+        src={src}
+        alt={name || ""}
+        referrerPolicy="no-referrer"
+        crossOrigin="anonymous"
+        onError={() => setImgError(true)}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: "50%",
+          objectFit: "cover",
+          flexShrink: 0,
+          ...style,
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        background: "rgba(20,20,19,0.08)",
+        color: "var(--ink)",
+        display: "grid",
+        placeItems: "center",
+        fontWeight: 750,
+        fontSize: size <= 28 ? 11 : 14,
+        flexShrink: 0,
+        ...style,
+      }}
+    >
+      {initial}
+    </div>
+  );
+}
+
+function PostThumbnailImage({ src, platform, postId, size = 64 }) {
+  const [imgSrc, setImgSrc] = useState(src);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setImgSrc(src);
+    setFailed(false);
+  }, [src, postId]);
+
+  const handleError = () => {
+    if (platform === "youtube" && postId && !imgSrc?.includes("hqdefault.jpg")) {
+      setImgSrc(`https://i.ytimg.com/vi/${postId}/hqdefault.jpg`);
+    } else {
+      setFailed(true);
+    }
+  };
+
+  if (imgSrc && !failed) {
+    return (
+      <img
+        src={imgSrc}
+        alt=""
+        referrerPolicy="no-referrer"
+        crossOrigin="anonymous"
+        onError={handleError}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: 8,
+          objectFit: "cover",
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: 8,
+        background: "rgba(20,20,19,0.06)",
+        display: "grid",
+        placeItems: "center",
+        flexShrink: 0,
+      }}
+    >
+      <img
+        src={getPlatformIcon(platform)}
+        style={{ width: size * 0.45, height: size * 0.45 }}
+        alt=""
+      />
+    </div>
+  );
+}
+
 export default function SocialInboxPage() {
   const { user } = useAuth();
   const [selectedPlatform, setSelectedPlatform] = useState("all");
@@ -592,13 +698,12 @@ export default function SocialInboxPage() {
                   gap: 16,
                 }}
               >
-                {selectedItem.postThumbnail && (
-                  <img
-                    src={selectedItem.postThumbnail}
-                    style={{ width: 64, height: 64, borderRadius: 8, objectFit: "cover", flexShrink: 0 }}
-                    alt=""
-                  />
-                )}
+                <PostThumbnailImage
+                  src={selectedItem.postThumbnail}
+                  platform={selectedItem.platform}
+                  postId={selectedItem.postId}
+                  size={64}
+                />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                     <img src={getPlatformIcon(selectedItem.platform)} style={{ width: 16, height: 16, flexShrink: 0 }} alt="" />
@@ -623,13 +728,11 @@ export default function SocialInboxPage() {
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-                  {selectedItem.authorAvatar ? (
-                    <img src={selectedItem.authorAvatar} style={{ width: 40, height: 40, borderRadius: "50%", flexShrink: 0 }} alt="" />
-                  ) : (
-                    <div style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(20,20,19,0.08)", display: "grid", placeItems: "center", fontWeight: 700, flexShrink: 0 }}>
-                      {selectedItem.authorName?.[0] || "U"}
-                    </div>
-                  )}
+                  <AuthorAvatar
+                    src={selectedItem.authorAvatar}
+                    name={selectedItem.authorName || selectedItem.authorHandle}
+                    size={40}
+                  />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 15, fontWeight: 750, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {selectedItem.authorName}
@@ -707,13 +810,12 @@ export default function SocialInboxPage() {
                       <div key={r.id} style={{ background: "#ffffff", padding: 14, borderRadius: 10, border: "1px solid #d3cec6" }}>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
-                            {r.authorAvatar ? (
-                              <img src={r.authorAvatar} style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0 }} alt="" />
-                            ) : (
-                              <div style={{ width: 26, height: 26, borderRadius: "50%", background: "rgba(255,86,0,0.1)", color: "var(--arc, #ff5600)", display: "grid", placeItems: "center", fontWeight: 750, fontSize: 11, flexShrink: 0 }}>
-                                {rName[0]?.toUpperCase() || "A"}
-                              </div>
-                            )}
+                            <AuthorAvatar
+                              src={r.authorAvatar}
+                              name={rName}
+                              size={26}
+                              style={{ background: "rgba(255,86,0,0.1)", color: "var(--arc, #ff5600)" }}
+                            />
                             <span style={{ fontSize: 13, fontWeight: 750, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                               {rName}
                             </span>
