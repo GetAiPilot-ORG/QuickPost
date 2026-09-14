@@ -243,7 +243,7 @@ export async function processBroadcastJob(broadcastId) {
       processing_started_at: null,
       scheduled_for: new Date(Date.now() + backoffSeconds * 1000).toISOString(),
     });
-    
+
     cleanupFiles(processingFilePaths);
   }
 }

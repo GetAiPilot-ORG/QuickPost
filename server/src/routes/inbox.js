@@ -6,6 +6,8 @@ import { decryptToken as decryptTokenEncryption } from '../services/tokenEncrypt
 import { decryptToken as decryptInstaPilotToken } from '../services/instapilot.js';
 
 const router = express.Router();
+let lastIgError = null;
+let lastIgDebug = null;
 
 /**
  * Universal Social Inbox Backend Aggregator & Reply Engine
@@ -49,6 +51,79 @@ function safeDecrypt(encToken) {
     } catch { }
   }
   return decrypted;
+}
+
+function getMockConversations(platform, accountId, accountName) {
+  return [
+    {
+      id: `mock:${platform}:1`,
+      platform: platform,
+      accountId: accountId,
+      accountName: accountName,
+      postId: null,
+      postTitle: null,
+      postThumbnail: null,
+      commentId: `conv_${platform}_1`,
+      topLevelCommentId: `conv_${platform}_1`,
+      authorName: 'Jane Doe',
+      authorAvatar: 'https://i.pravatar.cc/150?u=jane',
+      authorHandle: '@janedoe',
+      text: 'Hey! Are you guys open this weekend?',
+      createdAt: new Date().toISOString(),
+      replied: false,
+      starred: false,
+      unread: true,
+      replyCount: 1,
+      replies: [
+        {
+          id: 'msg_1',
+          authorName: 'Jane Doe',
+          authorAvatar: 'https://i.pravatar.cc/150?u=jane',
+          text: 'Hey! Are you guys open this weekend?',
+          createdAt: new Date().toISOString(),
+          isSelf: false
+        }
+      ]
+    },
+    {
+      id: `mock:${platform}:2`,
+      platform: platform,
+      accountId: accountId,
+      accountName: accountName,
+      postId: null,
+      postTitle: null,
+      postThumbnail: null,
+      commentId: `conv_${platform}_2`,
+      topLevelCommentId: `conv_${platform}_2`,
+      authorName: 'Alex Carter',
+      authorAvatar: 'https://i.pravatar.cc/150?u=alex',
+      authorHandle: '@alexcarter',
+      text: 'Got it, thank you!',
+      createdAt: new Date(Date.now() - 3600000).toISOString(),
+      replied: true,
+      starred: true,
+      unread: false,
+      replyCount: 2,
+      replies: [
+        {
+          id: 'msg_2',
+          authorName: 'Alex Carter',
+          authorAvatar: 'https://i.pravatar.cc/150?u=alex',
+          text: 'Can I get a custom quote for 5 videos?',
+          createdAt: new Date(Date.now() - 7200000).toISOString(),
+          isSelf: false
+        },
+        {
+          id: 'msg_3',
+          authorName: 'Account Owner',
+          authorAvatar: null,
+          text: 'Yes! We just sent you an email with the brochure.',
+          createdAt: new Date(Date.now() - 3600000).toISOString(),
+          isSelf: true
+        }
+      ]
+    }
+  ];
 }
 
 // ── Platform-Specific On-Demand Fetchers ────────────────────────────────────
@@ -132,69 +207,80 @@ async function fetchInstagramComments(tokenRow) {
     const businessId = tokenRow.account_id || tokenRow.page_id || tokenRow.instagram_business_account_id;
     if (!accessToken || !businessId) return { status: 'error', error: 'Missing Instagram Business credentials', items: [] };
 
-    const graphBase = accessToken.startsWith('IGA') ? 'https://graph.instagram.com' : 'https://graph.facebook.com/v18.0';
-
-    // Single nested request: fetch media and comments in 1 call
-    const mediaRes = await axios.get(`${graphBase}/${businessId}/media`, {
+    const isIgToken = accessToken.startsWith('IG');
+    const graphBase = isIgToken ? 'https://graph.instagram.com/v24.0' : 'https://graph.facebook.com/v18.0';
+    const queryId = isIgToken ? businessId : (tokenRow.page_id || businessId);
+    
+    const convRes = await axios.get(`${graphBase}/${queryId}/conversations`, {
       params: {
-        fields: 'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,comments_count,comments{id,text,username,timestamp,replies{id,text,username,timestamp}}',
-        limit: 10,
+        platform: 'instagram',
+        fields: 'id,updated_time,participants,messages.limit(15){id,message,created_time,from,to}',
+        limit: 20,
         access_token: accessToken
       }
     });
 
-    const mediaList = mediaRes.data?.data || [];
-    const commentItems = [];
-    const ownerHandle = String(tokenRow.username || tokenRow.account_name || '').toLowerCase().replace('@', '').trim();
+    const conversations = convRes.data?.data || [];
+    let conversationItems = [];
 
-    for (const media of mediaList) {
-      const comments = media.comments?.data || [];
-      for (const c of comments) {
-        const commentUsername = String(c.username || '').toLowerCase().replace('@', '').trim();
-
-        // Filter out comments posted by the account owner itself
-        if (ownerHandle && commentUsername === ownerHandle) {
-          continue;
+    // Parallel fetch for profile pictures
+    const myUsername = (tokenRow.username || tokenRow.account_name || '').toLowerCase();
+    
+    await Promise.all(conversations.map(async (conv) => {
+      const messages = conv.messages?.data || [];
+      const participants = conv.participants?.data || [];
+      const otherUser = participants.find(p => (p.username || p.name || '').toLowerCase() !== myUsername && String(p.id) !== String(queryId)) || participants[0] || {};
+      
+      // Attempt to fetch profile picture for the other user if they have an ID
+      let fetchedAvatar = null;
+      if (otherUser.id) {
+        try {
+          const profileRes = await axios.get(`${graphBase}/${otherUser.id}`, {
+            params: { fields: 'profile_pic', access_token: accessToken }
+          });
+          fetchedAvatar = profileRes.data?.profile_pic || null;
+        } catch (err) {
+          // Silent catch - we'll just fall back to initial
         }
-
-        const childReplies = c.replies?.data || [];
-        const hasOwnerReplied = childReplies.some(r => {
-          const rUser = String(r.username || '').toLowerCase().replace('@', '').trim();
-          return ownerHandle && rUser === ownerHandle;
-        }) || childReplies.length > 0;
-
-        commentItems.push({
-          id: `ig:${c.id}`,
-          platform: 'instagram',
-          accountId: businessId,
-          accountName: tokenRow.username || tokenRow.account_name || 'Instagram Account',
-          postId: media.id,
-          postTitle: media.caption || 'Instagram Post',
-          postThumbnail: media.thumbnail_url || media.media_url || null,
-          commentId: c.id,
-          topLevelCommentId: c.id,
-          authorName: c.username || 'Instagram User',
-          authorAvatar: null,
-          authorHandle: `@${c.username || 'user'}`,
-          text: c.text || '',
-          createdAt: c.timestamp || new Date().toISOString(),
-          replied: hasOwnerReplied,
-          starred: false,
-          unread: false,
-          replyCount: childReplies.length,
-          replies: childReplies.map(r => ({
-            id: r.id,
-            authorName: r.username || tokenRow.username || tokenRow.account_name || 'Account Owner',
-            authorHandle: `@${r.username || tokenRow.username || 'user'}`,
-            authorAvatar: null,
-            text: r.text,
-            createdAt: r.timestamp
-          }))
-        });
       }
-    }
 
-    return { status: 'ok', items: commentItems };
+      const lastMessage = messages[0] || {};
+      const hasReplied = String(lastMessage.from?.id) === String(queryId) || (lastMessage.from?.username || '').toLowerCase() === myUsername;
+
+      conversationItems.push({
+        id: `ig:${conv.id}`,
+        platform: 'instagram',
+        accountId: queryId,
+        accountName: tokenRow.username || tokenRow.account_name || 'Instagram Account',
+        postId: null,
+        postTitle: null,
+        postThumbnail: null,
+        commentId: conv.id,
+        topLevelCommentId: conv.id,
+        authorName: otherUser.username || otherUser.name || 'Instagram User',
+        authorAvatar: fetchedAvatar, 
+        authorHandle: otherUser.username ? `@${otherUser.username}` : '',
+        text: lastMessage.message || '',
+        createdAt: lastMessage.created_time || conv.updated_time,
+        replied: hasReplied,
+        starred: false,
+        unread: !hasReplied,
+        replyCount: messages.length,
+        replies: messages.map(m => ({
+          id: m.id,
+          authorName: (String(m.from?.id) === String(queryId) || (m.from?.username || '').toLowerCase() === myUsername) ? (tokenRow.username || 'You') : (otherUser.username || otherUser.name),
+          authorAvatar: fetchedAvatar,
+          text: m.message,
+          createdAt: m.created_time,
+          isSelf: String(m.from?.id) === String(queryId) || (m.from?.username || '').toLowerCase() === myUsername
+        })).reverse()
+      });
+    }));
+
+    // Sort by most recent message
+    conversationItems.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    return { status: 'ok', items: conversationItems };
   } catch (err) {
     console.error('❌ [INBOX-IG] Failed:', err.response?.data?.error?.message || err.message);
     return { status: 'error', error: err.response?.data?.error?.message || err.message, items: [] };
@@ -318,52 +404,76 @@ async function fetchFacebookComments(tokenRow) {
     const pageId = tokenRow.page_id || tokenRow.account_id;
     if (!accessToken || !pageId) return { status: 'error', error: 'Missing Facebook Page credentials', items: [] };
 
-    // Fetch recent 5 page posts
-    const postsRes = await axios.get(`https://graph.facebook.com/v18.0/${pageId}/posts`, {
+    const convRes = await axios.get(`https://graph.facebook.com/v18.0/${pageId}/conversations`, {
       params: {
-        fields: 'id,message,created_time,full_picture,comments.limit(10){id,message,from,created_time,comments{id,message,from,created_time}}',
-        limit: 5,
+        platform: 'messenger',
+        fields: 'id,updated_time,participants,messages.limit(15){id,message,created_time,from,to}',
+        limit: 20,
         access_token: accessToken
       }
     });
 
-    const postList = postsRes.data?.data || [];
-    const commentItems = [];
+    const conversations = convRes.data?.data || [];
+    let conversationItems = [];
 
-    for (const post of postList) {
-      const comments = post.comments?.data || [];
-      for (const c of comments) {
-        commentItems.push({
-          id: `fb:${c.id}`,
-          platform: 'facebook',
-          accountId: pageId,
-          accountName: tokenRow.username || 'Facebook Page',
-          postId: post.id,
-          postTitle: post.message || 'Facebook Post',
-          postThumbnail: post.full_picture || null,
-          commentId: c.id,
-          topLevelCommentId: c.id,
-          authorName: c.from?.name || 'Facebook User',
-          authorAvatar: null,
-          authorHandle: `@${c.from?.name || 'user'}`,
-          text: c.message || '',
-          createdAt: c.created_time || new Date().toISOString(),
-          replied: Boolean(c.comments?.data?.length),
-          starred: false,
-          unread: false,
-          replyCount: c.comments?.data?.length || 0,
-          replies: (c.comments?.data || []).map(r => ({
-            id: r.id,
-            authorName: r.from?.name || 'User',
-            authorAvatar: null,
-            text: r.message,
-            createdAt: r.created_time
-          }))
-        });
+    // Parallel fetch for profile pictures
+    const myUsername = (tokenRow.username || tokenRow.account_name || 'Facebook Page').toLowerCase();
+    
+    await Promise.all(conversations.map(async (conv) => {
+      const messages = conv.messages?.data || [];
+      const participants = conv.participants?.data || [];
+      const otherUser = participants.find(p => (p.name || '').toLowerCase() !== myUsername && String(p.id) !== String(pageId)) || participants[0] || {};
+      
+      // Attempt to fetch profile picture for the other user if they have an ID
+      let fetchedAvatar = null;
+      if (otherUser.id) {
+        try {
+          const profileRes = await axios.get(`https://graph.facebook.com/v18.0/${otherUser.id}`, {
+            params: { fields: 'picture', access_token: accessToken }
+          });
+          fetchedAvatar = profileRes.data?.picture?.data?.url || null;
+        } catch (err) {
+          // Silent catch - we'll just fall back to initial
+        }
       }
-    }
 
-    return { status: 'ok', items: commentItems };
+      const lastMessage = messages[0] || {};
+      const hasReplied = String(lastMessage.from?.id) === String(pageId) || (lastMessage.from?.name || '').toLowerCase() === myUsername;
+
+      conversationItems.push({
+        id: `fb:${conv.id}`,
+        platform: 'facebook',
+        accountId: pageId,
+        accountName: tokenRow.account_name || 'Facebook Page',
+        postId: null,
+        postTitle: null,
+        postThumbnail: null,
+        commentId: conv.id,
+        topLevelCommentId: conv.id,
+        authorName: otherUser.name || 'Facebook User',
+        authorAvatar: fetchedAvatar,
+        authorHandle: otherUser.name ? `@${otherUser.name.replace(/\s+/g, '').toLowerCase()}` : '',
+        text: lastMessage.message || '',
+        createdAt: lastMessage.created_time || conv.updated_time,
+        replied: hasReplied,
+        starred: false,
+        unread: !hasReplied,
+        replyCount: messages.length,
+        replies: messages.map(m => ({
+          id: m.id,
+          authorName: (String(m.from?.id) === String(pageId) || (m.from?.name || '').toLowerCase() === myUsername) ? (tokenRow.username || 'You') : (otherUser.name || 'User'),
+          authorAvatar: fetchedAvatar,
+          text: m.message,
+          createdAt: m.created_time,
+          isSelf: String(m.from?.id) === String(pageId) || (m.from?.name || '').toLowerCase() === myUsername
+        })).reverse()
+      });
+    }));
+
+    // Sort by most recent message
+    conversationItems.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    return { status: 'ok', items: conversationItems };
   } catch (err) {
     console.error('❌ [INBOX-FB] Failed:', err.message);
     return { status: 'error', error: err.response?.data?.error?.message || err.message, items: [] };
@@ -430,27 +540,30 @@ router.get('/inbox/stream', authenticateUser, async (req, res) => {
     const fetchPromises = [];
     const promiseMeta = [];
 
-    const ytTokenRow = connectedMap['youtube']?.[0] || connectedMap['google']?.[0];
-    if (ytTokenRow) {
-      fetchPromises.push(fetchYouTubeComments(ytTokenRow));
+    (connectedMap['youtube'] || connectedMap['google'] || []).forEach(tokenRow => {
+      fetchPromises.push(fetchYouTubeComments(tokenRow));
       promiseMeta.push('youtube');
-    }
-    if (connectedMap['instagram']) {
-      fetchPromises.push(fetchInstagramComments(connectedMap['instagram'][0]));
+    });
+
+    (connectedMap['instagram'] || []).forEach(tokenRow => {
+      fetchPromises.push(fetchInstagramComments(tokenRow));
       promiseMeta.push('instagram');
-    }
-    if (connectedMap['facebook']) {
-      fetchPromises.push(fetchFacebookComments(connectedMap['facebook'][0]));
+    });
+
+    (connectedMap['facebook'] || []).forEach(tokenRow => {
+      fetchPromises.push(fetchFacebookComments(tokenRow));
       promiseMeta.push('facebook');
-    }
-    if (connectedMap['bluesky']) {
-      fetchPromises.push(fetchBlueskyComments(connectedMap['bluesky'][0]));
+    });
+
+    (connectedMap['bluesky'] || []).forEach(tokenRow => {
+      fetchPromises.push(fetchBlueskyComments(tokenRow));
       promiseMeta.push('bluesky');
-    }
-    if (connectedMap['mastodon']) {
-      fetchPromises.push(fetchMastodonComments(connectedMap['mastodon'][0]));
+    });
+
+    (connectedMap['mastodon'] || []).forEach(tokenRow => {
+      fetchPromises.push(fetchMastodonComments(tokenRow));
       promiseMeta.push('mastodon');
-    }
+    });
 
     const results = await Promise.allSettled(fetchPromises);
     let allItems = [];
@@ -467,6 +580,13 @@ router.get('/inbox/stream', authenticateUser, async (req, res) => {
         platformStatuses[platformKey].error = resItem.reason?.message || 'Failed to fetch comments';
       }
     });
+
+    // Deduplicate items by ID (prevents the same profile/chat from showing twice)
+    const uniqueItemsMap = new Map();
+    allItems.forEach(item => {
+      uniqueItemsMap.set(item.id, item);
+    });
+    allItems = Array.from(uniqueItemsMap.values());
 
     // Sort items by createdAt descending (newest first)
     allItems.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -535,15 +655,24 @@ router.post('/inbox/reply', authenticateUser, async (req, res) => {
       // Generic lookup in social_tokens table with case-insensitive provider matching
       const { data: sTokens } = await supabase
         .from('social_tokens')
-        .select('access_token,provider,instance_url,account_id,page_id')
+        .select('access_token,provider,instance_url,account_id,page_id,instagram_business_id,username,account_name')
         .in('user_id', userIds);
 
       const targetLower = String(platform).toLowerCase();
       const matchedRow = (sTokens || []).find(r => {
         const p = String(r.provider || '').toLowerCase();
-        if (targetLower === 'youtube') return p === 'youtube' || p === 'google';
-        if (targetLower === 'googlebusiness') return p === 'googlebusiness' || p === 'google_business' || p === 'google';
-        return p === targetLower;
+        let matchesPlatform = false;
+        
+        if (targetLower === 'youtube') matchesPlatform = (p === 'youtube' || p === 'google');
+        else if (targetLower === 'googlebusiness') matchesPlatform = (p === 'googlebusiness' || p === 'google_business' || p === 'google');
+        else matchesPlatform = (p === targetLower);
+        
+        if (!matchesPlatform) return false;
+        
+        if (accountId) {
+          return String(r.account_id) === String(accountId) || String(r.page_id) === String(accountId);
+        }
+        return true;
       });
 
       if (matchedRow) {
@@ -587,6 +716,14 @@ router.post('/inbox/reply', authenticateUser, async (req, res) => {
       } catch { }
     }
 
+    if (!rawTokenStr || rawTokenStr === 'undefined' || rawTokenStr === 'null') {
+      return res.status(403).json({
+        success: false,
+        error: 'INVALID_TOKEN_FORMAT',
+        message: 'The access token could not be parsed properly for this account.'
+      });
+    }
+
     // Execute platform-specific API reply dispatch
     if (platform === 'youtube') {
       const ytRes = await axios.post('https://www.googleapis.com/youtube/v3/comments', {
@@ -598,24 +735,106 @@ router.post('/inbox/reply', authenticateUser, async (req, res) => {
         params: { part: 'snippet' },
         headers: { Authorization: `Bearer ${rawTokenStr}` }
       });
-      replyId = ytRes.data?.id || replyId;
     } else if (platform === 'instagram') {
-      const graphBase = String(rawTokenStr).startsWith('IGA') ? 'https://graph.instagram.com' : 'https://graph.facebook.com/v18.0';
-      const igRes = await axios.post(`${graphBase}/${commentId}/replies`, null, {
-        params: {
-          message: text,
-          access_token: rawTokenStr
+      const isIgToken = rawTokenStr.startsWith('IG');
+      const graphBase = isIgToken ? 'https://graph.instagram.com/v24.0' : 'https://graph.facebook.com/v18.0';
+      
+      let recipientId = null;
+      let igBusinessId = null;
+      try {
+        const convRes = await axios.get(`${graphBase}/${commentId}`, {
+          params: { fields: 'participants', access_token: rawTokenStr, locale: 'en_US' }
+        });
+        const participants = convRes.data?.participants?.data || [];
+        const myIds = [
+          String(accountId)
+        ];
+
+        let myUsernames = [];
+        // Add known usernames from the database row (if we used the fallback lookup, this might not exist, which is fine)
+        if (typeof matchedRow !== 'undefined' && matchedRow) {
+          if (matchedRow.username) myUsernames.push(String(matchedRow.username).toLowerCase());
+          if (matchedRow.account_name) myUsernames.push(String(matchedRow.account_name).toLowerCase());
         }
-      });
-      replyId = igRes.data?.id || replyId;
+
+        try {
+          const fields = isIgToken ? 'id,username' : 'id,instagram_business_account{username}';
+          const meRes = await axios.get(`${graphBase}/me?fields=${fields}`, {
+            params: { access_token: rawTokenStr }
+          });
+          if (meRes.data?.id) myIds.push(String(meRes.data.id));
+          if (meRes.data?.username) myUsernames.push(String(meRes.data.username).toLowerCase());
+          
+          if (meRes.data?.instagram_business_account?.id) {
+            myIds.push(String(meRes.data.instagram_business_account.id));
+            igBusinessId = String(meRes.data.instagram_business_account.id);
+          }
+          if (meRes.data?.instagram_business_account?.username) {
+             myUsernames.push(String(meRes.data.instagram_business_account.username).toLowerCase());
+          }
+          lastIgDebug = { ...lastIgDebug, meResData: meRes.data };
+        } catch (e) {
+          console.log('DEBUG [INBOX-IG] -> /me lookup failed:', e.response?.data || e.message);
+          lastIgDebug = { ...lastIgDebug, meLookupError: e.response?.data || e.message };
+        }
+
+        const recipient = participants.find(p => {
+          if (myIds.includes(String(p.id))) return false;
+          const pName = String(p.username || p.name || '').toLowerCase();
+          if (pName && myUsernames.includes(pName)) return false;
+          return true;
+        }) || participants[0];
+        
+        if (recipient) recipientId = recipient.id;
+        
+        lastIgDebug = {
+          recipientId,
+          participants,
+          myIds,
+          igBusinessId,
+          accountId,
+          commentId
+        };
+        console.log('DEBUG [INBOX-IG] -> Extracted recipientId:', recipientId, 'from participants:', participants, 'myIds:', myIds);
+      } catch (err) {
+        console.error('Failed to fetch IG conversation participants:', err.response?.data || err.message);
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Failed to fetch conversation participants: ' + (err.response?.data?.error?.message || err.message) 
+        });
+      }
+
+      if (!recipientId) {
+        return res.status(400).json({ success: false, message: 'Cannot determine recipient ID for Instagram reply. Participants array might be empty.' });
+      }
+
+      try {
+        let endpointId = 'me';
+        if (!isIgToken) {
+           endpointId = igBusinessId || accountId;
+        }
+        console.log('DEBUG [INBOX-IG] -> POSTing to endpointId:', endpointId);
+        
+        const res = await axios.post(`${graphBase}/${endpointId}/messages`, {
+          recipient: { id: recipientId },
+          message: { text: text }
+        }, {
+          params: { access_token: rawTokenStr, locale: 'en_US' }
+        });
+        replyId = res.data?.message_id || res.data?.id || replyId;
+      } catch (err) {
+        lastIgError = err.response?.data || err.message;
+        console.error('Failed to send IG message:', lastIgError);
+        return res.status(400).json({ success: false, message: err.response?.data?.error?.message || err.message, debugDetails: lastIgError });
+      }
     } else if (platform === 'facebook') {
-      const fbRes = await axios.post(`https://graph.facebook.com/v18.0/${commentId}/comments`, null, {
-        params: {
-          message: text,
-          access_token: rawTokenStr
-        }
+      const graphBase = 'https://graph.facebook.com/v18.0';
+      const res = await axios.post(`${graphBase}/${commentId}/messages`, {
+        message: text
+      }, {
+        params: { access_token: rawTokenStr }
       });
-      replyId = fbRes.data?.id || replyId;
+      replyId = res.data?.message_id || res.data?.id || replyId;
     } else if (platform === 'mastodon') {
       const mUrl = instanceUrl || 'https://mastodon.social';
       const mRes = await axios.post(`${mUrl}/api/v1/statuses`, {
@@ -644,6 +863,8 @@ router.post('/inbox/reply', authenticateUser, async (req, res) => {
     });
   }
 });
+
+router.get('/inbox/debug-last-error', (req, res) => res.json({ lastIgError, lastIgDebug }));
 
 // ── POST /api/inbox/copilot ─────────────────────────────────────────────────
 

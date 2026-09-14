@@ -1,4 +1,4 @@
-import express from 'express'; // Server reloaded - fixed text deduplication bug
+import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -21,6 +21,7 @@ import inboxRouter from './routes/inbox.js';
 import { initScheduler } from './services/scheduler.js';
 import supabase from './services/supabase.js';
 import { processInstagramWebhook } from './services/instapilot.js';
+import { sseClients, broadcastRefresh } from './services/sse.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -52,7 +53,6 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-
 app.options('*', cors(corsOptions));
 
 app.use((req, res, next) => {
@@ -89,9 +89,6 @@ app.use('/api/autodm', autodmRouter);
 app.use('/api/billing', billingRouter);
 app.use('/api/youtube', youtubeRouter);
 app.use('/api', inboxRouter);
-
-// Global SSE clients list for Realtime Frontend Updates
-const sseClients = [];
 
 // SSE Endpoint for InstaPilot Realtime
 app.get('/api/instapilot/stream', (req, res) => {
@@ -174,50 +171,89 @@ server.keepAliveTimeout = 300000;
 const isAutoDMButtonInteraction = (webhookPayload = {}) =>
   Boolean(webhookPayload?.message?.quick_reply?.payload || webhookPayload?.postback);
 
+async function handleWebhookLogRecord(log) {
+  if (!log || !log.id) return;
+  const logId = log.id;
+  if (log.event_type !== 'messages' && log.event_type !== 'messaging_postbacks') {
+    return;
+  }
+  // Skip outbound messages (where sender is the page itself) to prevent infinite loops!
+  if (log.payload?.message?.is_echo) {
+    return;
+  }
+  if (isAutoDMButtonInteraction(log.payload)) {
+    return;
+  }
+
+  // Atomic database claim: only 1 worker/process can ever process this log record!
+  const { data: claimed, error: claimError } = await supabase
+    .from('webhook_logs')
+    .update({ processed: true })
+    .eq('id', logId)
+    .eq('processed', false)
+    .select('id')
+    .maybeSingle();
+
+  if (!claimed || claimError) {
+    // Already claimed or processed by another worker
+    return;
+  }
+
+  // Wrap the payload back into standard Meta format
+  const metaPayload = {
+    object: 'instagram',
+    entry: [
+      {
+        id: log.payload?.recipient?.id,
+        time: Math.floor(Date.now() / 1000),
+        messaging: [log.payload]
+      }
+    ]
+  };
+
+  try {
+    await processInstagramWebhook(metaPayload);
+  } catch (e) {
+    console.error(`[${logId}] ❌ Error processing reconstructed webhook:`, e.message || e);
+  }
+}
+
 // Setup Supabase Realtime listener for Edge Function Webhooks
-// Triggering nodemon restart...
-supabase
-  .channel('webhook_logs_listener')
+// In development, avoid competing with the live deployed production server (api.getaipilot.in) unless explicitly requested.
+const isProduction = process.env.NODE_ENV === 'production';
+const enableLocalWorker = process.env.ENABLE_LOCAL_WEBHOOK_WORKER === 'true';
+
+if (isProduction || enableLocalWorker) {
+  supabase
+    .channel('webhook_logs_listener')
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'webhook_logs' },
+      (payload) => {
+        handleWebhookLogRecord(payload.new);
+      }
+    )
+    .subscribe((status) => {
+      console.log(`📡 [SUPABASE] webhook_logs listener status: ${status}`);
+    });
+} else {
+  console.log(`ℹ️ [INSTAPILOT] Development mode: Webhook listener passive (Live DMs are handled by cloud server https://api.getaipilot.in).`);
+}
+
+// Dedicated listener to refresh the frontend ONLY when actual messages are inserted.
+const messagesChannel = supabase
+  .channel('instagram_messages_listener')
   .on(
     'postgres_changes',
-    { event: 'INSERT', schema: 'public', table: 'webhook_logs' },
-    async (payload) => {
-      const log = payload.new;
-      if (log.event_type === 'messages' || log.event_type === 'messaging_postbacks') {
-        // Skip outbound messages (where sender is the page itself) to prevent infinite loops!
-        if (log.payload?.message?.is_echo) return;
-        if (isAutoDMButtonInteraction(log.payload)) {
-          console.log('Skipping InstaPilot for AutoDM button interaction');
-          return;
-        }
-        console.log('⚡ Detected new DM from Edge Function webhook log!');
-        // Wrap the payload back into standard Meta format
-        const metaPayload = {
-          object: 'instagram',
-          entry: [
-            {
-              id: log.payload.recipient?.id,
-              time: Math.floor(Date.now() / 1000),
-              messaging: [log.payload]
-            }
-          ]
-        };
-        try {
-          // Process the reconstructed webhook payload
-          await processInstagramWebhook(metaPayload);
-          console.log('✅ Reconstructed webhook processed successfully');
-          // Emit Realtime event to all connected React Frontends
-          sseClients.forEach(client => client.write('data: refresh\n\n'));
-        } catch (e) {
-          console.error('❌ Error processing reconstructed webhook:', e);
-        }
-      }
+    { event: 'INSERT', schema: 'public', table: 'instagram_messages' },
+    (payload) => {
+      setTimeout(() => {
+        broadcastRefresh('MessagesListener');
+      }, 200);
     }
   )
   .subscribe((status) => {
-    if (status === 'SUBSCRIBED') {
-      console.log('📡 Listening for incoming Meta Webhooks from Edge Function...');
-    }
+    console.log(`📡 [SUPABASE] instagram_messages listener status: ${status}`);
   });
 
 export default app;

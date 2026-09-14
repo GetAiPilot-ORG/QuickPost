@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { AlertTriangle, Bot, Pause, Play, Send, UserRound } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
@@ -12,26 +12,36 @@ export default function ConversationThread({ conversationId, refreshKey, onChang
   const [thread, setThread] = useState<any>(null);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const load = async () => {
+  const load = async (isInitial = false) => {
     if (!conversationId) return;
-    setLoading(true);
+    if (isInitial || !thread) setLoading(true);
     try {
       const nextThread = await fetchConversationThread(conversationId);
       setThread(nextThread);
-      if (nextThread?.conversation?.profile_pic_url || nextThread?.conversation?.is_user_follow_business !== undefined) {
-        onChanged();
-      }
     } catch (err: any) {
       toast.error(err.response?.data?.error || err.message || "Failed to load thread");
     } finally {
-      setLoading(false);
+      if (isInitial || !thread) setLoading(false);
     }
   };
 
   useEffect(() => {
-    load();
-  }, [conversationId, refreshKey]);
+    load(true);
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (refreshKey) {
+      load(false);
+    }
+  }, [refreshKey]);
+
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [thread?.messages?.length]);
 
   const send = async () => {
     if (!conversationId || !draft.trim()) return;
@@ -132,7 +142,21 @@ export default function ConversationThread({ conversationId, refreshKey, onChang
           </div>
         ) : null}
         <div className="space-y-3">
-          {(thread?.messages || []).map((message: any) => (
+          {(thread?.messages || [])
+            .filter((message: any, index: number, arr: any[]) => {
+              if (index === 0) return true;
+              const prev = arr[index - 1];
+              if (message.id === prev.id) return false;
+              if (
+                message.direction === prev.direction &&
+                message.message_text === prev.message_text &&
+                Math.abs(new Date(message.created_at).getTime() - new Date(prev.created_at).getTime()) < 10000
+              ) {
+                return false;
+              }
+              return true;
+            })
+            .map((message: any) => (
             <div key={message.id} className={`flex gap-2 ${message.direction === "outbound" ? "justify-end" : "justify-start"}`}>
               {message.direction === "inbound" ? <UserRound className="mt-2 h-4 w-4 text-[var(--slate)]" /> : null}
               <div className={`max-w-[78%] rounded-2xl px-4 py-3 text-[13px] leading-6 shadow-sm ${
@@ -147,6 +171,7 @@ export default function ConversationThread({ conversationId, refreshKey, onChang
               {message.direction === "outbound" ? <Bot className="mt-2 h-4 w-4 text-[var(--slate)]" /> : null}
             </div>
           ))}
+          <div ref={messagesEndRef} />
         </div>
       </div>
 

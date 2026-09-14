@@ -6,6 +6,10 @@
 - Verified with `npm.cmd test -- tests/schemaConsistency.test.js`, `npm.cmd test -- tests/trendYoutubeClient.test.js`, and `node --check server\src\services\trendYoutubeClient.js`.
 - Completed Phase 1: YouTube `mostPopular` worker pulls by region/category, normalizes into `posts`, and dedupes by source URL/content hash before insert.
 - Confirmed one real row landed in Supabase from an official YouTube pull (`inserted=1`, `quotaUsed=1`).
+- **Setup completed**: Database connected, dummy frontend running
+- **Social Inbox**: Built the universal inbox UI. Fixed duplicate profiles by deduplicating API responses.
+- **Social Inbox Fixes**: Fixed `Loader` ReferenceError, adjusted chat UI heights/padding, removed auto-select on load, and optimized inbox fetching logic.
+- **Instagram Reply Fix**: Resolved "Invalid OAuth access token - Cannot parse access token" when replying to Instagram messages by dynamically routing `IGAA...` tokens to `graph.instagram.com` instead of hardcoding `graph.facebook.com`.
 - Completed Phase 2: protected `GET /api/trends/feed`, rank cursors, `recency_decay * engagement_velocity`, and optional Redis hot-page cache.
 - Verified with `npm.cmd test -- tests/trendFeed.test.js` and a live Supabase feed read (`items=1`, `hasRankScore=true`).
 - Added the dashboard Trend Feed page with IntersectionObserver-triggered page fetches in the existing Vite React client.
@@ -31,3 +35,5 @@
 - Implemented AI Creative Remix Studio (`trendRemixService.js` & `POST /api/trends/remix`) to generate 3 Viral Hooks, Reel Scripts, Thread Outlines, Carousel Concepts, and Captions.
 - Added Search Radar Ticker, Format Tabs, Niche ribbon, Saved Inspiration Board, and direct GAP SocialPilot Post Composer integration.
 
+
+- ✅ Fixed inbox synchronization issues: timestamps correctly parsed for accurate message sorting, business-sent messages correctly skipped instead of being treated as inbound, and limited bot replies during sync to only recent messages to prevent spamming.
