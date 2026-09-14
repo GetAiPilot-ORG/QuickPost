@@ -91,6 +91,12 @@ export function UploadJobProvider({ children }) {
             try { cb(serverJob); } catch (_) {}
             callbacksRef.current.delete(jobId);
           }
+
+          if (serverJob.status === 'completed') {
+            window.dispatchEvent(
+              new CustomEvent('quickpost_broadcast_completed', { detail: serverJob })
+            );
+          }
         } else {
           // Reset error count on success
           const poller = pollersRef.current.get(jobId);

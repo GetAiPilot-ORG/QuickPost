@@ -534,6 +534,8 @@ router.post('/broadcasts/:id/retry', authenticateUser, async (req, res) => {
 router.delete('/broadcasts/:id', authenticateUser, async (req, res) => {
   try {
     const { id } = req.params;
+    const userId = req.user.userId;
+    const deleteFromPlatform = req.query.deleteFromPlatform !== 'false';
     
     // First get the broadcast to verify ownership
     const { getBroadcastById, deleteBroadcast } = await import('../services/broadcasts.js');
@@ -543,13 +545,61 @@ router.delete('/broadcasts/:id', authenticateUser, async (req, res) => {
       return res.status(404).json({ success: false, error: 'Broadcast not found' });
     }
     
-    if (broadcast.user_id !== req.user.userId) {
+    if (broadcast.user_id !== userId) {
       return res.status(403).json({ success: false, error: 'Unauthorized to delete this broadcast' });
+    }
+
+    const platformResults = {};
+
+    // 1. YouTube Deletion
+    const ytVideoId = broadcast.youtube_video_id ||
+      broadcast.platform_data?.youtube?.videoId ||
+      broadcast.platform_data?.results?.youtube?.videoId ||
+      (broadcast.youtube_url ? broadcast.youtube_url.match(/(?:v=|\/shorts\/|\/embed\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/)?.[1] : null);
+
+    if (deleteFromPlatform && ytVideoId) {
+      try {
+        const { default: googleOAuth } = await import('../services/googleOAuth.js');
+        const { deleteFromYouTube } = await import('../services/youtube.js');
+        const ytAccessToken = await googleOAuth.getValidAccessToken(userId);
+        if (ytAccessToken) {
+          const ytResult = await deleteFromYouTube(ytVideoId, ytAccessToken);
+          platformResults.youtube = ytResult;
+        }
+      } catch (ytErr) {
+        console.warn(`⚠️ [DELETE_BROADCAST] Could not delete YouTube video ${ytVideoId}:`, ytErr.message);
+        platformResults.youtube = { success: false, error: ytErr.message };
+      }
+    }
+
+    // 2. Bluesky Deletion
+    const bskyResult = broadcast.platform_data?.results?.bluesky || broadcast.platform_data?.bluesky;
+    if (deleteFromPlatform && bskyResult?.did && bskyResult?.rkey) {
+      try {
+        const { deleteBlueskyPost } = await import('../services/bluesky.js');
+        const { data: bskyTokenRow } = await supabase
+          .from('social_tokens')
+          .select('access_token')
+          .eq('user_id', userId)
+          .eq('provider', 'bluesky')
+          .maybeSingle();
+        if (bskyTokenRow?.access_token) {
+          await deleteBlueskyPost(bskyTokenRow.access_token, bskyResult.did, bskyResult.rkey);
+          platformResults.bluesky = { success: true };
+        }
+      } catch (bskyErr) {
+        console.warn(`⚠️ [DELETE_BROADCAST] Could not delete Bluesky post:`, bskyErr.message);
+      }
     }
     
     await deleteBroadcast(id);
-    res.json({ success: true, message: 'Broadcast deleted successfully' });
+    res.json({
+      success: true,
+      message: 'Post deleted successfully',
+      platformResults
+    });
   } catch (error) {
+    console.error('Failed to delete broadcast:', error);
     res.status(500).json({ success: false, error: 'Failed to delete broadcast' });
   }
 });

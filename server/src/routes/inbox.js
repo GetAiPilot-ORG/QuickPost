@@ -4,6 +4,7 @@ import supabase, { getTokensForUser } from '../services/supabase.js';
 import axios from 'axios';
 import { decryptToken as decryptTokenEncryption } from '../services/tokenEncryption.js';
 import { decryptToken as decryptInstaPilotToken } from '../services/instapilot.js';
+import googleOAuth from '../services/googleOAuth.js';
 
 const router = express.Router();
 let lastIgError = null;
@@ -130,7 +131,12 @@ function getMockConversations(platform, accountId, accountName) {
 
 async function fetchYouTubeComments(tokenRow) {
   try {
-    const accessToken = safeDecrypt(tokenRow.access_token);
+    let accessToken = null;
+    try {
+      accessToken = await googleOAuth.getValidAccessToken(tokenRow.user_id, tokenRow.account_id);
+    } catch (e) {
+      accessToken = safeDecrypt(tokenRow.access_token);
+    }
     if (!accessToken) return { status: 'error', error: 'Missing access token', items: [] };
 
     // Fetch user's channel ID
@@ -151,8 +157,31 @@ async function fetchYouTubeComments(tokenRow) {
       headers: { Authorization: `Bearer ${accessToken}` }
     });
 
+    const threads = commentsRes.data?.items || [];
+    const videoIds = [...new Set(threads.map(t => t.snippet?.topLevelComment?.snippet?.videoId).filter(Boolean))];
+    const videoMap = {};
+
+    if (videoIds.length > 0) {
+      try {
+        const videoRes = await axios.get('https://www.googleapis.com/youtube/v3/videos', {
+          params: { part: 'snippet', id: videoIds.join(',') },
+          headers: { Authorization: `Bearer ${accessToken}` }
+        });
+        for (const v of videoRes.data?.items || []) {
+          const snip = v.snippet;
+          const thumbs = snip?.thumbnails || {};
+          videoMap[v.id] = {
+            title: snip?.title || 'YouTube Video',
+            thumbnail: thumbs.maxres?.url || thumbs.standard?.url || thumbs.high?.url || thumbs.medium?.url || thumbs.default?.url || `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`
+          };
+        }
+      } catch (vErr) {
+        console.warn('⚠️ [INBOX-YT] Failed to batch fetch video details:', vErr.message);
+      }
+    }
+
     const commentItems = [];
-    for (const thread of commentsRes.data?.items || []) {
+    for (const thread of threads) {
       const top = thread.snippet?.topLevelComment?.snippet;
       if (!top) continue;
 
@@ -164,6 +193,8 @@ async function fetchYouTubeComments(tokenRow) {
 
       const childReplies = thread.replies?.comments || [];
       const hasOwnerReplied = childReplies.some(r => r.snippet?.authorChannelId?.value === channelId) || childReplies.length > 0;
+      const vInfo = top.videoId ? videoMap[top.videoId] : null;
+      const fallbackPostThumb = channelItem.snippet?.thumbnails?.high?.url || channelItem.snippet?.thumbnails?.medium?.url || channelItem.snippet?.thumbnails?.default?.url;
 
       commentItems.push({
         id: `yt:${thread.id}`,
@@ -171,8 +202,8 @@ async function fetchYouTubeComments(tokenRow) {
         accountId: tokenRow.account_id || channelId,
         accountName: channelTitle,
         postId: top.videoId || channelId,
-        postTitle: top.videoId ? `YouTube Video (${top.videoId})` : channelTitle,
-        postThumbnail: channelItem.snippet?.thumbnails?.medium?.url || null,
+        postTitle: vInfo?.title || (top.videoId ? `YouTube Video (${top.videoId})` : channelTitle),
+        postThumbnail: vInfo?.thumbnail || (top.videoId ? `https://i.ytimg.com/vi/${top.videoId}/hqdefault.jpg` : fallbackPostThumb),
         commentId: thread.id,
         topLevelCommentId: thread.id,
         authorName: top.authorDisplayName || 'YouTube User',
@@ -726,6 +757,12 @@ router.post('/inbox/reply', authenticateUser, async (req, res) => {
 
     // Execute platform-specific API reply dispatch
     if (platform === 'youtube') {
+      try {
+        const freshYtToken = await googleOAuth.getValidAccessToken(req.user.userId, accountId);
+        if (freshYtToken) rawTokenStr = freshYtToken;
+      } catch (e) {
+        // use decrypted token fallback
+      }
       const ytRes = await axios.post('https://www.googleapis.com/youtube/v3/comments', {
         snippet: {
           parentId: commentId,
