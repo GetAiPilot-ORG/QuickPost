@@ -113,9 +113,15 @@ export async function postToYouTube(videoPath, caption, tokens, onProgress, visi
     console.error('❌ YouTube upload failed:', error.message);
 
     // Extract detailed error from YouTube API
-    const errorMessage = error.response?.data?.error?.message || error.message;
-    const errorCode = error.response?.data?.error?.code;
+    let errorMessage = error.response?.data?.error?.message || error.message;
+    const errorCode = error.response?.data?.error?.code || (error.message?.includes('Unauthorized') ? 401 : undefined);
     const errorDetails = error.response?.data?.error?.errors;
+
+    if (errorCode === 401 || /unauthorized|channelnotfound|youtubesignuprequired|no youtube channel/i.test(errorMessage) || errorCode === 404) {
+      errorMessage = 'No YouTube channel found for this Google account. Please create a channel at youtube.com/create_channel and reconnect your YouTube account.';
+    } else if (errorCode === 403 && /quota/i.test(errorMessage)) {
+      errorMessage = 'YouTube API daily upload quota exceeded. Please try again tomorrow.';
+    }
 
     return {
       success: false,
@@ -123,6 +129,72 @@ export async function postToYouTube(videoPath, caption, tokens, onProgress, visi
       error: errorMessage,
       errorCode: errorCode,
       details: errorDetails
+    };
+  }
+}
+
+/**
+ * Delete a video from YouTube
+ * @param {string} videoId - YouTube video ID
+ * @param {Object|string} tokensOrAccessToken - YouTube tokens object or access token string
+ * @returns {Promise<Object>} Deletion result
+ */
+export async function deleteFromYouTube(videoId, tokensOrAccessToken) {
+  try {
+    if (!videoId) {
+      throw new Error('Video ID is required for YouTube deletion');
+    }
+
+    const accessToken = typeof tokensOrAccessToken === 'string'
+      ? tokensOrAccessToken
+      : tokensOrAccessToken?.accessToken || tokensOrAccessToken?.access_token;
+
+    const refreshToken = typeof tokensOrAccessToken === 'object'
+      ? tokensOrAccessToken?.refreshToken || tokensOrAccessToken?.refresh_token
+      : null;
+
+    if (!accessToken) {
+      throw new Error('Missing YouTube credentials for deletion');
+    }
+
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      process.env.GOOGLE_REDIRECT_URI
+    );
+
+    const credentials = { access_token: accessToken };
+    if (refreshToken) credentials.refresh_token = refreshToken;
+    oauth2Client.setCredentials(credentials);
+
+    const youtube = google.youtube({
+      version: 'v3',
+      auth: oauth2Client
+    });
+
+    console.log(`🗑️ [YOUTUBE] Deleting video ${videoId} from YouTube...`);
+    await youtube.videos.delete({
+      id: videoId
+    });
+
+    console.log(`✅ [YOUTUBE] Successfully deleted video ${videoId} from YouTube`);
+    return {
+      success: true,
+      videoId,
+      message: 'Successfully deleted video from YouTube'
+    };
+  } catch (error) {
+    const errorMsg = error.response?.data?.error?.message || error.message;
+    console.error(`❌ [YOUTUBE] Failed to delete video ${videoId}:`, errorMsg);
+    // If video not found (404), it was already deleted on YouTube
+    if (error.response?.status === 404 || /not found/i.test(errorMsg)) {
+      console.log(`ℹ️ [YOUTUBE] Video ${videoId} was already removed on YouTube.`);
+      return { success: true, message: 'Video already removed from YouTube' };
+    }
+    return {
+      success: false,
+      error: errorMsg,
+      errorCode: error.response?.data?.error?.code || error.response?.status
     };
   }
 }

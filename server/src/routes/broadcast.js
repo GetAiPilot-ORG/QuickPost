@@ -121,7 +121,7 @@ router.post(
       }
       platData.postType = selectedPostType;
         
-      const isScheduled = isScheduledField === "true" || !!scheduledAt;
+      const isScheduled = isScheduledField === "true" || (isScheduledField === undefined && Boolean(scheduledAt && String(scheduledAt).trim()));
       const autoDMConfig =
         typeof autoDMConfigField === "string"
           ? JSON.parse(autoDMConfigField)
@@ -180,6 +180,17 @@ router.post(
       if (selectedPostType === "story" && uploadedFiles.length > 1) {
         cleanupFiles(filePaths, thumbnailFile);
         return res.status(400).json({ success: false, error: "Stories support one image or video at a time." });
+      }
+
+      const hasYoutube = (channels || []).some(
+        (c) => c === "youtube" || String(c).startsWith("youtube:"),
+      );
+      if (hasYoutube && !isVideo) {
+        cleanupFiles(filePaths, thumbnailFile);
+        return res.status(400).json({
+          success: false,
+          error: "YouTube only supports video uploads (.mp4, .mov, .webm, .mkv). Images and GIFs cannot be posted to YouTube.",
+        });
       }
 
     // ── Detect Job ID early for variants ─────────────────────────────────
@@ -266,6 +277,8 @@ async function processBroadcastJob({
     `\n🚀 [JOB:${jobId}] Starting background broadcast for user: ${userId}`,
   );
   const canUseAutoDM = postType !== "story";
+  const nonYoutubeChannels = (channels || []).filter((c) => !String(c).startsWith("youtube"));
+  const needsCloudinary = isScheduled || nonYoutubeChannels.length > 0;
 
   // ── Phase 1: Uploading to cloud (0 → 30%) ──────────────────────────────
   updateJob(jobId, {
@@ -279,9 +292,6 @@ async function processBroadcastJob({
   let autoCoverImageUrl = null;
 
   try {
-    const nonYoutubeChannels = (channels || []).filter((c) => !String(c).startsWith("youtube"));
-    const needsCloudinary = isScheduled || nonYoutubeChannels.length > 0;
-
     if (isCloudinaryConfigured() && needsCloudinary) {
       console.log(
         `☁️  [JOB:${jobId}] Uploading ${uploadedFiles.length} file(s) to Cloudinary...`,
@@ -453,7 +463,7 @@ async function processBroadcastJob({
         step: `Post scheduled for ${new Date(scheduledAt).toLocaleString()}!`,
       });
       console.log(`📅 [JOB:${jobId}] Broadcast successfully scheduled. Cleaning up local files to save space.`);
-      if (isCloudinaryConfigured()) {
+      if (isCloudinaryConfigured() && needsCloudinary) {
         cleanupFiles(filePaths, thumbnailFile);
       }
       return;
@@ -495,7 +505,9 @@ async function processBroadcastJob({
       }
 
       await enqueueBroadcastJob(savedBroadcast.id);
-      if (isCloudinaryConfigured()) {
+      // NOTE: Do not delete local file here when queued; the BullMQ worker
+      // cleans up the file in executeBroadcast once publishing finishes.
+      if (isCloudinaryConfigured() && needsCloudinary) {
         cleanupFiles(filePaths, thumbnailFile);
       }
       updateJob(jobId, {

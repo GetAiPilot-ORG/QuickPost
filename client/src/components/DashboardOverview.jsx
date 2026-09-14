@@ -202,6 +202,16 @@ export default function DashboardOverview() {
   }, [range, instagramAccountId]);
 
   useEffect(() => {
+    const handleBroadcastCompleted = () => {
+      fetchOverview();
+    };
+    window.addEventListener("quickpost_broadcast_completed", handleBroadcastCompleted);
+    return () => {
+      window.removeEventListener("quickpost_broadcast_completed", handleBroadcastCompleted);
+    };
+  }, [range, instagramAccountId]);
+
+  useEffect(() => {
     if (loading || !shellRef.current || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
     const context = gsap.context(() => {

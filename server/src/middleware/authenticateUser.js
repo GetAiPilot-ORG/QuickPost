@@ -52,16 +52,42 @@ export async function authenticateUser(req, res, next) {
       });
     }
 
-    // ✅ Verify token via Supabase — works regardless of which JWT secret Supabase uses
-    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+    // 1. Verify token via Supabase
+    let user = null;
+    try {
+      const { data, error } = await supabaseAdmin.auth.getUser(token);
+      if (!error && data?.user) {
+        user = data.user;
+      }
+    } catch (sbErr) {
+      // Ignore and try fallback
+    }
 
-    if (error || !user) {
-      console.error('❌ [AUTH] Token verification failed:', error?.message || 'No user found');
-      if (error) console.error('Full error:', error);
+    // 2. Fallback to local JWT verification if Supabase getUser did not resolve user
+    if (!user) {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        if (decoded && (decoded.userId || decoded.id || decoded.sub)) {
+          user = {
+            id: decoded.userId || decoded.id || decoded.sub,
+            email: decoded.email,
+            user_metadata: {
+              full_name: decoded.name || decoded.full_name,
+              avatar_url: decoded.picture || decoded.avatar_url,
+            }
+          };
+        }
+      } catch (jwtErr) {
+        // Both failed
+      }
+    }
+
+    if (!user) {
+      console.error('❌ [AUTH] Token verification failed: neither Supabase nor JWT secret matched token');
       return res.status(401).json({
         success: false,
         error: 'Invalid token',
-        message: error?.message || 'Authentication token is invalid or expired'
+        message: 'Authentication token is invalid or expired'
       });
     }
 
