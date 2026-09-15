@@ -27,3 +27,13 @@ Blocked before implementing personalization tagging.
 - Next unchecked task is `Claude API call per post: niche + format tagging`.
 - Claude API is a paid external API integration, so AGENTS.md requires a hard stop before implementation.
 - Need user sign-off on whether to use Claude, which API key/model/budget to use, or whether to skip AI tagging and continue with non-paid Phase 6 work.
+
+## 2026-09-12 - Instagram Profile Picture Fetching (Scraping Hard Stop)
+
+Blocked from forcing all user profile pictures to display for Instagram Inbox.
+
+- The official Meta Graph API enforces a "User consent is required" (Code 100, Subcode 2018278) error when trying to fetch the profile picture for Instagram users who have strict privacy settings or haven't interacted with the business recently.
+- The user requested "not all users profile pic is showing show all users profile pic".
+- Bypassing the Meta API requires using unofficial web endpoints (`/__a=1&__d=dis`) or third-party scraping services (`unavatar.io`), all of which have been tested and aggressively block headless/server requests.
+- Writing a residential proxy scraper for this violates the `AGENTS.md` Hard Stop rule: "Any scraping of a platform whose ToS prohibits it, even via a wrapper".
+- Currently falling back to generated colored initials for users where Meta blocks the image. Awaiting user acknowledgment of this technical limitation.

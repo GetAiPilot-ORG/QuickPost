@@ -127,7 +127,12 @@ export default function KnowledgeBaseUploader({ botId }: { botId?: string }) {
             <button
               type="button"
               key={type}
-              onClick={() => setSourceType(type)}
+              onClick={() => {
+                if (editingSource) {
+                  resetForm();
+                }
+                setSourceType(type);
+              }}
               className={`flex w-full items-center gap-3 rounded-md border px-3 py-3 text-left text-sm font-semibold transition ${
                 sourceType === type ? "border-orange-300 bg-orange-50 text-[var(--ink)] shadow-sm" : "border-black/10 bg-[#f8f6f3] text-[var(--slate)] hover:border-black/20 hover:bg-white"
               }`}

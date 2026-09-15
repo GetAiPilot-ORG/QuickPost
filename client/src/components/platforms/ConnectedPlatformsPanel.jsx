@@ -340,15 +340,15 @@ export default function ConnectedPlatformsPanel({
                 <div className="mt-4 flex flex-wrap gap-2">
                   {isConnected ? (
                     <>
-                        <button
-                          type="button"
-                          onClick={() => disconnectPlatform(platform)}
-                          disabled={busy === platform.id}
-                          className="inline-flex h-10 items-center gap-2 rounded-full border border-red-200 bg-white px-4 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-50"
-                        >
-                          <Unlink className="h-4 w-4" />
-                          {busy === platform.id ? "Disconnecting..." : (platformAccounts.length > 1 ? "Disconnect All" : "Disconnect")}
-                        </button>
+                      <button
+                        type="button"
+                        onClick={() => disconnectPlatform(platform)}
+                        disabled={busy === platform.id}
+                        className="inline-flex h-10 items-center gap-2 rounded-full border border-red-200 bg-white px-4 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+                      >
+                        <Unlink className="h-4 w-4" />
+                        {busy === platform.id ? "Disconnecting..." : (platformAccounts.length > 1 ? "Disconnect All" : "Disconnect")}
+                      </button>
                       {canSyncAutoDM ? (
                         <button
                           type="button"

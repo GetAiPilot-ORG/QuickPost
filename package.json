@@ -13,6 +13,7 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
+    "@babel/parser": "^7.29.8",
     "@supabase/supabase-js": "^2.108.2",
     "dotenv": "^17.4.2"
   }

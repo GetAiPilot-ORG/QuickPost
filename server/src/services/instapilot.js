@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import axios from 'axios';
 import supabase from './supabase.js';
 import { consumeUsage } from './entitlements.js';
+import { broadcastRefresh } from './sse.js';
 
 const GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v21.0';
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
@@ -24,7 +25,7 @@ function getEncryptionKeys() {
   // then fall back to AUTODM key (used by the legacy AutoDM token service).
   const rawKeys = [
     process.env.TOKEN_ENCRYPTION_KEY_BASE64 ||
-      null,
+    null,
     process.env.INSTAPILOT_TOKEN_ENCRYPTION_KEY_BASE64 || null,
     process.env.AUTODM_TOKEN_ENCRYPTION_KEY_BASE64 || null,
   ].filter(Boolean);
@@ -569,7 +570,7 @@ function chunkText(text) {
   const chunks = [];
   for (let i = 0; i < cleaned.length; i += 1200) {
     const chunk = cleaned.slice(i, i + 1400).trim();
-    if (chunk.length > 80) chunks.push(chunk);
+    if (chunk.length > 5) chunks.push(chunk);
   }
   return chunks.slice(0, 200);
 }
@@ -773,7 +774,7 @@ async function findAccountByRecipient(recipientId) {
   return null;
 }
 
-async function upsertConversation(account, bot, senderId) {
+async function upsertConversation(account, bot, senderId, messageTimestamp = null) {
   // 1. Check if we already have it in the DB to avoid unnecessary API calls
   const { data: existingConv } = await supabase
     .from('instagram_conversations')
@@ -782,7 +783,10 @@ async function upsertConversation(account, bot, senderId) {
     .eq('instagram_user_id', senderId)
     .maybeSingle();
 
-  let profile = await fetchInstagramScopedUserProfile(account, senderId).catch(() => null);
+  let profile = null;
+  if (!existingConv || !existingConv.instagram_username) {
+    profile = await fetchInstagramScopedUserProfile(account, senderId).catch(() => null);
+  }
 
   // If profile API failed or returned missing data, try to get username from contacts
   let fallbackUsername = null;
@@ -794,7 +798,7 @@ async function upsertConversation(account, bot, senderId) {
       .eq('instagram_account_id', account.id)
       .eq('instagram_user_id', senderId)
       .maybeSingle();
-      
+
     if (contact && contact.username && !contact.username.startsWith('user_')) {
       fallbackUsername = contact.username;
       fallbackName = contact.full_name;
@@ -814,7 +818,7 @@ async function upsertConversation(account, bot, senderId) {
       typeof profile?.is_user_follow_business === 'boolean' ? profile.is_user_follow_business : null,
     is_business_follow_user:
       typeof profile?.is_business_follow_user === 'boolean' ? profile.is_business_follow_user : null,
-    last_message_at: new Date().toISOString(),
+    last_message_at: messageTimestamp ? new Date(messageTimestamp).toISOString() : new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
   const { data, error } = await supabase
@@ -825,6 +829,8 @@ async function upsertConversation(account, bot, senderId) {
   if (error) throw error;
   return data;
 }
+
+const processingMessageIds = new Set();
 
 async function findExistingInboundMessage({ accountId, senderId, recipientId, text, metaMessageId }) {
   if (metaMessageId) {
@@ -900,10 +906,13 @@ async function refreshConversationProfile(conversation) {
     if (error) throw error;
     return data || { ...conversation, ...updates };
   } catch (error) {
-    console.warn(
-      `[INSTAPILOT] Could not refresh profile for conversation ${conversation.id}:`,
-      error.response?.data || error.message
-    );
+    const apiError = error.response?.data?.error || {};
+    if (apiError.code !== 230) {
+      console.warn(
+        `[INSTAPILOT] Could not refresh profile for conversation ${conversation.id}:`,
+        error.response?.data || error.message
+      );
+    }
     return conversation;
   }
 }
@@ -911,12 +920,19 @@ async function refreshConversationProfile(conversation) {
 export async function processInstagramWebhook(payload) {
   const events = [];
   for (const entry of payload.entry || []) {
+    const injectedAccountId = entry._injected_account_id;
     for (const messaging of entry.messaging || []) {
-      if (!messaging.message?.text || messaging.message?.is_echo) continue;
+      if (!messaging.message?.text || messaging.message?.is_echo) {
+        console.log(`[DEBUG] Skipped loop due to missing text or is_echo`);
+        continue;
+      }
       const senderId = messaging.sender?.id;
       const recipientId = messaging.recipient?.id;
-      if (!senderId || !recipientId || senderId === recipientId) continue;
-      events.push(await handleInboundMessage({ senderId, recipientId, messaging }));
+      if (!senderId || !recipientId || senderId === recipientId) {
+        console.log(`[DEBUG] Skipped loop due to invalid sender/recipient`);
+        continue;
+      }
+      events.push(await handleInboundMessage({ senderId, recipientId, messaging, injectedAccountId, skipBotReply: entry.skip_bot_reply }));
     }
   }
   return events.filter(Boolean);
@@ -962,11 +978,27 @@ export function extractLeadDataFromText(text) {
   return extracted;
 }
 
-async function handleInboundMessage({ senderId, recipientId, messaging }) {
-  const account = await findAccountByRecipient(recipientId);
-  if (!account) return { skipped: true, reason: 'account_not_found' };
+async function handleInboundMessage({ senderId, recipientId, messaging, injectedAccountId, skipBotReply }) {
+  let account = null;
+
+  if (injectedAccountId) {
+    const { data } = await supabase.from('instagram_accounts').select('*').eq('id', injectedAccountId).single();
+    account = data;
+    if (account && account.webhook_instagram_user_id !== recipientId) {
+      console.log(`[INSTAPILOT] Auto-healing webhook recipient ${recipientId} to account ${account.instagram_username}`);
+      await clearAndAssignWebhookRecipient(account, recipientId);
+      account.webhook_instagram_user_id = recipientId;
+    }
+  } else {
+    account = await findAccountByRecipient(recipientId);
+  }
+
+  if (!account) {
+    console.log(`[DEBUG] Skipped due to account_not_found for recipientId=${recipientId}`);
+    return { skipped: true, reason: 'account_not_found' };
+  }
   const bot = await findActiveBotForAccount(account.id);
-  const conversation = await upsertConversation(account, bot, senderId);
+  const conversation = await upsertConversation(account, bot, senderId, messaging.timestamp);
   const text = messaging.message.text;
   const metaMessageId = messaging.message.mid || null;
 
@@ -1000,6 +1032,22 @@ async function handleInboundMessage({ senderId, recipientId, messaging }) {
     );
   }
 
+  console.log(`[DEBUG] handleInboundMessage called for sender=${senderId}, metaMessageId=${metaMessageId}`);
+
+  // Prevent race conditions from concurrent duplicate webhooks (Ngrok + Edge, or Meta retries)
+  if (metaMessageId) {
+    if (processingMessageIds.has(metaMessageId)) {
+      console.log(`[INSTAPILOT] Race condition mitigated! Message ${metaMessageId} is already being processed.`);
+      return { skipped: true, reason: 'race_condition_duplicate' };
+    }
+    processingMessageIds.add(metaMessageId);
+
+    // Keep the lock for 60 seconds
+    setTimeout(() => {
+      processingMessageIds.delete(metaMessageId);
+    }, 60000);
+  }
+
   const existingInbound = await findExistingInboundMessage({
     accountId: account.id,
     senderId,
@@ -1008,8 +1056,11 @@ async function handleInboundMessage({ senderId, recipientId, messaging }) {
     metaMessageId,
   });
   if (existingInbound) {
+    console.log(`[DEBUG] Skipped due to duplicate_inbound_message`);
     return { skipped: true, reason: 'duplicate_inbound_message', messageId: existingInbound.id };
   }
+
+  const createdAt = messaging.timestamp ? new Date(messaging.timestamp).toISOString() : new Date().toISOString();
 
   const { error: inboundError } = await supabase.from('instagram_messages').insert({
     user_id: account.user_id,
@@ -1021,8 +1072,15 @@ async function handleInboundMessage({ senderId, recipientId, messaging }) {
     message_text: text,
     direction: 'inbound',
     raw_payload: messaging,
+    created_at: createdAt,
   });
   if (inboundError) console.error('❌ Failed to insert INBOUND message:', inboundError);
+  console.log(`[TIMING] INBOUND message inserted for conv ${conversation.id} at ${new Date().toISOString()}`);
+  broadcastRefresh('InboundMessage');
+
+  if (skipBotReply) {
+    return { skipped: true, reason: 'historical_sync_skip_reply' };
+  }
 
   if (!bot || conversation.bot_paused || conversation.status === 'human_active' || conversation.status === 'closed') {
     return { skipped: true, reason: 'bot_inactive_or_paused' };
@@ -1037,6 +1095,21 @@ async function handleInboundMessage({ senderId, recipientId, messaging }) {
   if (!quotaBot.canSend) {
     await supabase.from('instagram_conversations').update({ status: 'human_needed' }).eq('id', conversation.id);
     return { skipped: true, reason: 'daily_reply_limit_reached' };
+  }
+
+  // Guard against duplicate outbound replies within 10 seconds for the same conversation
+  const tenSecondsAgo = new Date(Date.now() - 10000).toISOString();
+  const { data: recentOutbound } = await supabase
+    .from('instagram_messages')
+    .select('id')
+    .eq('conversation_id', conversation.id)
+    .eq('direction', 'outbound')
+    .gte('created_at', tenSecondsAgo)
+    .limit(1);
+
+  if (recentOutbound && recentOutbound.length > 0) {
+    console.log(`[INSTAPILOT] Duplicate prevention: Outbound reply already sent in last 10s for conv ${conversation.id}. Skipping.`);
+    return { skipped: true, reason: 'recent_outbound_already_sent' };
   }
 
   const reply = await generateReply({ bot, messageText: text, conversation });
@@ -1085,6 +1158,8 @@ async function handleInboundMessage({ senderId, recipientId, messaging }) {
       confidence_score: reply.confidence,
       status: 'sent',
     });
+    console.log(`[TIMING] OUTBOUND message inserted for conv ${conversation.id} at ${new Date().toISOString()}`);
+    broadcastRefresh('OutboundReply');
 
     // Send watermark as separate message if free plan
     if (isFreePlan) {
@@ -1195,7 +1270,36 @@ export async function getConversation(userId, conversationId) {
     .eq('user_id', userId)
     .order('created_at', { ascending: true });
   if (messagesError) throw messagesError;
-  return { conversation, messages: messages || [] };
+
+  // Deduplicate messages defensively before sending to frontend
+  const seenMids = new Set();
+  const seenOutbounds = new Map();
+  const uniqueMessages = [];
+
+  for (const msg of (messages || [])) {
+    const mid = msg.raw_payload?.message?.mid;
+    if (msg.direction === 'inbound') {
+      if (mid) {
+        if (seenMids.has(mid)) continue;
+        seenMids.add(mid);
+      }
+      uniqueMessages.push(msg);
+    } else {
+      const key = `${msg.message_text}`;
+      const time = new Date(msg.created_at).getTime();
+      if (seenOutbounds.has(key)) {
+        const lastTime = seenOutbounds.get(key);
+        if (Math.abs(time - lastTime) < 10000) {
+          continue; // Skip duplicate outbound reply sent within 10s
+        }
+      }
+      seenOutbounds.set(key, time);
+      uniqueMessages.push(msg);
+    }
+  }
+
+  console.log(`[TIMING] Frontend fetched thread ${conversationId} with ${uniqueMessages.length} messages at ${new Date().toISOString()}`);
+  return { conversation, messages: uniqueMessages };
 }
 
 export async function manualReply(userId, conversationId, text) {
@@ -1221,6 +1325,7 @@ export async function manualReply(userId, conversationId, text) {
   if (error) throw error;
   await supabase.from('instagram_conversations').update({ status: 'human_active', bot_paused: true }).eq('id', conversationId);
   await audit(userId, 'manual_reply', 'instagram_conversation', conversationId);
+  broadcastRefresh('ManualOutbound');
   return data;
 }
 
@@ -1235,6 +1340,7 @@ export async function updateConversation(userId, conversationId, payload) {
     .select('*')
     .single();
   if (error) throw error;
+  broadcastRefresh('ConversationUpdate');
   return data;
 }
 
@@ -1265,4 +1371,75 @@ async function audit(userId, action, entityType, entityId, metadata = {}) {
     entity_id: entityId,
     metadata,
   });
+}
+
+export async function syncInboxFromGraphAPI(userId) {
+  const { data: accounts } = await supabase
+    .from('instagram_accounts')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('is_connected', true);
+
+  if (!accounts || accounts.length === 0) return { synced: 0 };
+
+  let totalProcessed = 0;
+  for (const account of accounts) {
+    try {
+      const accessToken = await getPageTokenForAccount(account);
+      const graphBase = getGraphBaseForToken(accessToken);
+      const queryId = accessToken.startsWith('IG') ? account.instagram_business_account_id : (account.page_id || account.instagram_business_account_id);
+
+      const convRes = await axios.get(`${graphBase}/${queryId}/conversations`, {
+        params: {
+          platform: 'instagram',
+          fields: 'messages.limit(5){id,message,created_time,from,to}',
+          access_token: accessToken
+        }
+      });
+
+      const conversations = convRes.data?.data || [];
+      const simulatedEntries = [];
+
+      for (const conv of conversations) {
+        const messages = conv.messages?.data || [];
+        for (const msg of [...messages].reverse()) {
+          if (!msg.message) continue;
+          const senderId = msg.from?.id;
+          const recipientId = msg.to?.data?.[0]?.id || queryId;
+
+          if (
+            senderId === queryId ||
+            senderId === account.instagram_business_account_id ||
+            senderId === account.page_id ||
+            senderId === account.webhook_instagram_user_id
+          ) continue;
+
+          const msgTime = new Date(msg.created_time).getTime();
+          const isOldMessage = Date.now() - msgTime > 5 * 60 * 1000;
+
+          simulatedEntries.push({
+            _injected_account_id: account.id,
+            skip_bot_reply: isOldMessage,
+            messaging: [
+              {
+                sender: { id: senderId },
+                recipient: { id: recipientId },
+                timestamp: msgTime,
+                message: { text: msg.message, mid: msg.id }
+              }
+            ]
+          });
+        }
+      }
+
+      if (simulatedEntries.length > 0) {
+        await processInstagramWebhook({ entry: simulatedEntries });
+        totalProcessed += simulatedEntries.length;
+      }
+    } catch (err) {
+      console.error('[INSTAPILOT] Sync failed for account', account.id, err.response?.data || err.message);
+    }
+  }
+
+  return { synced: totalProcessed };
 }

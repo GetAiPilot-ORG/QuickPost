@@ -10,8 +10,10 @@ function logSdkError(action, error) {
       console.warn(`[SupermailBox SDK] ${action} failed: Service not reachable (ECONNREFUSED) - muting further warnings`);
       econnrefusedWarned = true;
     }
+  } else if (error instanceof SyntaxError || error.message?.includes('JSON')) {
+    console.error(`[SupermailBox SDK] ${action} failed: Received invalid JSON response from server.`);
   } else {
-    console.error(`[SupermailBox SDK] ${action} failed:`, error);
+    console.error(`[SupermailBox SDK] ${action} failed:`, error.message || error);
   }
 }
 
@@ -42,6 +44,10 @@ export class SupermailboxClient {
           attributes: user.attributes
         })
       });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`HTTP ${response.status}: ${text.slice(0, 100)}`);
+      }
       return await response.json();
     } catch (error) {
       logSdkError('Contact sync', error);
@@ -69,6 +75,10 @@ export class SupermailboxClient {
           variables: request.variables || {}
         })
       });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`HTTP ${response.status}: ${text.slice(0, 100)}`);
+      }
       return await response.json();
     } catch (error) {
       logSdkError('Send email', error);
@@ -91,6 +101,10 @@ export class SupermailboxClient {
         },
         body: JSON.stringify(request)
       });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`HTTP ${response.status}: ${text.slice(0, 100)}`);
+      }
       return await response.json();
     } catch (error) {
       logSdkError('Send broadcast', error);
