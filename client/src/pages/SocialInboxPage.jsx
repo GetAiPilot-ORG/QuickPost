@@ -35,6 +35,9 @@ const PLATFORMS = [
   { id: "mastodon", label: "Mastodon", icon: "/icons/mastodon-round-icon.svg" },
 ];
 
+const INBOX_CLIENT_CACHE_TTL_MS = 60_000;
+const inboxClientCache = new Map();
+
 function getPlatformIcon(platformId) {
   const match = PLATFORMS.find((p) => p.id === platformId);
   return match?.icon || "/icons/share-icon.svg";
@@ -170,20 +173,25 @@ function PostThumbnailImage({ src, platform, postId, size = 64 }) {
 
 export default function SocialInboxPage() {
   const { user } = useAuth();
+  const clientCacheKey = user?.id || user?.userId || "anonymous";
+  const cachedInbox = inboxClientCache.get(clientCacheKey);
   const [selectedPlatform, setSelectedPlatform] = useState("all");
   const [selectedAccount, setSelectedAccount] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all"); // all, unread, replied, starred
   const [searchQuery, setSearchQuery] = useState("");
-  const [items, setItems] = useState([]);
-  const [platformStatuses, setPlatformStatuses] = useState({});
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState(() => cachedInbox?.items || []);
+  const [platformStatuses, setPlatformStatuses] = useState(() => cachedInbox?.platformStatuses || {});
+  const [loading, setLoading] = useState(() => !cachedInbox);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState(null);
+  const [threadLoadingId, setThreadLoadingId] = useState(null);
 
   // Session-only states (Stateless requirements)
   const [repliedIds, setRepliedIds] = useState(new Set());
   const [starredIds, setStarredIds] = useState(new Set());
-  const [unreadIds, setUnreadIds] = useState(new Set());
+  const [unreadIds, setUnreadIds] = useState(() => new Set(
+    (cachedInbox?.items || []).filter((item) => item.unread).map((item) => item.id)
+  ));
 
   // Reply Composer state
   const [replyText, setReplyText] = useState("");
@@ -195,14 +203,21 @@ export default function SocialInboxPage() {
   // Load Inbox Stream from API
   const loadInboxStream = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
-    else setLoading(true);
+    else if (!inboxClientCache.has(clientCacheKey)) setLoading(true);
 
     try {
-      const res = await apiClient.get("/api/inbox/stream");
+      const res = await apiClient.get("/api/inbox/stream", {
+        params: isRefresh ? { refresh: 1 } : undefined,
+      });
       if (res.data?.success) {
         const aggregatedItems = res.data.items || [];
         setItems(aggregatedItems);
         setPlatformStatuses(res.data.platformStatuses || {});
+        inboxClientCache.set(clientCacheKey, {
+          items: aggregatedItems,
+          platformStatuses: res.data.platformStatuses || {},
+          cachedAt: Date.now(),
+        });
 
         // Initialize unread IDs for items marked unread
         const initialUnread = new Set(
@@ -217,11 +232,14 @@ export default function SocialInboxPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [clientCacheKey]);
 
   useEffect(() => {
-    loadInboxStream();
-  }, [loadInboxStream]);
+    const cached = inboxClientCache.get(clientCacheKey);
+    if (!cached || Date.now() - cached.cachedAt >= INBOX_CLIENT_CACHE_TTL_MS) {
+      loadInboxStream();
+    }
+  }, [clientCacheKey, loadInboxStream]);
 
   // Unique Accounts list based on current platform selection
   const availableAccounts = useMemo(() => {
@@ -272,6 +290,30 @@ export default function SocialInboxPage() {
   const selectedItem = useMemo(() => {
     return items.find((i) => i.id === selectedItemId) || null;
   }, [items, selectedItemId]);
+
+  const handleSelectItem = useCallback(async (item) => {
+    setSelectedItemId(item.id);
+    if (!["instagram", "facebook"].includes(item.platform) || item.threadLoaded) return;
+
+    setThreadLoadingId(item.id);
+    try {
+      const conversationId = String(item.commentId || item.id).replace(/^(ig|fb):/, "");
+      const { data } = await apiClient.get("/api/inbox/thread", {
+        params: { platform: item.platform, accountId: item.accountId, conversationId },
+      });
+      if (data?.success) {
+        setItems((currentItems) => currentItems.map((currentItem) =>
+          currentItem.id === item.id
+            ? { ...currentItem, replies: data.replies || [], threadLoaded: true }
+            : currentItem
+        ));
+      }
+    } catch (error) {
+      console.error("Failed to load conversation thread:", error);
+    } finally {
+      setThreadLoadingId((currentId) => currentId === item.id ? null : currentId);
+    }
+  }, []);
 
   // Reply Progress Calculation (Replied X / Y)
   const totalY = items.length;
@@ -596,7 +638,7 @@ export default function SocialInboxPage() {
                 return (
                   <div
                     key={item.id}
-                    onClick={() => setSelectedItemId(item.id)}
+                    onClick={() => handleSelectItem(item)}
                     style={{
                       padding: "14px 16px",
                       borderBottom: "1px solid rgba(20,20,19,0.06)",
@@ -717,7 +759,11 @@ export default function SocialInboxPage() {
                   </div>
 
                   {/* Original Message and Replies */}
-                  {(selectedItem.replies?.length > 0 ? selectedItem.replies : [selectedItem]).map((msg, idx, arr) => {
+                  {threadLoadingId === selectedItem.id ? (
+                    <div style={{ display: "flex", justifyContent: "center", padding: 24, color: "var(--slate)" }}>
+                      <Loader2 size={22} className="animate-spin" />
+                    </div>
+                  ) : (selectedItem.replies?.length > 0 ? selectedItem.replies : [selectedItem]).map((msg, idx, arr) => {
                     const isSelf = msg.isSelf || false;
                     const rawText = msg.text || selectedItem.text || "";
                     const msgText = rawText.trim() === "" ? "[📸 Media Attachment]" : rawText;

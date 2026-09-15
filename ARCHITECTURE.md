@@ -27,3 +27,5 @@
 - YouTube embeds include page origin/referrer policy, and ingestion records `status.embeddable` so blocked videos fall back to thumbnail links.
 - Reddit ingestion uses official OAuth API app tokens against `oauth.reddit.com`, surfaces 429 retry hints, stores no embeds, and routes normalized posts through the shared `posts` dedupe insert pipeline.
 - Bluesky ingestion uses the public Jetstream WebSocket filtered to `app.bsky.feed.post`; raw CBOR/CAR `subscribeRepos` is deferred because Jetstream gives the needed public post stream with lower bandwidth and simpler JSON parsing.
+- Social Inbox Stage 1 keeps the live aggregator temporarily, with tenant-scoped Redis caching, 3.5-second provider timeouts, one-message Meta previews, and lazy full-thread reads on selection.
+- Inbox refresh requests bypass and repopulate the Redis cache; successful replies invalidate the tenant cache. Redis failures fall back to uncached aggregation.

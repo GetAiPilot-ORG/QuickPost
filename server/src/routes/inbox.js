@@ -1,4 +1,6 @@
 import express from 'express';
+import crypto from 'crypto';
+import IORedis from 'ioredis';
 import { authenticateUser } from '../middleware/authenticateUser.js';
 import supabase, { getTokensForUser } from '../services/supabase.js';
 import axios from 'axios';
@@ -9,6 +11,55 @@ import googleOAuth from '../services/googleOAuth.js';
 const router = express.Router();
 let lastIgError = null;
 let lastIgDebug = null;
+
+const INBOX_PROVIDER_TIMEOUT_MS = Number(process.env.INBOX_PROVIDER_TIMEOUT_MS || 3500);
+const INBOX_CACHE_TTL_SECONDS = Number(process.env.INBOX_CACHE_TTL_SECONDS || 60);
+const externalApi = axios.create({ timeout: INBOX_PROVIDER_TIMEOUT_MS });
+let inboxRedis;
+
+function getInboxRedis() {
+  const url = process.env.REDIS_URL || process.env.BULLMQ_REDIS_URL;
+  if (!url) return null;
+  if (!inboxRedis) {
+    inboxRedis = new IORedis(url, {
+      maxRetriesPerRequest: 1,
+      enableReadyCheck: false,
+      lazyConnect: true,
+    });
+    inboxRedis.on('error', () => {});
+  }
+  return inboxRedis;
+}
+
+function inboxCacheKey(userIds) {
+  const tenantHash = crypto
+    .createHash('sha256')
+    .update([...userIds].sort().join('|'))
+    .digest('hex')
+    .slice(0, 24);
+  return `inbox:stream:v1:${tenantHash}`;
+}
+
+async function readInboxCache(key) {
+  try {
+    const cached = await getInboxRedis()?.get(key);
+    return cached ? JSON.parse(cached) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeInboxCache(key, payload) {
+  try {
+    await getInboxRedis()?.set(key, JSON.stringify(payload), 'EX', INBOX_CACHE_TTL_SECONDS);
+  } catch {}
+}
+
+async function invalidateInboxCache(userIds) {
+  try {
+    await getInboxRedis()?.del(inboxCacheKey(userIds));
+  } catch {}
+}
 
 /**
  * Universal Social Inbox Backend Aggregator & Reply Engine
@@ -140,7 +191,7 @@ async function fetchYouTubeComments(tokenRow) {
     if (!accessToken) return { status: 'error', error: 'Missing access token', items: [] };
 
     // Fetch user's channel ID
-    const channelRes = await axios.get('https://www.googleapis.com/youtube/v3/channels', {
+    const channelRes = await externalApi.get('https://www.googleapis.com/youtube/v3/channels', {
       params: { part: 'snippet,contentDetails', mine: true },
       headers: { Authorization: `Bearer ${accessToken}` }
     });
@@ -152,7 +203,7 @@ async function fetchYouTubeComments(tokenRow) {
     const channelTitle = channelItem.snippet?.title || 'YouTube Channel';
 
     // Query channel-wide comment threads directly via allThreadsRelatedToChannelId
-    const commentsRes = await axios.get('https://www.googleapis.com/youtube/v3/commentThreads', {
+    const commentsRes = await externalApi.get('https://www.googleapis.com/youtube/v3/commentThreads', {
       params: { part: 'snippet,replies', allThreadsRelatedToChannelId: channelId, maxResults: 25, textFormat: 'plainText' },
       headers: { Authorization: `Bearer ${accessToken}` }
     });
@@ -163,7 +214,7 @@ async function fetchYouTubeComments(tokenRow) {
 
     if (videoIds.length > 0) {
       try {
-        const videoRes = await axios.get('https://www.googleapis.com/youtube/v3/videos', {
+        const videoRes = await externalApi.get('https://www.googleapis.com/youtube/v3/videos', {
           params: { part: 'snippet', id: videoIds.join(',') },
           headers: { Authorization: `Bearer ${accessToken}` }
         });
@@ -242,10 +293,10 @@ async function fetchInstagramComments(tokenRow) {
     const graphBase = isIgToken ? 'https://graph.instagram.com/v24.0' : 'https://graph.facebook.com/v18.0';
     const queryId = isIgToken ? businessId : (tokenRow.page_id || businessId);
     
-    const convRes = await axios.get(`${graphBase}/${queryId}/conversations`, {
+    const convRes = await externalApi.get(`${graphBase}/${queryId}/conversations`, {
       params: {
         platform: 'instagram',
-        fields: 'id,updated_time,participants,messages.limit(15){id,message,created_time,from,to}',
+        fields: 'id,updated_time,participants,messages.limit(1){id,message,created_time,from,to}',
         limit: 20,
         access_token: accessToken
       }
@@ -254,7 +305,6 @@ async function fetchInstagramComments(tokenRow) {
     const conversations = convRes.data?.data || [];
     let conversationItems = [];
 
-    // Parallel fetch for profile pictures
     const myUsername = (tokenRow.username || tokenRow.account_name || '').toLowerCase();
     
     await Promise.all(conversations.map(async (conv) => {
@@ -262,18 +312,7 @@ async function fetchInstagramComments(tokenRow) {
       const participants = conv.participants?.data || [];
       const otherUser = participants.find(p => (p.username || p.name || '').toLowerCase() !== myUsername && String(p.id) !== String(queryId)) || participants[0] || {};
       
-      // Attempt to fetch profile picture for the other user if they have an ID
-      let fetchedAvatar = null;
-      if (otherUser.id) {
-        try {
-          const profileRes = await axios.get(`${graphBase}/${otherUser.id}`, {
-            params: { fields: 'profile_pic', access_token: accessToken }
-          });
-          fetchedAvatar = profileRes.data?.profile_pic || null;
-        } catch (err) {
-          // Silent catch - we'll just fall back to initial
-        }
-      }
+      const fetchedAvatar = otherUser.profile_pic || null;
 
       const lastMessage = messages[0] || {};
       const hasReplied = String(lastMessage.from?.id) === String(queryId) || (lastMessage.from?.username || '').toLowerCase() === myUsername;
@@ -325,7 +364,7 @@ async function fetchBlueskyComments(tokenRow) {
     if (!handle) return { status: 'error', error: 'Missing Bluesky handle', items: [] };
 
     // Public feed fetch for Bluesky handle via bsky.app public API
-    const res = await axios.get('https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed', {
+    const res = await externalApi.get('https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed', {
       params: { actor: handle, limit: 5 }
     });
 
@@ -337,7 +376,7 @@ async function fetchBlueskyComments(tokenRow) {
       if (!post || !post.replyCount) continue;
 
       try {
-        const threadRes = await axios.get('https://public.api.bsky.app/xrpc/app.bsky.feed.getPostThread', {
+        const threadRes = await externalApi.get('https://public.api.bsky.app/xrpc/app.bsky.feed.getPostThread', {
           params: { uri: post.uri, depth: 1 }
         });
 
@@ -387,7 +426,7 @@ async function fetchMastodonComments(tokenRow) {
     if (!accessToken) return { status: 'error', error: 'Missing Mastodon token', items: [] };
 
     // Fetch user notifications for mentions / replies
-    const notifRes = await axios.get(`${instanceUrl}/api/v1/notifications`, {
+    const notifRes = await externalApi.get(`${instanceUrl}/api/v1/notifications`, {
       params: { types: ['mention', 'status'], limit: 10 },
       headers: { Authorization: `Bearer ${accessToken}` }
     });
@@ -435,10 +474,10 @@ async function fetchFacebookComments(tokenRow) {
     const pageId = tokenRow.page_id || tokenRow.account_id;
     if (!accessToken || !pageId) return { status: 'error', error: 'Missing Facebook Page credentials', items: [] };
 
-    const convRes = await axios.get(`https://graph.facebook.com/v18.0/${pageId}/conversations`, {
+    const convRes = await externalApi.get(`https://graph.facebook.com/v18.0/${pageId}/conversations`, {
       params: {
         platform: 'messenger',
-        fields: 'id,updated_time,participants,messages.limit(15){id,message,created_time,from,to}',
+        fields: 'id,updated_time,participants,messages.limit(1){id,message,created_time,from,to}',
         limit: 20,
         access_token: accessToken
       }
@@ -447,7 +486,6 @@ async function fetchFacebookComments(tokenRow) {
     const conversations = convRes.data?.data || [];
     let conversationItems = [];
 
-    // Parallel fetch for profile pictures
     const myUsername = (tokenRow.username || tokenRow.account_name || 'Facebook Page').toLowerCase();
     
     await Promise.all(conversations.map(async (conv) => {
@@ -455,18 +493,7 @@ async function fetchFacebookComments(tokenRow) {
       const participants = conv.participants?.data || [];
       const otherUser = participants.find(p => (p.name || '').toLowerCase() !== myUsername && String(p.id) !== String(pageId)) || participants[0] || {};
       
-      // Attempt to fetch profile picture for the other user if they have an ID
-      let fetchedAvatar = null;
-      if (otherUser.id) {
-        try {
-          const profileRes = await axios.get(`https://graph.facebook.com/v18.0/${otherUser.id}`, {
-            params: { fields: 'picture', access_token: accessToken }
-          });
-          fetchedAvatar = profileRes.data?.picture?.data?.url || null;
-        } catch (err) {
-          // Silent catch - we'll just fall back to initial
-        }
-      }
+      const fetchedAvatar = otherUser.picture?.data?.url || null;
 
       const lastMessage = messages[0] || {};
       const hasReplied = String(lastMessage.from?.id) === String(pageId) || (lastMessage.from?.name || '').toLowerCase() === myUsername;
@@ -511,11 +538,60 @@ async function fetchFacebookComments(tokenRow) {
   }
 }
 
+async function fetchMetaThread(tokenRow, platform, conversationId) {
+  const accessToken = safeDecrypt(tokenRow.access_token || tokenRow.access_token_encrypted);
+  const accountId = tokenRow.account_id || tokenRow.page_id || tokenRow.instagram_business_account_id;
+  if (!accessToken || !accountId) throw new Error(`Missing ${platform} credentials`);
+
+  const isInstagram = platform === 'instagram';
+  const isIgToken = isInstagram && accessToken.startsWith('IG');
+  const graphBase = isIgToken
+    ? 'https://graph.instagram.com/v24.0'
+    : 'https://graph.facebook.com/v18.0';
+  const ownerId = isIgToken ? accountId : (tokenRow.page_id || accountId);
+  const ownerName = String(tokenRow.username || tokenRow.account_name || '').toLowerCase();
+  const { data } = await externalApi.get(`${graphBase}/${conversationId}`, {
+    params: {
+      fields: 'participants,messages.limit(50){id,message,created_time,from,to}',
+      access_token: accessToken,
+    },
+  });
+
+  const participants = data?.participants?.data || [];
+  const otherUser = participants.find((participant) =>
+    String(participant.id) !== String(ownerId) &&
+    String(participant.username || participant.name || '').toLowerCase() !== ownerName
+  ) || participants[0] || {};
+
+  return (data?.messages?.data || []).map((message) => {
+    const isSelf = String(message.from?.id) === String(ownerId) ||
+      String(message.from?.username || message.from?.name || '').toLowerCase() === ownerName;
+    return {
+      id: message.id,
+      authorName: isSelf ? (tokenRow.username || tokenRow.account_name || 'You') : (otherUser.username || otherUser.name || 'User'),
+      authorAvatar: isInstagram ? otherUser.profile_pic || null : otherUser.picture?.data?.url || null,
+      text: message.message || '',
+      createdAt: message.created_time,
+      isSelf,
+    };
+  }).reverse();
+}
+
 // ── GET /api/inbox/stream ───────────────────────────────────────────────────
 
 router.get('/inbox/stream', authenticateUser, async (req, res) => {
   try {
     const userIds = [...new Set([req.user.userId, req.user.authUserId].filter(Boolean))];
+    const cacheKey = inboxCacheKey(userIds);
+    const bypassCache = req.query.refresh === '1';
+
+    if (!bypassCache) {
+      const cachedPayload = await readInboxCache(cacheKey);
+      if (cachedPayload) {
+        res.setHeader('X-Inbox-Cache', 'HIT');
+        return res.json(cachedPayload);
+      }
+    }
 
     // Fetch connected accounts from social_tokens strictly scoped to req.user
     const { data: tokenRows, error: tokenError } = await supabase
@@ -622,12 +698,15 @@ router.get('/inbox/stream', authenticateUser, async (req, res) => {
     // Sort items by createdAt descending (newest first)
     allItems.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-    return res.json({
+    const payload = {
       success: true,
       totalLoaded: allItems.length,
       platformStatuses,
       items: allItems
-    });
+    };
+    await writeInboxCache(cacheKey, payload);
+    res.setHeader('X-Inbox-Cache', 'MISS');
+    return res.json(payload);
 
   } catch (err) {
     console.error('❌ [INBOX-STREAM] Error:', err.message);
@@ -635,6 +714,54 @@ router.get('/inbox/stream', authenticateUser, async (req, res) => {
       success: false,
       error: 'Failed to aggregate inbox stream',
       message: err.message
+    });
+  }
+});
+
+router.get('/inbox/thread', authenticateUser, async (req, res) => {
+  try {
+    const platform = String(req.query.platform || '').toLowerCase();
+    const conversationId = String(req.query.conversationId || '');
+    const accountId = String(req.query.accountId || '');
+    if (!['instagram', 'facebook'].includes(platform) || !conversationId || !accountId) {
+      return res.status(400).json({ success: false, error: 'Valid platform, conversationId, and accountId are required' });
+    }
+
+    const userIds = [...new Set([req.user.userId, req.user.authUserId].filter(Boolean))];
+    const { data: tokenRows, error: tokenError } = await supabase
+      .from('social_tokens')
+      .select('user_id,provider,account_id,account_name,page_id,username,access_token')
+      .in('user_id', userIds);
+    if (tokenError) throw tokenError;
+
+    let candidates = (tokenRows || []).filter((row) => String(row.provider || '').toLowerCase() === platform);
+    if (platform === 'instagram') {
+      const { data: instagramAccounts, error: accountError } = await supabase
+        .from('instagram_accounts')
+        .select('user_id,instagram_business_account_id,access_token_encrypted,instagram_username')
+        .in('user_id', userIds)
+        .eq('is_connected', true);
+      if (accountError) throw accountError;
+      candidates = candidates.concat((instagramAccounts || []).map((account) => ({
+        account_id: account.instagram_business_account_id,
+        access_token_encrypted: account.access_token_encrypted,
+        username: account.instagram_username,
+        account_name: account.instagram_username,
+      })));
+    }
+
+    const tokenRow = candidates.find((row) =>
+      String(row.account_id || '') === accountId || String(row.page_id || '') === accountId
+    );
+    if (!tokenRow) return res.status(404).json({ success: false, error: 'Connected account not found' });
+
+    const replies = await fetchMetaThread(tokenRow, platform, conversationId);
+    return res.json({ success: true, replies });
+  } catch (err) {
+    console.error('❌ [INBOX-THREAD] Error:', err.response?.data?.error?.message || err.message);
+    return res.status(err.response?.status || 502).json({
+      success: false,
+      error: err.response?.data?.error?.message || err.message || 'Failed to load conversation',
     });
   }
 });
@@ -883,6 +1010,7 @@ router.post('/inbox/reply', authenticateUser, async (req, res) => {
       replyId = mRes.data?.id || replyId;
     }
 
+    await invalidateInboxCache(userIds);
     return res.json({
       success: true,
       replyId,
