@@ -32,3 +32,4 @@
 - Social Inbox Stage 2 reads normalized conversation previews and messages from `inbox_conversations` and `inbox_messages`, using `(timestamp, id)` cursors; `inbox_sync_state` holds per-account incremental sync state.
 - The legacy aggregator remains a migration/backfill fallback and writes fetched items into the unified inbox. Instagram messaging webhooks mirror directly into the unified tables; provider enrichment stays off the webhook response path.
 - Non-webhook inbox sources synchronize through the separate `worker:inbox` process on `INBOX_SYNC_CRON` (three minutes by default), with bounded five-account batches and per-account status in `inbox_sync_state`.
+- Expired Meta credentials are skipped, and permanent authorization/scope failures cool down for 24 hours unless account credentials are updated; transient timeouts remain eligible for the next sync.
