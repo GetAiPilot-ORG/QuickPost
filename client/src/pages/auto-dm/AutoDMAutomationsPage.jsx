@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { useAutoDM } from '../../context/AutoDMContext';
 import AutoDMAccountSwitcher from './AutoDMAccountSwitcher';
+import InfoHelp from '../../components/InfoHelp';
 
 const AVATAR_GRADIENTS = [
   'linear-gradient(135deg, #833ab4 0%, #fd1d1d 50%, #fcb045 100%)',
@@ -311,7 +312,10 @@ function AnalyticsModal({ automation, analytics, loading, commentRows, commentsL
                           <Shield size={16} />
                         </div>
                         <div>
-                          <h3>Follow Gate Stats</h3>
+                          <h3 className="inline-flex items-center gap-1.5">
+                            Follow Gate Stats
+                            <InfoHelp text="Follower conversion metrics for comments triggering this automation rule" />
+                          </h3>
                           <p>Follower interactions for this automation.</p>
                         </div>
                       </div>

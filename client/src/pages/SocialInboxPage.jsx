@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import apiClient from "../utils/apiClient";
 import { useAuth } from "../context/AuthContext";
+import InfoHelp from "../components/InfoHelp";
 
 const PLATFORMS = [
   { id: "all", label: "All channels", icon: "/icons/share-icon.svg" },
@@ -396,14 +397,18 @@ export default function SocialInboxPage() {
             gap: 16,
           }}
         >
-          <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0, letterSpacing: "-0.02em", color: "var(--ink, #111111)" }}>
+          <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0, letterSpacing: "-0.02em", color: "var(--ink, #111111)", display: "inline-flex", alignItems: "center", gap: 8 }}>
             Social Inbox
+            <InfoHelp text="Unified inbox consolidating incoming comments and direct messages across all connected social channels" />
           </h1>
 
           {/* Replied Status & Actions */}
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, background: "var(--canvas, #f5f1ec)", padding: "6px 12px", borderRadius: 8 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.04em" }}>Replied</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.04em", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                Replied
+                <InfoHelp text="Tracks the ratio of conversations and audience comments that have received replies" />
+              </span>
               <span style={{ fontSize: 14, fontWeight: 800, color: "var(--ink)" }}>{confirmedX} <span style={{ color: "var(--slate)", fontWeight: 500 }}>/ {totalY}</span></span>
               <div style={{ width: 80, height: 6, background: "rgba(0,0,0,0.06)", borderRadius: 3, overflow: "hidden" }}>
                 <motion.div
