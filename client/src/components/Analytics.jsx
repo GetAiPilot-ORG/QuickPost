@@ -1428,16 +1428,16 @@ function ListRow({ post, expanded, onToggle, connectedAccounts, onEdit, onDelete
                   >
                     {getPlatformIcon(p.id)}
                   </div>
-                    <div style={{ minWidth: 0, maxWidth: "65%" }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: css.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {resolvePlatformLabel(p, connectedAccounts)}
-                      </div>
-                      <div style={{ fontSize: 11, fontWeight: 650, color: p.success ? "#15803d" : (isScheduled && !p.error) ? css.slate : "#b91c1c", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={p.error || post.last_error}>
-                        {p.success ? "Success" : (isScheduled && !p.error) ? "Scheduled" : (formatUserFriendlyError(p.error || post.last_error, p.id) || "Failed")}
-                      </div>
+                  <div style={{ minWidth: 0, maxWidth: "65%" }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: css.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {resolvePlatformLabel(p, connectedAccounts)}
+                    </div>
+                    <div style={{ fontSize: 11, fontWeight: 650, color: p.success ? "#15803d" : (isScheduled && !p.error) ? css.slate : "#b91c1c", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={p.error || post.last_error}>
+                      {p.success ? "Success" : (isScheduled && !p.error) ? "Scheduled" : (formatUserFriendlyError(p.error || post.last_error, p.id) || "Failed")}
                     </div>
                   </div>
-                  {p.success ? (
+                </div>
+                {p.success ? (
                   p.url ? (
                     <a
                       href={p.url}
@@ -1605,7 +1605,7 @@ function Dashboard() {
   const [composerOpen, setComposerOpen] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [viewMode, setViewMode] = useState("list");
+  const [viewMode, setViewMode] = useState("grid");
   const [selectedPost, setSelectedPost] = useState(null);
   const [queueCount, setQueueCount] = useState(0);
   const [disconnectConfirmOpen, setDisconnectConfirmOpen] = useState(false);
@@ -1631,11 +1631,11 @@ function Dashboard() {
 
     let matchesPlatform = buildPlatforms(b).some((p) => {
       if (p.id === selectedPlatform) return true;
-      if (p.id.split(":")[0] === baseSelected) return true;
+      if (!isSpecificAccount && p.id.split(":")[0] === baseSelected) return true;
       return false;
     }) || (Array.isArray(b.selected_channels) && b.selected_channels.some(c => {
       if (c === selectedPlatform) return true;
-      if (c.split(":")[0] === baseSelected) return true;
+      if (!isSpecificAccount && c.split(":")[0] === baseSelected) return true;
       return false;
     }));
 
