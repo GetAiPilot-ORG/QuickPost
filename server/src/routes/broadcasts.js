@@ -43,7 +43,7 @@ router.get('/broadcasts', authenticateUser, async (req, res) => {
           const health = await googleOAuth.getChannelHealth(accessToken);
           if (health?.uploadsPlaylistId) {
             const liveVideos = await googleOAuth.listChannelUploads(accessToken, health.uploadsPlaylistId, 20);
-            
+
             // Map live YouTube videos into normalized broadcast posts
             const livePosts = liveVideos.map((video) => ({
               id: `yt_live_${video.id}`,
@@ -233,16 +233,16 @@ router.get('/broadcasts', authenticateUser, async (req, res) => {
             // Prune / Deactivate Instagram posts deleted externally on Instagram
             const deletedDbPostIds = [];
             const deletedMediaIds = [];
-            
+
             broadcasts = broadcasts.filter(b => {
               if (!b.instagram_post_id || String(b.id).startsWith('ig_live_')) return true;
               const postTime = new Date(b.posted_at || b.created_at).getTime();
               const isWithinLiveWindow = oldestTimestamp ? (postTime >= oldestTimestamp - 60000) : true;
-              
+
               if (isWithinLiveWindow && !liveIgIds.has(String(b.instagram_post_id))) {
                 console.log(`🗑️ [BROADCASTS] Detected Instagram post deleted externally: ${b.instagram_post_id} (broadcast ${b.id})`);
                 deletedMediaIds.push(b.instagram_post_id);
-                
+
                 const hasOtherLiveChannels = b.youtube_success || b.facebook_success || b.pinterest_success || b.linkedin_success || b.x_success || b.threads_success;
                 if (!hasOtherLiveChannels) {
                   deletedDbPostIds.push(b.id);
@@ -536,15 +536,15 @@ router.delete('/broadcasts/:id', authenticateUser, async (req, res) => {
     const { id } = req.params;
     const userId = req.user.userId;
     const deleteFromPlatform = req.query.deleteFromPlatform !== 'false';
-    
+
     // First get the broadcast to verify ownership
     const { getBroadcastById, deleteBroadcast } = await import('../services/broadcasts.js');
     const broadcast = await getBroadcastById(id);
-    
+
     if (!broadcast) {
       return res.status(404).json({ success: false, error: 'Broadcast not found' });
     }
-    
+
     if (broadcast.user_id !== userId) {
       return res.status(403).json({ success: false, error: 'Unauthorized to delete this broadcast' });
     }
@@ -591,7 +591,7 @@ router.delete('/broadcasts/:id', authenticateUser, async (req, res) => {
         console.warn(`⚠️ [DELETE_BROADCAST] Could not delete Bluesky post:`, bskyErr.message);
       }
     }
-    
+
     await deleteBroadcast(id);
     res.json({
       success: true,

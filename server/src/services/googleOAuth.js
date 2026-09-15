@@ -19,14 +19,14 @@ function base64urlEncode(obj) {
 }
 
 class GoogleOAuthService {
-  constructor() {}
+  constructor() { }
 
   createClient() {
     return new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET,
       process.env.GOOGLE_REDIRECT_URI ||
-        "http://localhost:5000/api/auth/google/callback",
+      "http://localhost:5000/api/auth/google/callback",
     );
   }
 
@@ -79,6 +79,7 @@ class GoogleOAuthService {
       let channelId = userInfo.id;
       let channelStatus = null;
       let channelStats = null;
+      let channelThumbnail = null;
       try {
         const channelRes = await youtube.channels.list({
           part: "snippet,status,statistics",
@@ -90,6 +91,7 @@ class GoogleOAuthService {
           channelTitle = channel.snippet.title;
           channelStatus = channel.status || null;
           channelStats = channel.statistics || null;
+          channelThumbnail = channel.snippet?.thumbnails?.default?.url || channel.snippet?.thumbnails?.medium?.url || null;
         }
       } catch (err) {
         console.warn(
@@ -105,7 +107,7 @@ class GoogleOAuthService {
         userInfo: {
           email: userInfo.email,
           name: userInfo.name,
-          picture: userInfo.picture,
+          picture: channelThumbnail || userInfo.picture,
           googleId: userInfo.id,
           channelId,
           username: channelTitle,
@@ -208,7 +210,7 @@ class GoogleOAuthService {
       console.error("Error refreshing token:", error);
       // Detailed error for the user
       const isInvalidGrant = error.response?.data?.error === 'invalid_grant' || error.message?.includes('invalid_grant');
-      const message = isInvalidGrant 
+      const message = isInvalidGrant
         ? "YouTube connection expired. Please reconnect your YouTube account."
         : `Failed to refresh YouTube access token: ${error.message}`;
       throw new Error(message);

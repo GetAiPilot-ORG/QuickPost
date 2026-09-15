@@ -16,6 +16,7 @@ import {
   Filter,
   Layers,
   ChevronRight,
+  ArrowLeft,
 } from "lucide-react";
 import apiClient from "../utils/apiClient";
 import { useAuth } from "../context/AuthContext";
@@ -58,6 +59,8 @@ function getAvatarColor(str) {
     hash = str.charCodeAt(i) + ((hash << 5) - hash);
   }
   return `hsl(${Math.abs(hash) % 360}, 65%, 45%)`;
+}
+
 function AuthorAvatar({ src, name, size = 40, style = {} }) {
   const [imgError, setImgError] = useState(false);
   const initial = (name || "U").replace(/^@/, "")[0]?.toUpperCase() || "U";
@@ -362,10 +365,11 @@ export default function SocialInboxPage() {
 
   return (
     <div
+      className={selectedItem ? "max-md:fixed max-md:inset-0 max-md:z-[60] max-md:!h-[100dvh]" : ""}
       style={{
         display: "flex",
         flexDirection: "column",
-        height: "calc(100vh - 64px)",
+        height: "calc(100dvh - 64px)",
         background: "var(--canvas, #f5f1ec)",
         fontFamily: "var(--font-body, system-ui)",
         color: "var(--ink, #111)",
@@ -374,6 +378,7 @@ export default function SocialInboxPage() {
     >
       {/* ── Compact Page Header ── */}
       <div
+        className={selectedItem ? "max-md:hidden" : ""}
         style={{
           background: "#ffffff",
           borderBottom: "1px solid #d3cec6",
@@ -491,15 +496,7 @@ export default function SocialInboxPage() {
       <div style={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden" }}>
         {/* ── Left Pane: Comment & Thread List ── */}
         <div
-          style={{
-            width: "clamp(280px, 22vw, 320px)",
-            flexShrink: 0,
-            borderRight: "1px solid #d3cec6",
-            background: "#ffffff",
-            display: "flex",
-            flexDirection: "column",
-            minHeight: 0,
-          }}
+          className={`w-full md:w-[320px] md:max-w-[320px] flex-shrink-0 border-r border-[#d3cec6] bg-white min-h-0 ${selectedItem ? "hidden md:flex" : "flex"} flex-col`}
         >
           {/* Controls: Search, Account & Status Filter */}
           <div style={{ padding: "12px 16px", borderBottom: "1px solid rgba(20,20,19,0.06)", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -681,143 +678,72 @@ export default function SocialInboxPage() {
         </div>
 
         {/* ── Right Pane: Thread Detail & Reply Composer ── */}
-        <div style={{ flex: 1, background: "var(--canvas, #f5f1ec)", display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+        <div className={`${!selectedItem ? "hidden md:flex" : "flex"} flex-1 flex-col h-full overflow-hidden`} style={{ background: "#ffffff" }}>
           {selectedItem ? (
-            <div style={{ display: "flex", flexDirection: "column", flex: 1, width: "100%", maxWidth: 840, margin: "0 auto", height: "100%", overflow: "hidden", background: "#ffffff", borderLeft: "1px solid rgba(0,0,0,0.06)", borderRight: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 4px 24px rgba(0,0,0,0.02)" }}>
-              {/* DM Header */}
-              <div
-                style={{
-                  background: "#ffffff",
-                  padding: "18px 24px",
-                  borderBottom: "1px solid rgba(0,0,0,0.06)",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 16,
-                  flexShrink: 0,
-                  zIndex: 10,
-                }}
-              >
-                {selectedItem.authorAvatar ? (
-                  <img src={selectedItem.authorAvatar} style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover" }} alt="" />
-                ) : (
-                  <div style={{ width: 44, height: 44, borderRadius: "50%", background: getAvatarColor(selectedItem.authorName), color: "#fff", display: "grid", placeItems: "center", fontWeight: 700, fontSize: 16 }}>
-                    {selectedItem.authorName?.[0]?.toUpperCase() || "U"}
+            <div style={{ display: "flex", flexDirection: "column", flex: 1, width: "100%", maxWidth: 900, margin: "0 auto", height: "100%", overflow: "hidden", background: "#ffffff", borderLeft: "1px solid rgba(0,0,0,0.06)", borderRight: "1px solid rgba(0,0,0,0.06)" }}>
+              
+              {/* ── Instagram-Style Header ── */}
+              <div style={{ background: "#ffffff", padding: "12px 16px", borderBottom: "1px solid rgba(0,0,0,0.08)", display: "flex", alignItems: "center", gap: 12, flexShrink: 0, zIndex: 10 }}>
+                <button onClick={() => setSelectedItemId(null)} className="md:hidden flex items-center justify-center p-2 -ml-2 rounded-full hover:bg-slate-100" style={{ color: "var(--ink)", border: "none", background: "transparent", cursor: "pointer" }}>
+                  <ArrowLeft size={24} strokeWidth={2} />
+                </button>
+                <AuthorAvatar src={selectedItem.authorAvatar} name={selectedItem.authorName} size={40} />
+                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: "1.2" }}>
+                    {selectedItem.authorName}
                   </div>
-                )}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                <PostThumbnailImage
-                  src={selectedItem.postThumbnail}
-                  platform={selectedItem.platform}
-                  postId={selectedItem.postId}
-                  size={64}
-                />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                    <img src={getPlatformIcon(selectedItem.platform)} style={{ width: 16, height: 16, flexShrink: 0 }} alt="" />
-                    <span style={{ fontSize: 12, fontWeight: 700, color: "var(--slate)", textTransform: "capitalize" }}>
-                      {selectedItem.platform} Post Context
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {selectedItem.postTitle}
+                  <div style={{ fontSize: 13, color: "var(--slate)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
+                    {selectedItem.authorHandle} • <img src={getPlatformIcon(selectedItem.platform)} style={{ width: 12, height: 12 }} alt="" title={selectedItem.platform} />
                   </div>
                 </div>
               </div>
 
-              {/* Original Comment Card */}
-              <div
-                style={{
-                  background: "#ffffff",
-                  borderRadius: 12,
-                  padding: 20,
-                  border: "1px solid #d3cec6",
-                  marginBottom: 16,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-                  <AuthorAvatar
-                    src={selectedItem.authorAvatar}
-                    name={selectedItem.authorName || selectedItem.authorHandle}
-                    size={40}
-                  />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 15, fontWeight: 750, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {selectedItem.authorName}
-                    </div>
-                    <img src={getPlatformIcon(selectedItem.platform)} style={{ width: 16, height: 16 }} alt="" title={selectedItem.platform} />
-                  </div>
-                  <div style={{ fontSize: 13, color: "var(--slate)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {selectedItem.authorHandle}
-                  </div>
-                </div>
-              </div>
-
-              {/* Chat Messages Area */}
+              {/* ── Chat Messages Area ── */}
               <div className="no-scrollbar" style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
-                <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: 4, marginTop: "auto" }}>
+                <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 6, marginTop: "auto" }}>
+                  
+                  {/* Post Context Embedded Card */}
+                  <div style={{ alignSelf: "center", maxWidth: "85%", width: "100%", background: "#f8f9fa", borderRadius: 16, padding: 12, marginBottom: 24, border: "1px solid rgba(0,0,0,0.05)", display: "flex", gap: 12, alignItems: "center" }}>
+                    <PostThumbnailImage src={selectedItem.postThumbnail} platform={selectedItem.platform} postId={selectedItem.postId} size={56} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", textTransform: "capitalize", marginBottom: 2 }}>Replying to {selectedItem.platform} Post</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{selectedItem.postTitle}</div>
+                    </div>
+                  </div>
+
+                  {/* Original Message and Replies */}
                   {(selectedItem.replies?.length > 0 ? selectedItem.replies : [selectedItem]).map((msg, idx, arr) => {
                     const isSelf = msg.isSelf || false;
                     const rawText = msg.text || selectedItem.text || "";
                     const msgText = rawText.trim() === "" ? "[📸 Media Attachment]" : rawText;
-                    const msgTime = timeAgo(msg.createdAt || selectedItem.createdAt);
-                    
-                    // Grouping logic for avatars and bubbles
                     const nextMsg = arr[idx + 1];
                     const isLastInGroup = !nextMsg || nextMsg.isSelf !== isSelf;
-                    
+
                     return (
-                      <div key={msg.id || idx} style={{ display: "flex", gap: 8, alignItems: "flex-end", flexDirection: isSelf ? "row-reverse" : "row", width: "100%", marginBottom: isLastInGroup ? 12 : 2 }}>
+                      <div key={msg.id || idx} style={{ display: "flex", gap: 8, alignItems: "flex-end", flexDirection: isSelf ? "row-reverse" : "row", width: "100%", marginBottom: isLastInGroup ? 16 : 2 }}>
                         {!isSelf && (
                           <div style={{ flexShrink: 0, width: 28, height: 28 }}>
                             {isLastInGroup && (
-                              selectedItem.authorAvatar ? (
-                                <img src={selectedItem.authorAvatar} style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover" }} alt="" />
-                              ) : (
-                                <div style={{ width: 28, height: 28, borderRadius: "50%", background: getAvatarColor(selectedItem.authorName), color: "#fff", display: "grid", placeItems: "center", fontWeight: 700, fontSize: 12 }}>
-                                  {selectedItem.authorName?.[0]?.toUpperCase() || "U"}
-                                </div>
-                              )
+                              <AuthorAvatar src={selectedItem.authorAvatar} name={selectedItem.authorName} size={28} />
                             )}
-                      <div key={r.id} style={{ background: "#ffffff", padding: 14, borderRadius: 10, border: "1px solid #d3cec6" }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
-                            <AuthorAvatar
-                              src={r.authorAvatar}
-                              name={rName}
-                              size={26}
-                              style={{ background: "rgba(255,86,0,0.1)", color: "var(--arc, #ff5600)" }}
-                            />
-                            <span style={{ fontSize: 13, fontWeight: 750, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                              {rName}
-                            </span>
-                            <span style={{ fontSize: 11, color: "var(--slate)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                              {rHandle}
-                            </span>
                           </div>
                         )}
                         <div style={{ display: "flex", flexDirection: "column", alignItems: isSelf ? "flex-end" : "flex-start", maxWidth: "75%" }}>
                           <div
                             style={{
-                              background: isSelf ? "var(--arc, #ff5600)" : "#f1f5f9",
+                              background: isSelf ? "var(--arc, #ff5600)" : "#efefef",
                               color: isSelf ? "#ffffff" : "var(--ink)",
                               padding: "10px 16px",
-                              borderRadius: 20,
-                              borderBottomRightRadius: isSelf && isLastInGroup ? 4 : 20,
-                              borderBottomLeftRadius: !isSelf && isLastInGroup ? 4 : 20,
-                              fontSize: 14.5,
+                              borderRadius: 22,
+                              borderBottomRightRadius: isSelf && isLastInGroup ? 4 : 22,
+                              borderBottomLeftRadius: !isSelf && isLastInGroup ? 4 : 22,
+                              fontSize: 15,
                               lineHeight: 1.4,
                               wordBreak: "break-word"
                             }}
                           >
                             {msgText}
                           </div>
-                          {isLastInGroup && (
-                            <div style={{ fontSize: 11, color: "var(--slate)", marginTop: 4, padding: "0 4px" }}>
-                              {msgTime}
-                            </div>
-                          )}
                         </div>
                       </div>
                     );
@@ -825,15 +751,49 @@ export default function SocialInboxPage() {
                 </div>
               </div>
 
-              {/* Composer Area */}
-              <div style={{ background: "#ffffff", padding: "16px 24px 20px", flexShrink: 0, zIndex: 10 }}>
+              {/* ── Composer Area ── */}
+              <div style={{ background: "#ffffff", padding: "12px 16px 24px", flexShrink: 0, zIndex: 10, borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+                
+                {/* Copilot Suggestions */}
+                <div className="no-scrollbar" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, overflowX: "auto", paddingBottom: 4 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--arc)", display: "flex", alignItems: "center", gap: 4, flexShrink: 0, paddingRight: 4 }}>
+                    <Sparkles size={14} /> AI
+                  </div>
+                  {["Friendly", "Professional", "Quick Thanks"].map(mood => (
+                    <button
+                      key={mood}
+                      onClick={() => handleAiCopilot(mood.toLowerCase().replace(" ", "_"))}
+                      disabled={generatingAi}
+                      style={{
+                        padding: "6px 14px",
+                        borderRadius: 20,
+                        background: "#f1f5f9",
+                        border: "none",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: "var(--ink)",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        flexShrink: 0,
+                        transition: "background 0.2s"
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = "#e2e8f0"}
+                      onMouseLeave={(e) => e.currentTarget.style.background = "#f1f5f9"}
+                    >
+                      {generatingAi ? <Loader2 size={12} className="animate-spin" /> : mood}
+                    </button>
+                  ))}
+                </div>
+
                 {replyErrorMsg && (
                   <div style={{ color: "#dc2626", fontSize: 12, marginBottom: 8, display: "flex", alignItems: "center", gap: 4 }}>
                     <AlertCircle size={14} /> {replyErrorMsg}
                   </div>
                 )}
-                
-                <div style={{ display: "flex", alignItems: "flex-end", gap: 12, background: "#f1f5f9", padding: "12px 18px", borderRadius: 24, border: "1px solid rgba(0,0,0,0.04)" }}>
+
+                <div style={{ display: "flex", alignItems: "flex-end", gap: 10, background: "#f1f5f9", padding: "10px 16px", borderRadius: 24 }}>
                   <textarea
                     rows={1}
                     placeholder="Message..."
@@ -851,68 +811,41 @@ export default function SocialInboxPage() {
                       fontSize: 15,
                       fontFamily: "inherit",
                       background: "transparent",
-                      padding: "6px 8px",
+                      padding: "4px 0",
                       maxHeight: 120,
-                      color: "var(--ink)"
+                      color: "var(--ink)",
+                      lineHeight: 1.4
                     }}
                   />
-                  <button
-                    onClick={handleSendReply}
-                    disabled={!replyText.trim() || sendingReply}
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: "50%",
-                      background: replyText.trim() ? "var(--arc, #ff5600)" : "transparent",
-                      border: "none",
-                      color: replyText.trim() ? "#fff" : "var(--slate)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      cursor: replyText.trim() && !sendingReply ? "pointer" : "default",
-                      flexShrink: 0,
-                      transition: "all 0.2s"
-                    }}
-                  >
-                    {sendingReply ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                  </button>
-                </div>
-                
-                {/* Copilot Suggestions */}
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, flexWrap: "wrap", padding: "0 4px" }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--arc)", display: "flex", alignItems: "center", gap: 4 }}>
-                    <Sparkles size={14} /> Copilot:
-                  </div>
-                  {["Friendly", "Professional", "Quick Thanks"].map(mood => (
+                  {replyText.trim() ? (
                     <button
-                      key={mood}
-                      onClick={() => handleAiCopilot(mood.toLowerCase().replace(" ", "_"))}
-                      disabled={generatingAi}
+                      onClick={handleSendReply}
+                      disabled={sendingReply}
                       style={{
-                        padding: "6px 12px",
-                        borderRadius: 16,
-                        border: "1px solid rgba(0,0,0,0.06)",
-                        background: "#ffffff",
-                        fontSize: 12,
-                        fontWeight: 500,
-                        color: "var(--ink)",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 4
+                        background: "transparent",
+                        border: "none",
+                        color: "var(--link, #0095f6)",
+                        fontSize: 15,
+                        fontWeight: 700,
+                        cursor: sendingReply ? "default" : "pointer",
+                        padding: "4px 4px 4px 12px",
+                        flexShrink: 0,
+                        transition: "opacity 0.2s",
+                        opacity: sendingReply ? 0.5 : 1
                       }}
                     >
-                      {generatingAi ? <Loader2 size={12} className="animate-spin" /> : mood}
+                      {sendingReply ? <Loader2 size={18} className="animate-spin" /> : "Send"}
                     </button>
-                  ))}
+                  ) : null}
                 </div>
               </div>
             </div>
           ) : (
             <div style={{ height: "100%", display: "grid", placeItems: "center", color: "var(--slate)" }}>
               <div style={{ textAlign: "center" }}>
-                <MessagesSquare size={48} style={{ opacity: 0.3, margin: "0 auto 12px" }} />
-                <div style={{ fontSize: 16, fontWeight: 600, color: "var(--ink)" }}>Select a conversation to start chatting</div>
+                <MessagesSquare size={64} strokeWidth={1} style={{ margin: "0 auto 16px", color: "var(--ink)" }} />
+                <div style={{ fontSize: 20, fontWeight: 700, color: "var(--ink)" }}>Your Messages</div>
+                <div style={{ fontSize: 14, marginTop: 8 }}>Select a conversation to start chatting</div>
               </div>
             </div>
           )}

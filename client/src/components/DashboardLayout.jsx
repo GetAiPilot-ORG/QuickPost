@@ -36,7 +36,7 @@ function DashboardShellSkeleton({ isDesktop }) {
       aria-label="Loading workspace"
       style={{
         display: "flex",
-        minHeight: "100vh",
+        minHeight: "100dvh",
         background: "var(--canvas, #f5f1ec)",
         color: "var(--ink, #111)",
         overflow: "hidden",
@@ -202,7 +202,7 @@ const DashboardLayout = () => {
     <div
       style={{
         display: "flex",
-        minHeight: "100vh",
+        minHeight: "100dvh",
         background: "var(--canvas)",
         overflow: "hidden",
       }}
@@ -273,7 +273,7 @@ const DashboardLayout = () => {
           flexDirection: "column",
           minWidth: 0,
           transition: "margin-left 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
-          height: "100vh",
+          height: "100dvh",
         }}
       >
         {/* Header — passes mobile toggle */}

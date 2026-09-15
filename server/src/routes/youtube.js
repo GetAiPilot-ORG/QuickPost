@@ -1,6 +1,6 @@
 import express from "express";
 import { authenticateUser } from "../middleware/authenticateUser.js";
-import { getConnectedAccounts } from "../services/supabase.js";
+import supabase, { getConnectedAccounts } from "../services/supabase.js";
 import googleOAuth from "../services/googleOAuth.js";
 
 const router = express.Router();
@@ -14,6 +14,18 @@ router.get("/accounts", authenticateUser, async (req, res) => {
         const accessToken = await googleOAuth.getValidAccessToken(req.user.userId, account.id);
         const health = await googleOAuth.getChannelHealth(accessToken);
         const videos = await googleOAuth.listChannelUploads(accessToken, health.uploadsPlaylistId);
+
+        // Background sync thumbnail if it differs to fix connected accounts list missing pictures
+        if (health.thumbnail && health.thumbnail !== account.profilePicture) {
+          const updatedProfileData = { ...(account.profile_data || {}), picture: health.thumbnail };
+          supabase.from("social_tokens")
+            .update({ profile_data: updatedProfileData })
+            .eq("id", account.id)
+            .then(({ error }) => {
+              if (error) console.error("Failed to sync YouTube thumbnail", error);
+            });
+        }
+
         return {
           ...account,
           username: health.title || account.username,

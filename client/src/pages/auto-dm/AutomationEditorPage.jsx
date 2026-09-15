@@ -606,7 +606,7 @@ export default function AutomationEditorPage() {
               <Input 
                 value={name} 
                 onChange={(e) => setName(e.target.value)} 
-                className="h-7 bg-transparent border-transparent px-1 font-bold text-lg focus-visible:ring-1 focus-visible:ring-primary shadow-none w-[200px]"
+                className="h-7 bg-transparent border-transparent px-1 font-bold text-base sm:text-lg focus-visible:ring-1 focus-visible:ring-primary shadow-none w-[110px] sm:w-[200px]"
                 placeholder="Untitled Automation"
               />
             </div>
@@ -615,15 +615,15 @@ export default function AutomationEditorPage() {
         ) : null}
 
         {portalTarget ? createPortal(
-          <div className="flex items-center gap-2 mr-4">
-             <span className="text-xs font-medium text-gray-500 mr-2">{isSaving ? 'Saving...' : 'Saved'}</span>
-             <Button variant="outline" size="sm" onClick={handleSave} disabled={isSaving}>
-               {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-               Save
+          <div className="flex items-center gap-2 sm:gap-4 mr-2 sm:mr-4">
+             <span className="hidden sm:inline-block text-xs font-medium text-gray-500">{isSaving ? 'Saving...' : 'Saved'}</span>
+             <Button variant="outline" size="sm" onClick={handleSave} disabled={isSaving} className="px-2 sm:px-3">
+               {isSaving ? <Loader2 className="h-4 w-4 animate-spin sm:mr-2" /> : <Save className="h-4 w-4 sm:mr-2" />}
+               <span className="hidden sm:inline-block">Save</span>
              </Button>
-             <div className="flex items-center gap-2 ml-2">
+             <div className="flex items-center gap-1 sm:gap-2 ml-1 sm:ml-2">
                 <Switch checked={isActive} onCheckedChange={setIsActive} />
-                <span className="text-sm font-medium">{isActive ? 'Active' : 'Inactive'}</span>
+                <span className="text-sm font-medium w-[60px] text-left">{isActive ? 'Active' : 'Inactive'}</span>
              </div>
           </div>,
           portalTarget
