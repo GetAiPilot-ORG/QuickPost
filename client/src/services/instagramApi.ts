@@ -82,6 +82,11 @@ export async function sendManualInstagramReply(conversationId: string, message: 
   return data.message;
 }
 
+export async function syncInstagramInbox() {
+  const { data } = await apiClient.post("/api/instapilot/inbox/sync");
+  return data;
+}
+
 export async function fetchInstagramAnalytics() {
   const { data } = await apiClient.get("/api/instapilot/analytics");
   return data.analytics;
