@@ -206,9 +206,19 @@ export default function SocialInboxPage() {
     else if (!inboxClientCache.has(clientCacheKey)) setLoading(true);
 
     try {
-      const res = await apiClient.get("/api/inbox/stream", {
-        params: isRefresh ? { refresh: 1 } : undefined,
-      });
+      let res;
+      if (isRefresh) {
+        res = await apiClient.get("/api/inbox/stream", { params: { refresh: 1 } });
+      } else {
+        try {
+          res = await apiClient.get("/api/inbox/conversations", { params: { limit: 50 } });
+          if (!(res.data?.items || []).length) {
+            res = await apiClient.get("/api/inbox/stream", { params: { refresh: 1 } });
+          }
+        } catch (databaseError) {
+          res = await apiClient.get("/api/inbox/stream");
+        }
+      }
       if (res.data?.success) {
         const aggregatedItems = res.data.items || [];
         setItems(aggregatedItems);
@@ -293,14 +303,35 @@ export default function SocialInboxPage() {
 
   const handleSelectItem = useCallback(async (item) => {
     setSelectedItemId(item.id);
-    if (!["instagram", "facebook"].includes(item.platform) || item.threadLoaded) return;
+    setUnreadIds((current) => {
+      const next = new Set(current);
+      next.delete(item.id);
+      return next;
+    });
+    if (item.threadLoaded) return;
 
     setThreadLoadingId(item.id);
     try {
-      const conversationId = String(item.commentId || item.id).replace(/^(ig|fb):/, "");
-      const { data } = await apiClient.get("/api/inbox/thread", {
-        params: { platform: item.platform, accountId: item.accountId, conversationId },
-      });
+      let data;
+      if (item.persisted && item.databaseId) {
+        const response = await apiClient.get(`/api/inbox/conversations/${item.databaseId}/messages`, {
+          params: { limit: 50 },
+        });
+        data = { success: response.data?.success, replies: response.data?.messages || [] };
+        void apiClient.post(`/api/inbox/conversations/${item.databaseId}/read`).catch(() => {});
+      }
+      if (["instagram", "facebook"].includes(item.platform) && (!item.threadComplete || !data?.replies?.length)) {
+        const conversationId = String(item.commentId || item.id).replace(/^(ig|fb):/, "");
+        const response = await apiClient.get("/api/inbox/thread", {
+          params: {
+            platform: item.platform,
+            accountId: item.accountId,
+            conversationId,
+            externalConversationId: item.externalConversationId,
+          },
+        });
+        data = response.data;
+      }
       if (data?.success) {
         setItems((currentItems) => currentItems.map((currentItem) =>
           currentItem.id === item.id
@@ -334,6 +365,7 @@ export default function SocialInboxPage() {
         platform: selectedItem.platform,
         accountId: selectedItem.accountId,
         commentId: selectedItem.commentId,
+        recipientId: selectedItem.replyRecipientId,
         postId: selectedItem.postId,
         text: replyText.trim(),
       };

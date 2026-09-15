@@ -7,6 +7,14 @@ import axios from 'axios';
 import { decryptToken as decryptTokenEncryption } from '../services/tokenEncryption.js';
 import { decryptToken as decryptInstaPilotToken } from '../services/instapilot.js';
 import googleOAuth from '../services/googleOAuth.js';
+import {
+  listInboxConversations,
+  listInboxMessages,
+  markInboxConversationRead,
+  persistInboxItems,
+  persistInboxThreadMessages,
+  recordInboxOutboundMessage,
+} from '../services/unifiedInbox.js';
 
 const router = express.Router();
 let lastIgError = null;
@@ -180,7 +188,7 @@ function getMockConversations(platform, accountId, accountName) {
 
 // ── Platform-Specific On-Demand Fetchers ────────────────────────────────────
 
-async function fetchYouTubeComments(tokenRow) {
+export async function fetchYouTubeComments(tokenRow) {
   try {
     let accessToken = null;
     try {
@@ -283,7 +291,7 @@ async function fetchYouTubeComments(tokenRow) {
   }
 }
 
-async function fetchInstagramComments(tokenRow) {
+export async function fetchInstagramComments(tokenRow) {
   try {
     const accessToken = safeDecrypt(tokenRow.access_token || tokenRow.access_token_encrypted);
     const businessId = tokenRow.account_id || tokenRow.page_id || tokenRow.instagram_business_account_id;
@@ -319,6 +327,8 @@ async function fetchInstagramComments(tokenRow) {
 
       conversationItems.push({
         id: `ig:${conv.id}`,
+        externalConversationId: otherUser.id || conv.id,
+        replyRecipientId: otherUser.id || null,
         platform: 'instagram',
         accountId: queryId,
         accountName: tokenRow.username || tokenRow.account_name || 'Instagram Account',
@@ -357,7 +367,7 @@ async function fetchInstagramComments(tokenRow) {
   }
 }
 
-async function fetchBlueskyComments(tokenRow) {
+export async function fetchBlueskyComments(tokenRow) {
   try {
     const handle = tokenRow.account_id || tokenRow.username;
     const pass = safeDecrypt(tokenRow.access_token);
@@ -419,7 +429,7 @@ async function fetchBlueskyComments(tokenRow) {
   }
 }
 
-async function fetchMastodonComments(tokenRow) {
+export async function fetchMastodonComments(tokenRow) {
   try {
     const accessToken = safeDecrypt(tokenRow.access_token);
     const instanceUrl = tokenRow.instance_url || 'https://mastodon.social';
@@ -468,7 +478,7 @@ async function fetchMastodonComments(tokenRow) {
   }
 }
 
-async function fetchFacebookComments(tokenRow) {
+export async function fetchFacebookComments(tokenRow) {
   try {
     const accessToken = safeDecrypt(tokenRow.access_token);
     const pageId = tokenRow.page_id || tokenRow.account_id;
@@ -500,6 +510,8 @@ async function fetchFacebookComments(tokenRow) {
 
       conversationItems.push({
         id: `fb:${conv.id}`,
+        externalConversationId: otherUser.id || conv.id,
+        replyRecipientId: otherUser.id || null,
         platform: 'facebook',
         accountId: pageId,
         accountName: tokenRow.account_name || 'Facebook Page',
@@ -705,6 +717,9 @@ router.get('/inbox/stream', authenticateUser, async (req, res) => {
       items: allItems
     };
     await writeInboxCache(cacheKey, payload);
+    void persistInboxItems(req.user.userId, allItems).catch((error) => {
+      console.warn('[INBOX] Could not persist legacy aggregation:', error.message);
+    });
     res.setHeader('X-Inbox-Cache', 'MISS');
     return res.json(payload);
 
@@ -718,10 +733,42 @@ router.get('/inbox/stream', authenticateUser, async (req, res) => {
   }
 });
 
+router.get('/inbox/conversations', authenticateUser, async (req, res) => {
+  try {
+    const result = await listInboxConversations(req.user.userId, req.query);
+    return res.json({ success: true, ...result });
+  } catch (error) {
+    const missingSchema = error.code === '42P01' || error.code === 'PGRST205';
+    return res.status(missingSchema ? 503 : 500).json({
+      success: false,
+      error: missingSchema ? 'INBOX_SCHEMA_NOT_READY' : 'Failed to load inbox conversations',
+    });
+  }
+});
+
+router.get('/inbox/conversations/:id/messages', authenticateUser, async (req, res) => {
+  try {
+    const result = await listInboxMessages(req.user.userId, req.params.id, req.query);
+    return res.json({ success: true, ...result });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: 'Failed to load inbox messages' });
+  }
+});
+
+router.post('/inbox/conversations/:id/read', authenticateUser, async (req, res) => {
+  try {
+    const conversation = await markInboxConversationRead(req.user.userId, req.params.id);
+    return res.json({ success: true, conversation });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: 'Failed to mark conversation read' });
+  }
+});
+
 router.get('/inbox/thread', authenticateUser, async (req, res) => {
   try {
     const platform = String(req.query.platform || '').toLowerCase();
     const conversationId = String(req.query.conversationId || '');
+    const externalConversationId = String(req.query.externalConversationId || conversationId);
     const accountId = String(req.query.accountId || '');
     if (!['instagram', 'facebook'].includes(platform) || !conversationId || !accountId) {
       return res.status(400).json({ success: false, error: 'Valid platform, conversationId, and accountId are required' });
@@ -756,6 +803,13 @@ router.get('/inbox/thread', authenticateUser, async (req, res) => {
     if (!tokenRow) return res.status(404).json({ success: false, error: 'Connected account not found' });
 
     const replies = await fetchMetaThread(tokenRow, platform, conversationId);
+    void persistInboxThreadMessages(
+      req.user.userId,
+      platform,
+      accountId,
+      externalConversationId,
+      replies
+    ).catch((error) => console.warn('[INBOX] Could not persist thread:', error.message));
     return res.json({ success: true, replies });
   } catch (err) {
     console.error('❌ [INBOX-THREAD] Error:', err.response?.data?.error?.message || err.message);
@@ -770,7 +824,7 @@ router.get('/inbox/thread', authenticateUser, async (req, res) => {
 
 router.post('/inbox/reply', authenticateUser, async (req, res) => {
   try {
-    const { platform, accountId, commentId, postId, text } = req.body || {};
+    const { platform, accountId, commentId, postId, text, recipientId: requestedRecipientId } = req.body || {};
 
     if (!platform || !commentId || !text || !text.trim()) {
       return res.status(400).json({
@@ -903,9 +957,12 @@ router.post('/inbox/reply', authenticateUser, async (req, res) => {
       const isIgToken = rawTokenStr.startsWith('IG');
       const graphBase = isIgToken ? 'https://graph.instagram.com/v24.0' : 'https://graph.facebook.com/v18.0';
       
-      let recipientId = null;
+      let recipientId = requestedRecipientId || null;
       let igBusinessId = null;
       try {
+        if (recipientId) {
+          lastIgDebug = { recipientId, accountId, commentId, source: 'persisted_conversation' };
+        } else {
         const convRes = await axios.get(`${graphBase}/${commentId}`, {
           params: { fields: 'participants', access_token: rawTokenStr, locale: 'en_US' }
         });
@@ -960,6 +1017,7 @@ router.post('/inbox/reply', authenticateUser, async (req, res) => {
           commentId
         };
         console.log('DEBUG [INBOX-IG] -> Extracted recipientId:', recipientId, 'from participants:', participants, 'myIds:', myIds);
+        }
       } catch (err) {
         console.error('Failed to fetch IG conversation participants:', err.response?.data || err.message);
         return res.status(400).json({ 
@@ -1010,6 +1068,14 @@ router.post('/inbox/reply', authenticateUser, async (req, res) => {
       replyId = mRes.data?.id || replyId;
     }
 
+    await recordInboxOutboundMessage(req.user.userId, {
+      platform,
+      accountId,
+      conversationId: commentId,
+      externalConversationId: requestedRecipientId || commentId,
+      messageId: replyId,
+      text,
+    }).catch((error) => console.warn('[INBOX] Could not persist reply:', error.message));
     await invalidateInboxCache(userIds);
     return res.json({
       success: true,
