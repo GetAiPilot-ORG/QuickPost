@@ -16,6 +16,7 @@ import {
   Trash2,
 } from "lucide-react";
 import apiClient from "../utils/apiClient";
+import InfoHelp from "../components/InfoHelp";
 import { Skeleton } from "boneyard-js/react";
 import { formatUserFriendlyError } from "../components/Analytics";
 
@@ -405,7 +406,10 @@ function History() {
       `}</style>
       <div className="history-header">
         <div>
-          <h1 className="history-title">Post History</h1>
+          <h1 className="history-title" style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+            Post History
+            <InfoHelp text="Chronological ledger of all completed multi-channel social broadcasts with delivery status and live URLs" />
+          </h1>
           <p className="history-subtitle">Review and track your multi-platform broadcasts</p>
         </div>
 

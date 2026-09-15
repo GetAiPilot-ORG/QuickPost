@@ -370,7 +370,10 @@ export default function BillingPage({ embedded = false }) {
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start', marginBottom: 18, flexWrap: 'wrap' }}>
           <div>
-            <h2 style={{ fontSize: 22, fontWeight: 500, margin: '0 0 6px' }}>Invoices</h2>
+            <h2 style={{ fontSize: 22, fontWeight: 500, margin: '0 0 6px', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              Invoices
+              <InfoHelp text="Official GST receipts and billing transaction records synced with Razorpay / GetAiPilot" />
+            </h2>
             <p style={{ fontSize: 14, color: 'var(--slate)', margin: 0 }}>Paid GAP Social-pilot billing records and receipt downloads.</p>
           </div>
         </div>

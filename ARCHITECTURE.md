@@ -27,3 +27,9 @@
 - YouTube embeds include page origin/referrer policy, and ingestion records `status.embeddable` so blocked videos fall back to thumbnail links.
 - Reddit ingestion uses official OAuth API app tokens against `oauth.reddit.com`, surfaces 429 retry hints, stores no embeds, and routes normalized posts through the shared `posts` dedupe insert pipeline.
 - Bluesky ingestion uses the public Jetstream WebSocket filtered to `app.bsky.feed.post`; raw CBOR/CAR `subscribeRepos` is deferred because Jetstream gives the needed public post stream with lower bandwidth and simpler JSON parsing.
+- Social Inbox Stage 1 keeps the live aggregator temporarily, with tenant-scoped Redis caching, 3.5-second provider timeouts, one-message Meta previews, and lazy full-thread reads on selection.
+- Inbox refresh requests bypass and repopulate the Redis cache; successful replies invalidate the tenant cache. Redis failures fall back to uncached aggregation.
+- Social Inbox Stage 2 reads normalized conversation previews and messages from `inbox_conversations` and `inbox_messages`, using `(timestamp, id)` cursors; `inbox_sync_state` holds per-account incremental sync state.
+- The legacy aggregator remains a migration/backfill fallback and writes fetched items into the unified inbox. Instagram messaging webhooks mirror directly into the unified tables; provider enrichment stays off the webhook response path.
+- Non-webhook inbox sources synchronize through the separate `worker:inbox` process on `INBOX_SYNC_CRON` (three minutes by default), with bounded five-account batches and per-account status in `inbox_sync_state`.
+- Expired Meta credentials are skipped, and permanent authorization/scope failures cool down for 24 hours unless account credentials are updated; transient timeouts remain eligible for the next sync.

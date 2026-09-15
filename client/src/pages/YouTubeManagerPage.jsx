@@ -23,6 +23,7 @@ import {
   ThumbsUp,
 } from "lucide-react";
 import apiClient from "../utils/apiClient";
+import InfoHelp from "../components/InfoHelp";
 
 const tabs = ["Dashboard", "Videos", "Shorts", "Posts", "Playlists", "Analytics", "Access"];
 const YOUTUBE_ICON = "/icons/youtube-color-icon.svg";
@@ -331,8 +332,9 @@ export default function YouTubeManagerPage() {
               <span style={{ color: "var(--slate)", fontSize: 12 }}>Multi-account workspace</span>
             </span>
           </div>
-          <h1 style={{ margin: 0, fontSize: "clamp(30px, 4vw, 44px)", lineHeight: 1, letterSpacing: 0, fontWeight: 900 }}>
+          <h1 style={{ margin: 0, fontSize: "clamp(30px, 4vw, 44px)", lineHeight: 1, letterSpacing: 0, fontWeight: 900, display: "inline-flex", alignItems: "center", gap: 12 }}>
             {activeTab === "Dashboard" ? "Channel dashboard" : "Channel content"}
+            <InfoHelp text="Unified YouTube studio management for uploading videos, publishing shorts, and tracking viewer analytics" />
           </h1>
         </div>
 
@@ -463,7 +465,10 @@ export default function YouTubeManagerPage() {
       {activeTab === "Dashboard" && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 395px))", justifyContent: "start", gap: 24, marginTop: 26, alignItems: "start" }}>
           <section style={{ ...panel, padding: 24 }}>
-            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 850 }}>Latest video performance</h2>
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 850, display: "inline-flex", alignItems: "center", gap: 8 }}>
+              Latest video performance
+              <InfoHelp text="Real-time views, comments, and engagement on your most recent YouTube upload" />
+            </h2>
             {latestVideo ? (
               <>
                 <a href={latestVideo.url} target="_blank" rel="noreferrer" style={{ marginTop: 18, height: 194, borderRadius: 8, overflow: "hidden", display: "block", position: "relative", background: "#111", color: "#fff" }}>
@@ -498,7 +503,10 @@ export default function YouTubeManagerPage() {
           </section>
 
           <section style={{ ...panel, padding: 24, alignSelf: "start" }}>
-            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 850 }}>Channel analytics</h2>
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 850, display: "inline-flex", alignItems: "center", gap: 8 }}>
+              Channel analytics
+              <InfoHelp text="Cumulative subscribers, total channel views, and video counts synced via Google YouTube Data API" />
+            </h2>
             <p style={{ margin: "18px 0 0", color: "var(--slate)" }}>Current subscribers</p>
             <strong style={{ display: "block", fontSize: 40, marginTop: 6 }}>{formatNumber(health?.statistics?.subscriberCount)}</strong>
             <div style={{ borderTop: "1px solid rgba(20,20,19,0.12)", marginTop: 28, paddingTop: 18, display: "grid", gap: 14 }}>

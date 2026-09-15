@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAutoDM } from '../../context/AutoDMContext';
 import { Download, ExternalLink, MessageCircle, Search, X } from 'lucide-react';
 import AutoDMAccountSwitcher from './AutoDMAccountSwitcher';
+import InfoHelp from '../../components/InfoHelp';
 
 function formatRelativeTime(isoString) {
   if (!isoString) return 'Never';
@@ -177,7 +178,10 @@ export default function AutoDMContactsPage() {
       <header className="autodm-page-header">
         <div>
           <p className="eyebrow">GAP AutoDM</p>
-          <h1>Contacts</h1>
+          <h1 style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+            Contacts
+            <InfoHelp text="Unified directory of Instagram users who have interacted with your automated DM triggers and campaigns" />
+          </h1>
           <p>
             {contacts.length} contact{contacts.length !== 1 ? 's' : ''} from Instagram automation conversations.
           </p>

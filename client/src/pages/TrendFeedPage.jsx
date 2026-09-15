@@ -37,6 +37,7 @@ import toast from "react-hot-toast";
 import { useAuth } from "../context/AuthContext";
 import apiClient from "../utils/apiClient";
 import ComposerModal from "../components/ComposerModal";
+import InfoHelp from "../components/InfoHelp";
 
 const PAGE_SIZE = 25;
 const MAX_SEEN_IDS = 300;
@@ -1353,8 +1354,9 @@ export default function TrendFeedPage() {
         {/* Row 1: Title & Main Actions */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-neutral-900 leading-tight">
+            <h1 className="text-2xl font-bold tracking-tight text-neutral-900 leading-tight inline-flex items-center gap-2">
               Inspiration Feed
+              <InfoHelp text="Curated real-time trending content, viral hooks, and creative formats discovered from YouTube, Pinterest, and social streams" />
             </h1>
             <p className="text-xs text-neutral-500 mt-0.5 font-normal">
               Trending videos, reels, and creative inspiration from across the web.

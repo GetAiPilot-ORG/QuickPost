@@ -6,13 +6,23 @@ import InboxConversationList from "@/components/instagram/InboxConversationList"
 import LeadPanel from "@/components/instagram/LeadPanel";
 import { Button } from "@/components/ui/button";
 import { useInbox } from "@/hooks/useInbox";
+import { syncInstagramInbox } from "@/services/instagramApi";
 
 export default function InstagramInbox() {
   const { conversations, loading, error, refresh } = useInbox();
   const [selectedId, setSelectedId] = useState<string | undefined>();
   const [refreshKey, setRefreshKey] = useState(0);
+  const [syncing, setSyncing] = useState(false);
 
   const handleRefresh = async () => {
+    setSyncing(true);
+    try {
+      await syncInstagramInbox();
+    } catch (e) {
+      console.warn('[INSTAPILOT] Manual sync warning:', e);
+    } finally {
+      setSyncing(false);
+    }
     await refresh();
     setRefreshKey((prev) => prev + 1);
   };
@@ -69,9 +79,9 @@ export default function InstagramInbox() {
                 Builder
               </Link>
             </Button>
-            <Button type="button" variant="outline" onClick={handleRefresh} className="gap-2">
-              <RefreshCw className="h-4 w-4" />
-              Refresh
+            <Button type="button" variant="outline" onClick={handleRefresh} disabled={syncing} className="gap-2">
+              <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+              {syncing ? "Syncing..." : "Refresh"}
             </Button>
           </div>
         </header>

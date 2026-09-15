@@ -9,7 +9,9 @@
     "dev": "node --watch src/index.js",
     "worker:trends:youtube": "node src/workers/trendYoutubeWorker.js",
     "worker:trends:reddit": "node src/workers/trendRedditWorker.js",
-    "worker:trends:bluesky": "node src/workers/trendBlueskyWorker.js"
+    "worker:trends:bluesky": "node src/workers/trendBlueskyWorker.js",
+    "redis:inspect": "node scripts/inspectRedis.js",
+    "worker:inbox": "node src/workers/unifiedInboxWorker.js"
   },
   "keywords": [
     "social-media",

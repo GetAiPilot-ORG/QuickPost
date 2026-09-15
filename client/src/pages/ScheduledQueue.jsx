@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import apiClient from "../utils/apiClient";
 import ComposerModal from "../components/ComposerModal";
+import InfoHelp from "../components/InfoHelp";
 import CalendarView from "../components/CalendarView";
 import { Skeleton } from "boneyard-js/react";
 import { useDialog } from "../context/DialogContext";
@@ -563,9 +564,13 @@ export default function ScheduledQueue() {
                 letterSpacing: "-0.025em",
                 lineHeight: 1.08,
                 fontFamily: "var(--font)",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 12,
               }}
             >
               Scheduled Queue
+              <InfoHelp text="Automated schedule dispatcher that publishes queued multi-channel content at exact scheduled times" />
             </h1>
             <p className="text-xs text-gray-500 font-medium mt-1.5 max-w-md">
               Manage and track upcoming social broadcasts across all connected channels.
