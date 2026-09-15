@@ -68,8 +68,7 @@ export async function fetchInboxConversations() {
 }
 
 export async function fetchConversationThread(conversationId: string) {
-  const cacheBuster = Date.now();
-  const { data } = await apiClient.get(`/api/instapilot/inbox/conversations/${conversationId}?_t=${cacheBuster}`);
+  const { data } = await apiClient.get(`/api/instapilot/inbox/conversations/${conversationId}`);
   return data;
 }
 
