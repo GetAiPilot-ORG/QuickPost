@@ -1,6 +1,7 @@
 import express from 'express';
 import { authenticateUser } from '../middleware/authenticateUser.js';
 import { getEntitlements } from '../services/entitlements.js';
+import supabase from '../services/supabase.js';
 import {
   getBroadcasts,
   cancelBroadcast,
