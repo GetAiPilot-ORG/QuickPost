@@ -125,7 +125,8 @@ function compactPost(post) {
   };
 }
 
-export function summarizeConnectedAccounts(connectedAccounts = {}) {
+export function summarizeConnectedAccounts(connectedAccounts = {}, now = new Date()) {
+  const nowMs = now instanceof Date ? now.getTime() : typeof now === 'number' ? now : Date.now();
   const accountGroups = Object.entries(connectedAccounts)
     .filter(([key, value]) => key.endsWith('Accounts') && Array.isArray(value))
     .flatMap(([key, accounts]) => {
@@ -137,7 +138,7 @@ export function summarizeConnectedAccounts(connectedAccounts = {}) {
         connected: account.connected !== false,
         profilePicture: account.profilePicture || account.profile_picture_url || null,
         tokenExpiry: account.token_expiry || null,
-        needsReconnect: isExpired(account.token_expiry),
+        needsReconnect: isExpired(account.token_expiry, nowMs),
       }));
     });
 
@@ -150,7 +151,7 @@ export function summarizeConnectedAccounts(connectedAccounts = {}) {
       connected: true,
       profilePicture: account.profilePicture || null,
       tokenExpiry: account.token_expiry || null,
-      needsReconnect: isExpired(account.token_expiry),
+      needsReconnect: isExpired(account.token_expiry, nowMs),
     }));
 
   const accounts = [...accountGroups, ...singles];
@@ -161,9 +162,9 @@ export function summarizeConnectedAccounts(connectedAccounts = {}) {
   };
 }
 
-function isExpired(value) {
+function isExpired(value, nowMs = Date.now()) {
   const date = safeDate(value);
-  return Boolean(date && date.getTime() <= Date.now());
+  return Boolean(date && date.getTime() <= nowMs);
 }
 
 async function getBroadcastRows(userIds, range) {

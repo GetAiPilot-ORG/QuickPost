@@ -339,6 +339,16 @@ app.get('/redis', async (req, res) => {
   }
 });
 
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+    service: 'QuickPost API Server'
+  });
+});
+
 // Root endpoint
 app.get('/', (req, res) => {
   res.json({
