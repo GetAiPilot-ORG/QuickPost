@@ -366,19 +366,26 @@ export default function SocialInboxPage() {
         scheduleRefresh
       )
       .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          console.info("[INBOX-REALTIME] Connected");
+        }
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           console.warn(`[INBOX-REALTIME] Subscription status: ${status}`);
         }
       });
 
-    const handleVisibilityChange = () => {
+    const refreshIfVisible = () => {
       if (document.visibilityState === "visible") void loadInboxStream();
     };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
+    const fallbackPoll = window.setInterval(refreshIfVisible, 15_000);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    window.addEventListener("focus", refreshIfVisible);
 
     return () => {
       window.clearTimeout(refreshTimer);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.clearInterval(fallbackPoll);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+      window.removeEventListener("focus", refreshIfVisible);
       void supabase.removeChannel(channel);
     };
   }, [loadInboxStream, user?.id, user?.userId]);
