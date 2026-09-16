@@ -949,6 +949,7 @@ export default function PostPreviewModal({ post, onClose, onDelete }) {
   const handleBackdrop = (e) => { if (e.target === e.currentTarget) onClose(); };
 
   const isImage = post.media_type === 'image' || /\.(jpg|jpeg|png|gif|webp)$/i.test(post.video_filename || '');
+  const isRetrying = post.status === 'scheduled' && Boolean(post.last_error);
   const formatDate = (d) => new Date(d).toLocaleDateString('en-US', {
     weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit'
@@ -1044,7 +1045,7 @@ export default function PostPreviewModal({ post, onClose, onDelete }) {
                         <p className={`text-[13px] font-bold ${i === activePlatformIdx ? 'text-gray-900' : 'text-gray-600'}`}>{p.name}</p>
                         {rowName && <p className="truncate text-[11px] font-semibold text-gray-500">{rowName}</p>}
                         <p className={`text-[10px] font-bold uppercase tracking-wider ${p.success ? 'text-green-600' : post.status === 'scheduled' ? 'text-blue-600' : 'text-red-500'}`}>
-                          {p.success ? 'Success' : post.status === 'scheduled' ? 'Scheduled' : 'Failed'}
+                          {p.success ? 'Success' : isRetrying ? 'Retrying' : post.status === 'scheduled' ? 'Scheduled' : 'Failed'}
                         </p>
                       </div>
                     </button>

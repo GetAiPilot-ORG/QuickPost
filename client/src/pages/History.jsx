@@ -588,13 +588,13 @@ function History() {
                         <div className="history-date">
                           <Calendar className="w-3.5 h-3.5" />
                           {post.status === "scheduled"
-                            ? `Scheduled for ${formatDate(post.scheduled_for)}`
+                            ? `${post.last_error ? "Retrying at" : "Scheduled for"} ${formatDate(post.scheduled_for)}`
                             : formatDate(post.posted_at || post.created_at)}
                         </div>
                         <div className="flex items-center gap-2">
                           {post.status === "scheduled" && (
                             <span className="history-status-pill">
-                              Scheduled
+                              {post.last_error ? "Retrying" : "Scheduled"}
                             </span>
                           )}
                           <button
