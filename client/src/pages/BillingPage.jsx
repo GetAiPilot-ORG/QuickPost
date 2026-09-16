@@ -4,6 +4,7 @@ import { Check, X, ArrowUpRight, Info, AlertCircle, Download, FileText } from 'l
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import apiClient from '../utils/apiClient';
+import InfoHelp from '../components/InfoHelp';
 
 // GAP Social-pilot billing is independent from Hub product names.
 function hasPaidPlan(plan) {
