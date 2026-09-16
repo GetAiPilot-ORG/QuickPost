@@ -28,9 +28,12 @@ import {
   ShieldCheck,
   Link2Off,
   Edit3,
+  AlertCircle,
+  Trash2,
 } from "lucide-react";
 import apiClient from "../utils/apiClient";
 import ComposerModal from "./ComposerModal";
+import InfoHelp from "./InfoHelp";
 import PostPreviewModal from "./PostPreviewModal";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -217,20 +220,69 @@ function getPostPreviewRatio(post) {
   return "4 / 5";
 }
 
+export function formatUserFriendlyError(rawError, platform = null) {
+  if (!rawError) return "";
+  const errStr = String(rawError);
+
+  if (/unauthorized|401/i.test(errStr) && (platform === 'youtube' || String(platform).startsWith('youtube') || /youtube/i.test(errStr))) {
+    return "No YouTube channel found for this Google account. Please create a channel at youtube.com/create_channel and reconnect your YouTube account.";
+  }
+  if (/channelnotfound|youtubesignuprequired|no youtube channel/i.test(errStr)) {
+    return "No YouTube channel exists for this Google account. Please visit youtube.com/create_channel to create your channel and reconnect.";
+  }
+  if ((/status code 404/i.test(errStr) || /404/i.test(errStr)) && (platform === 'youtube' || String(platform).startsWith('youtube') || /youtube/i.test(errStr))) {
+    return "No YouTube channel found for this Google account. Please visit youtube.com/create_channel to create your channel and reconnect.";
+  }
+  if (/status code 404|media download/i.test(errStr)) {
+    return "The uploaded media file expired or was missing in temporary storage before processing. Please create a new post to broadcast.";
+  }
+  if (/invalid_grant|token expired|reauth_required/i.test(errStr)) {
+    return "Account authorization expired. Please reconnect this account in Settings / Channels.";
+  }
+  if (/quota|rate limit|429|quotaexceeded/i.test(errStr)) {
+    return "Publishing limit reached for this platform. Please wait a few moments before trying again.";
+  }
+
+  // Strip prefixes like "[Attempt 5] " or "Platform publishing failed - " if present
+  let cleaned = errStr.replace(/^\[Attempt\s+\d+\]\s*/i, '');
+  cleaned = cleaned.replace(/^Platform publishing failed\s*-\s*/i, '');
+  if (/^youtube:\s*/i.test(cleaned)) {
+    const sub = cleaned.replace(/^youtube:\s*/i, '');
+    if (/unauthorized|401|404|channel/i.test(sub)) {
+      return "No YouTube channel found for this Google account. Please create a channel at youtube.com/create_channel and reconnect.";
+    }
+  }
+  return cleaned;
+}
+
 function buildPlatforms(post) {
-  const selectedChannels = Array.isArray(post.selected_channels) ? post.selected_channels : [];
-  const isScheduled = post.status === 'scheduled';
+  const selectedChannels = Array.from(new Set([
+    ...(Array.isArray(post.selected_channels) ? post.selected_channels : []),
+    ...(Array.isArray(post.platform_data?.selectedChannels) ? post.platform_data.selectedChannels : []),
+  ])).map(String).filter(Boolean);
+
+  const isScheduled = post.status === 'scheduled' && !post.last_error;
+  const resultsData = post.results || post.platform_data?.results || {};
+
+  const getSpecificPlatformError = (platformId, channelId) => {
+    return (
+      resultsData[channelId]?.error ||
+      resultsData[platformId]?.error ||
+      post[`${platformId}_error`] ||
+      null
+    );
+  };
 
   const platformMeta = [
-    { id: "linkedin", name: "LinkedIn", success: isScheduled ? false : post.linkedin_success, error: isScheduled ? null : post.linkedin_error, url: post.linkedin_url },
-    { id: "youtube", name: "YouTube", success: isScheduled ? false : post.youtube_success, error: isScheduled ? null : post.youtube_error, url: post.youtube_shorts_url || post.youtube_url },
-    { id: "facebook", name: "Facebook", success: isScheduled ? false : post.facebook_success, error: isScheduled ? null : post.facebook_error, url: post.facebook_url },
-    { id: "mastodon", name: "Mastodon", success: isScheduled ? false : post.mastodon_success, error: isScheduled ? null : post.mastodon_error, url: post.mastodon_url },
-    { id: "bluesky", name: "Bluesky", success: isScheduled ? false : post.bluesky_success, error: isScheduled ? null : post.bluesky_error, url: post.bluesky_url },
-    { id: "pinterest", name: "Pinterest", success: isScheduled ? false : post.pinterest_success, error: isScheduled ? null : post.pinterest_error, url: post.pinterest_url },
-    { id: "threads", name: "Threads", success: isScheduled ? false : post.threads_success, error: isScheduled ? null : post.threads_error, url: post.threads_url },
-    { id: "x", name: "X", success: isScheduled ? false : post.x_success, error: isScheduled ? null : post.x_error, url: post.x_url },
-    { id: "reddit", name: "Reddit", success: isScheduled ? false : post.reddit_success, error: isScheduled ? null : post.reddit_error, url: post.reddit_url },
+    { id: "linkedin", name: "LinkedIn", success: Boolean(post.linkedin_success), error: getSpecificPlatformError("linkedin", "linkedin"), url: post.linkedin_url },
+    { id: "youtube", name: "YouTube", success: Boolean(post.youtube_success), error: getSpecificPlatformError("youtube", "youtube"), url: post.youtube_shorts_url || post.youtube_url },
+    { id: "facebook", name: "Facebook", success: Boolean(post.facebook_success), error: getSpecificPlatformError("facebook", "facebook"), url: post.facebook_url },
+    { id: "mastodon", name: "Mastodon", success: Boolean(post.mastodon_success), error: getSpecificPlatformError("mastodon", "mastodon"), url: post.mastodon_url },
+    { id: "bluesky", name: "Bluesky", success: Boolean(post.bluesky_success), error: getSpecificPlatformError("bluesky", "bluesky"), url: post.bluesky_url },
+    { id: "pinterest", name: "Pinterest", success: Boolean(post.pinterest_success), error: getSpecificPlatformError("pinterest", "pinterest"), url: post.pinterest_url },
+    { id: "threads", name: "Threads", success: Boolean(post.threads_success), error: getSpecificPlatformError("threads", "threads"), url: post.threads_url },
+    { id: "x", name: "X", success: Boolean(post.x_success), error: getSpecificPlatformError("x", "x"), url: post.x_url },
+    { id: "reddit", name: "Reddit", success: Boolean(post.reddit_success), error: getSpecificPlatformError("reddit", "reddit"), url: post.reddit_url },
   ];
 
   const results = [];
@@ -244,11 +296,12 @@ function buildPlatforms(post) {
     instagramChannels = ['instagram'];
   }
   instagramChannels.forEach(igId => {
+    const specificErr = getSpecificPlatformError("instagram", igId);
     results.push({
       id: igId,
       name: "Instagram",
-      success: isScheduled ? false : post.instagram_success,
-      error: isScheduled ? null : post.instagram_error,
+      success: isScheduled ? false : Boolean(post.instagram_success),
+      error: isScheduled ? null : (specificErr || (post.status === 'failed' ? post.last_error : null)),
       url: post.instagram_url,
     });
   });
@@ -262,16 +315,21 @@ function buildPlatforms(post) {
     }
     if (subChannels.length > 0) {
       subChannels.forEach(scId => {
+        const specificErr = getSpecificPlatformError(pm.id, scId);
         results.push({
           id: scId,
           name: pm.name,
-          success: pm.success,
-          error: pm.error,
+          success: isScheduled ? false : pm.success,
+          error: isScheduled ? null : (specificErr || (post.status === 'failed' ? post.last_error : null)),
           url: pm.url,
         });
       });
     } else if (pm.success || (pm.error && pm.error !== "Not selected")) {
-      results.push(pm);
+      results.push({
+        ...pm,
+        success: isScheduled ? false : pm.success,
+        error: isScheduled ? null : pm.error,
+      });
     }
   });
 
@@ -1059,7 +1117,7 @@ function resolvePlatformLabel(platform, connectedAccounts) {
   return handle ? `${platform.name} @${handle}` : platform.name;
 }
 
-function ListRow({ post, expanded, onToggle, connectedAccounts, onEdit, selectedPlatform }) {
+function ListRow({ post, expanded, onToggle, connectedAccounts, onEdit, onDelete, selectedPlatform }) {
   const navigate = useNavigate();
   const platforms = buildPlatforms(post);
   const isScheduled = post.status === "scheduled";
@@ -1127,19 +1185,34 @@ function ListRow({ post, expanded, onToggle, connectedAccounts, onEdit, selected
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              {isScheduled && (
+              {post.status === "failed" && (
                 <div
                   style={{
                     fontSize: 9,
                     fontWeight: 800,
-                    color: css.arc,
-                    background: "rgba(255, 86, 0, 0.08)",
+                    color: "#b91c1c",
+                    background: "#fee2e2",
                     padding: "2px 8px",
                     borderRadius: css.r_pill,
                     textTransform: "uppercase",
                   }}
                 >
-                  Scheduled
+                  Failed
+                </div>
+              )}
+              {isScheduled && (
+                <div
+                  style={{
+                    fontSize: 9,
+                    fontWeight: 800,
+                    color: post.last_error ? "#c2410c" : css.arc,
+                    background: post.last_error ? "rgba(249, 115, 22, 0.12)" : "rgba(255, 86, 0, 0.08)",
+                    padding: "2px 8px",
+                    borderRadius: css.r_pill,
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {post.last_error ? "Scheduled (Retry Pending)" : "Scheduled"}
                 </div>
               )}
             </div>
@@ -1254,6 +1327,38 @@ function ListRow({ post, expanded, onToggle, connectedAccounts, onEdit, selected
               <ExternalLink size={14} /> View Post
             </a>
           )}
+          {onDelete && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                const hasYt = post.youtube_success || post.youtube_video_id || post.platform_data?.youtube?.videoId;
+                const confirmMsg = hasYt
+                  ? "Are you sure you want to delete this post from QuickPost and YouTube?"
+                  : "Are you sure you want to delete this post?";
+                if (window.confirm(confirmMsg)) {
+                  onDelete(post.id);
+                }
+              }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 12px",
+                borderRadius: 7,
+                border: `1px solid ${css.hairline}`,
+                color: "#dc2626",
+                fontSize: 13,
+                fontWeight: 650,
+                background: css.white,
+                cursor: "pointer",
+                transition: "all 0.2s",
+              }}
+              title="Delete Post"
+            >
+              <Trash2 size={14} style={{ color: "#dc2626" }} /> Delete
+            </button>
+          )}
           <button
             type="button"
             onClick={onToggle}
@@ -1324,12 +1429,12 @@ function ListRow({ post, expanded, onToggle, connectedAccounts, onEdit, selected
                   >
                     {getPlatformIcon(p.id)}
                   </div>
-                  <div style={{ minWidth: 0 }}>
+                  <div style={{ minWidth: 0, maxWidth: "65%" }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: css.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {resolvePlatformLabel(p, connectedAccounts)}
                     </div>
-                    <div style={{ fontSize: 11, fontWeight: 650, color: p.success ? "#15803d" : isScheduled ? css.slate : "#b91c1c" }}>
-                      {p.success ? "Success" : isScheduled ? "Scheduled" : (p.error || "Failed")}
+                    <div style={{ fontSize: 11, fontWeight: 650, color: p.success ? "#15803d" : (isScheduled && !p.error) ? css.slate : "#b91c1c", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={p.error || post.last_error}>
+                      {p.success ? "Success" : (isScheduled && !p.error) ? "Scheduled" : (formatUserFriendlyError(p.error || post.last_error, p.id) || "Failed")}
                     </div>
                   </div>
                 </div>
@@ -1392,6 +1497,32 @@ function ListRow({ post, expanded, onToggle, connectedAccounts, onEdit, selected
                 )}
               </div>
             ))}
+
+            {post.last_error && (
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: "10px 14px",
+                  background: "#fff1f2",
+                  border: "1px solid rgba(239, 68, 68, 0.25)",
+                  borderRadius: 8,
+                  color: "#991b1b",
+                  fontSize: 12,
+                  lineHeight: 1.45,
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 10,
+                }}
+              >
+                <AlertCircle size={16} style={{ color: "#ef4444", flexShrink: 0, marginTop: 2 }} />
+                <div style={{ minWidth: 0 }}>
+                  <strong style={{ display: "block", color: "#7f1d1d", fontSize: 12, marginBottom: 2 }}>
+                    {post.status === "scheduled" ? "Scheduled Retry Issue:" : "Failure Reason:"}
+                  </strong>
+                  <span style={{ wordBreak: "break-word" }}>{formatUserFriendlyError(post.last_error, post.selected_channels?.[0])}</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1475,7 +1606,7 @@ function Dashboard() {
   const [composerOpen, setComposerOpen] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [viewMode, setViewMode] = useState("list");
+  const [viewMode, setViewMode] = useState("grid");
   const [selectedPost, setSelectedPost] = useState(null);
   const [queueCount, setQueueCount] = useState(0);
   const [disconnectConfirmOpen, setDisconnectConfirmOpen] = useState(false);
@@ -1501,11 +1632,11 @@ function Dashboard() {
 
     let matchesPlatform = buildPlatforms(b).some((p) => {
       if (p.id === selectedPlatform) return true;
-      if (p.id.split(":")[0] === baseSelected) return true;
+      if (!isSpecificAccount && p.id.split(":")[0] === baseSelected) return true;
       return false;
     }) || (Array.isArray(b.selected_channels) && b.selected_channels.some(c => {
       if (c === selectedPlatform) return true;
-      if (c.split(":")[0] === baseSelected) return true;
+      if (!isSpecificAccount && c.split(":")[0] === baseSelected) return true;
       return false;
     }));
 
@@ -1596,6 +1727,16 @@ function Dashboard() {
   }, [activeTab]);
 
   useEffect(() => {
+    const handleBroadcastCompleted = () => {
+      fetchBroadcasts(true);
+    };
+    window.addEventListener("quickpost_broadcast_completed", handleBroadcastCompleted);
+    return () => {
+      window.removeEventListener("quickpost_broadcast_completed", handleBroadcastCompleted);
+    };
+  }, [activeTab]);
+
+  useEffect(() => {
     setDisplayCount(BATCH_SIZE);
   }, [searchTerm]);
 
@@ -1663,6 +1804,23 @@ function Dashboard() {
 
   const toggleExpand = (id) =>
     setExpandedId((prev) => (prev === id ? null : id));
+
+  const handleDeletePost = async (id) => {
+    try {
+      const res = await apiClient.delete(`/api/broadcasts/${id}`);
+      if (res.data.success) {
+        setBroadcasts((prev) => prev.filter((b) => b.id !== id));
+        if (selectedPost?.id === id) {
+          setSelectedPost(null);
+        }
+      } else {
+        alert(res.data?.error || "Failed to delete post.");
+      }
+    } catch (error) {
+      console.error("Failed to delete post:", error);
+      alert("Failed to delete post.");
+    }
+  };
 
   const handleDisconnectSelectedAccount = async () => {
     if (!selectedAccountInfo) return;
@@ -1937,9 +2095,13 @@ function Dashboard() {
                 margin: 0,
                 letterSpacing: "-0.025em",
                 lineHeight: 1.08,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 12,
               }}
             >
               Analytics
+              <InfoHelp text="Multi-channel broadcasting analytics, real-time post engagement rates, and delivery logs" />
             </h1>
 
           </div>
@@ -2280,8 +2442,9 @@ function Dashboard() {
                 <span style={{ fontSize: 13, fontWeight: 700, color: css.ink }}>
                   {filtered.length}
                 </span>
-                <span style={{ fontSize: 12, color: css.slate }}>
+                <span style={{ fontSize: 12, color: css.slate, display: "inline-flex", alignItems: "center", gap: 4 }}>
                   {activeTab === "queue" ? "scheduled" : "total"}
+                  <InfoHelp text={activeTab === "queue" ? "Total queued posts waiting to publish" : "Total broadcasts matching current filters"} />
                 </span>
               </div>
               <div
@@ -2311,8 +2474,9 @@ function Dashboard() {
                       ).length
                     }
                   </span>
-                  <span style={{ fontSize: 12, color: css.slate }}>
+                  <span style={{ fontSize: 12, color: css.slate, display: "inline-flex", alignItems: "center", gap: 4 }}>
                     success
+                    <InfoHelp text="Posts with confirmed successful broadcast to at least one target channel" />
                   </span>
                 </div>
               )}
@@ -2487,6 +2651,7 @@ function Dashboard() {
                             onEdit={(p) => {
                               navigate(`/dashboard/queue?edit=${p.id}`);
                             }}
+                            onDelete={handleDeletePost}
                           />
                         </div>
                       </div>
@@ -2693,18 +2858,7 @@ function Dashboard() {
           <PostPreviewModal
             post={selectedPost}
             onClose={() => setSelectedPost(null)}
-            onDelete={async (id) => {
-              try {
-                const res = await apiClient.delete(`/api/broadcasts/${id}`);
-                if (res.data.success) {
-                  setBroadcasts(prev => prev.filter(b => b.id !== id));
-                  setSelectedPost(null);
-                }
-              } catch (error) {
-                console.error("Failed to delete post:", error);
-                alert("Failed to delete post.");
-              }
-            }}
+            onDelete={handleDeletePost}
           />
         )}
       </AnimatePresence>

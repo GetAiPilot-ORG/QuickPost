@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MessagesSquare,
@@ -16,9 +16,12 @@ import {
   Filter,
   Layers,
   ChevronRight,
+  ArrowLeft,
 } from "lucide-react";
 import apiClient from "../utils/apiClient";
+import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
+import InfoHelp from "../components/InfoHelp";
 
 const PLATFORMS = [
   { id: "all", label: "All channels", icon: "/icons/share-icon.svg" },
@@ -32,6 +35,9 @@ const PLATFORMS = [
   { id: "youtube", label: "YouTube", icon: "/icons/youtube-color-icon.svg" },
   { id: "mastodon", label: "Mastodon", icon: "/icons/mastodon-round-icon.svg" },
 ];
+
+const INBOX_CLIENT_CACHE_TTL_MS = 60_000;
+const inboxClientCache = new Map();
 
 function getPlatformIcon(platformId) {
   const match = PLATFORMS.find((p) => p.id === platformId);
@@ -51,22 +57,143 @@ function timeAgo(dateString) {
   return `${days}d ago`;
 }
 
+function getAvatarColor(str) {
+  if (!str) return 'hsl(0, 0%, 40%)';
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return `hsl(${Math.abs(hash) % 360}, 65%, 45%)`;
+}
+
+function AuthorAvatar({ src, name, size = 40, style = {} }) {
+  const [imgError, setImgError] = useState(false);
+  const initial = (name || "U").replace(/^@/, "")[0]?.toUpperCase() || "U";
+
+  useEffect(() => {
+    setImgError(false);
+  }, [src]);
+
+  if (src && !imgError) {
+    return (
+      <img
+        src={src}
+        alt={name || ""}
+        referrerPolicy="no-referrer"
+        crossOrigin="anonymous"
+        onError={() => setImgError(true)}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: "50%",
+          objectFit: "cover",
+          flexShrink: 0,
+          ...style,
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        background: "rgba(20,20,19,0.08)",
+        color: "var(--ink)",
+        display: "grid",
+        placeItems: "center",
+        fontWeight: 750,
+        fontSize: size <= 28 ? 11 : 14,
+        flexShrink: 0,
+        ...style,
+      }}
+    >
+      {initial}
+    </div>
+  );
+}
+
+function PostThumbnailImage({ src, platform, postId, size = 64 }) {
+  const [imgSrc, setImgSrc] = useState(src);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setImgSrc(src);
+    setFailed(false);
+  }, [src, postId]);
+
+  const handleError = () => {
+    if (platform === "youtube" && postId && !imgSrc?.includes("hqdefault.jpg")) {
+      setImgSrc(`https://i.ytimg.com/vi/${postId}/hqdefault.jpg`);
+    } else {
+      setFailed(true);
+    }
+  };
+
+  if (imgSrc && !failed) {
+    return (
+      <img
+        src={imgSrc}
+        alt=""
+        referrerPolicy="no-referrer"
+        crossOrigin="anonymous"
+        onError={handleError}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: 8,
+          objectFit: "cover",
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: 8,
+        background: "rgba(20,20,19,0.06)",
+        display: "grid",
+        placeItems: "center",
+        flexShrink: 0,
+      }}
+    >
+      <img
+        src={getPlatformIcon(platform)}
+        style={{ width: size * 0.45, height: size * 0.45 }}
+        alt=""
+      />
+    </div>
+  );
+}
+
 export default function SocialInboxPage() {
   const { user } = useAuth();
+  const clientCacheKey = user?.id || user?.userId || "anonymous";
+  const cachedInbox = inboxClientCache.get(clientCacheKey);
   const [selectedPlatform, setSelectedPlatform] = useState("all");
   const [selectedAccount, setSelectedAccount] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all"); // all, unread, replied, starred
   const [searchQuery, setSearchQuery] = useState("");
-  const [items, setItems] = useState([]);
-  const [platformStatuses, setPlatformStatuses] = useState({});
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState(() => cachedInbox?.items || []);
+  const [platformStatuses, setPlatformStatuses] = useState(() => cachedInbox?.platformStatuses || {});
+  const [loading, setLoading] = useState(() => !cachedInbox);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState(null);
+  const [threadLoadingId, setThreadLoadingId] = useState(null);
+  const selectedItemRef = useRef(null);
 
   // Session-only states (Stateless requirements)
   const [repliedIds, setRepliedIds] = useState(new Set());
   const [starredIds, setStarredIds] = useState(new Set());
-  const [unreadIds, setUnreadIds] = useState(new Set());
+  const [unreadIds, setUnreadIds] = useState(() => new Set(
+    (cachedInbox?.items || []).filter((item) => item.unread).map((item) => item.id)
+  ));
 
   // Reply Composer state
   const [replyText, setReplyText] = useState("");
@@ -78,38 +205,62 @@ export default function SocialInboxPage() {
   // Load Inbox Stream from API
   const loadInboxStream = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
-    else setLoading(true);
+    else if (!inboxClientCache.has(clientCacheKey)) setLoading(true);
 
     try {
-      const res = await apiClient.get("/api/inbox/stream");
+      let res;
+      if (isRefresh) {
+        res = await apiClient.get("/api/inbox/stream", { params: { refresh: 1 } });
+      } else {
+        try {
+          res = await apiClient.get("/api/inbox/conversations", { params: { limit: 50 } });
+          if (!(res.data?.items || []).length) {
+            res = await apiClient.get("/api/inbox/stream", { params: { refresh: 1 } });
+          }
+        } catch (databaseError) {
+          res = await apiClient.get("/api/inbox/stream");
+        }
+      }
       if (res.data?.success) {
         const aggregatedItems = res.data.items || [];
-        setItems(aggregatedItems);
         setPlatformStatuses(res.data.platformStatuses || {});
-        
+        setItems((currentItems) => {
+          const currentById = new Map(currentItems.map((item) => [item.id, item]));
+          const mergedItems = aggregatedItems.map((item) => {
+            const current = currentById.get(item.id);
+            return current?.threadLoaded
+              ? { ...item, replies: current.replies || [], threadLoaded: true }
+              : item;
+          });
+          inboxClientCache.set(clientCacheKey, {
+            items: mergedItems,
+            platformStatuses: res.data.platformStatuses || {},
+            cachedAt: Date.now(),
+          });
+          return mergedItems;
+        });
+
         // Initialize unread IDs for items marked unread
         const initialUnread = new Set(
           aggregatedItems.filter((i) => i.unread).map((i) => i.id)
         );
         setUnreadIds(initialUnread);
-
-        // Auto-select first item if none selected
-        if (aggregatedItems.length > 0 && !selectedItemId) {
-          setSelectedItemId(aggregatedItems[0].id);
-        }
       }
     } catch (err) {
       console.error("Failed to load inbox stream:", err);
-      setItems([]);
+      if (!inboxClientCache.has(clientCacheKey)) setItems([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selectedItemId]);
+  }, [clientCacheKey]);
 
   useEffect(() => {
-    loadInboxStream();
-  }, [loadInboxStream]);
+    const cached = inboxClientCache.get(clientCacheKey);
+    if (!cached || Date.now() - cached.cachedAt >= INBOX_CLIENT_CACHE_TTL_MS) {
+      loadInboxStream();
+    }
+  }, [clientCacheKey, loadInboxStream]);
 
   // Unique Accounts list based on current platform selection
   const availableAccounts = useMemo(() => {
@@ -158,8 +309,131 @@ export default function SocialInboxPage() {
   }, [items, selectedPlatform, selectedAccount, statusFilter, searchQuery, unreadIds, starredIds, repliedIds]);
 
   const selectedItem = useMemo(() => {
-    return items.find((i) => i.id === selectedItemId) || filteredItems[0] || null;
-  }, [items, selectedItemId, filteredItems]);
+    return items.find((i) => i.id === selectedItemId) || null;
+  }, [items, selectedItemId]);
+
+  useEffect(() => {
+    selectedItemRef.current = selectedItem;
+  }, [selectedItem]);
+
+  useEffect(() => {
+    const realtimeUserId = user?.id || user?.userId;
+    if (!realtimeUserId) return undefined;
+
+    let refreshTimer;
+    const changedConversationIds = new Set();
+
+    const refreshFromDatabase = async () => {
+      await loadInboxStream();
+      const selected = selectedItemRef.current;
+      const selectedChanged = selected?.databaseId && changedConversationIds.has(selected.databaseId);
+      changedConversationIds.clear();
+      if (!selected?.threadLoaded || !selectedChanged) return;
+      try {
+        const { data } = await apiClient.get(`/api/inbox/conversations/${selected.databaseId}/messages`, {
+          params: { limit: 50 },
+        });
+        if (data?.success) {
+          setItems((currentItems) => currentItems.map((item) =>
+            item.databaseId === selected.databaseId
+              ? { ...item, replies: data.messages || [], threadLoaded: true }
+              : item
+          ));
+          void apiClient.post(`/api/inbox/conversations/${selected.databaseId}/read`).catch(() => {});
+        }
+      } catch (error) {
+        console.warn("Failed to refresh active inbox thread:", error);
+      }
+    };
+
+    const scheduleRefresh = (payload) => {
+      const changedId = payload.new?.id || payload.old?.id;
+      if (changedId) changedConversationIds.add(changedId);
+      window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => void refreshFromDatabase(), 250);
+    };
+
+    const channel = supabase
+      .channel(`social-inbox-${realtimeUserId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "inbox_conversations",
+          filter: `user_id=eq.${realtimeUserId}`,
+        },
+        scheduleRefresh
+      )
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          console.info("[INBOX-REALTIME] Connected");
+        }
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.warn(`[INBOX-REALTIME] Subscription status: ${status}`);
+        }
+      });
+
+    const refreshIfVisible = () => {
+      if (document.visibilityState === "visible") void loadInboxStream();
+    };
+    const fallbackPoll = window.setInterval(refreshIfVisible, 15_000);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    window.addEventListener("focus", refreshIfVisible);
+
+    return () => {
+      window.clearTimeout(refreshTimer);
+      window.clearInterval(fallbackPoll);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+      window.removeEventListener("focus", refreshIfVisible);
+      void supabase.removeChannel(channel);
+    };
+  }, [loadInboxStream, user?.id, user?.userId]);
+
+  const handleSelectItem = useCallback(async (item) => {
+    setSelectedItemId(item.id);
+    setUnreadIds((current) => {
+      const next = new Set(current);
+      next.delete(item.id);
+      return next;
+    });
+    if (item.threadLoaded) return;
+
+    setThreadLoadingId(item.id);
+    try {
+      let data;
+      if (item.persisted && item.databaseId) {
+        const response = await apiClient.get(`/api/inbox/conversations/${item.databaseId}/messages`, {
+          params: { limit: 50 },
+        });
+        data = { success: response.data?.success, replies: response.data?.messages || [] };
+        void apiClient.post(`/api/inbox/conversations/${item.databaseId}/read`).catch(() => {});
+      }
+      if (["instagram", "facebook"].includes(item.platform) && (!item.threadComplete || !data?.replies?.length)) {
+        const conversationId = String(item.commentId || item.id).replace(/^(ig|fb):/, "");
+        const response = await apiClient.get("/api/inbox/thread", {
+          params: {
+            platform: item.platform,
+            accountId: item.accountId,
+            conversationId,
+            externalConversationId: item.externalConversationId,
+          },
+        });
+        data = response.data;
+      }
+      if (data?.success) {
+        setItems((currentItems) => currentItems.map((currentItem) =>
+          currentItem.id === item.id
+            ? { ...currentItem, replies: data.replies || [], threadLoaded: true }
+            : currentItem
+        ));
+      }
+    } catch (error) {
+      console.error("Failed to load conversation thread:", error);
+    } finally {
+      setThreadLoadingId((currentId) => currentId === item.id ? null : currentId);
+    }
+  }, []);
 
   // Reply Progress Calculation (Replied X / Y)
   const totalY = items.length;
@@ -180,6 +454,7 @@ export default function SocialInboxPage() {
         platform: selectedItem.platform,
         accountId: selectedItem.accountId,
         commentId: selectedItem.commentId,
+        recipientId: selectedItem.replyRecipientId,
         postId: selectedItem.postId,
         text: replyText.trim(),
       };
@@ -188,7 +463,6 @@ export default function SocialInboxPage() {
       if (res.data?.success) {
         // Increment confirmed reply count safely in session state
         setRepliedIds((prev) => new Set(prev).add(selectedItem.id));
-        setReplySuccessMsg("Reply posted successfully!");
         setReplyText("");
 
         // Append to local replies list
@@ -206,6 +480,7 @@ export default function SocialInboxPage() {
                     authorAvatar: user?.profilePicture || null,
                     text: payload.text,
                     createdAt: new Date().toISOString(),
+                    isSelf: true
                   },
                 ],
               };
@@ -254,85 +529,77 @@ export default function SocialInboxPage() {
 
   return (
     <div
+      className={selectedItem ? "max-md:fixed max-md:inset-0 max-md:z-[60] max-md:!h-[100dvh]" : ""}
       style={{
         display: "flex",
         flexDirection: "column",
-        height: "calc(100vh - 64px)",
+        height: "calc(100dvh - 64px)",
         background: "var(--canvas, #f5f1ec)",
         fontFamily: "var(--font-body, system-ui)",
         color: "var(--ink, #111)",
         overflow: "hidden",
       }}
     >
-      {/* ── Unified Prominent Page Header ── */}
+      {/* ── Compact Page Header ── */}
       <div
+        className={selectedItem ? "max-md:hidden" : ""}
         style={{
           background: "#ffffff",
           borderBottom: "1px solid #d3cec6",
-          padding: "24px 32px 18px",
           display: "flex",
           flexDirection: "column",
-          gap: 20,
+          flexShrink: 0,
         }}
       >
-        {/* Top Row: Title + Description (Left) | Replied Status Card (Right) */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 24, flexWrap: "wrap" }}>
-          <div>
-            <h1 style={{ fontSize: 26, fontWeight: 900, margin: 0, lineHeight: 1.1, letterSpacing: "-0.03em", color: "var(--ink, #111111)" }}>
-              Social Inbox
-            </h1>
-            <p style={{ fontSize: 14, color: "var(--slate, #626260)", margin: "4px 0 0", fontWeight: 500 }}>
-              Manage cross-platform comments, audience threads, and instant AI copilot responses in real time.
-            </p>
-          </div>
+        <div
+          style={{
+            padding: "10px 24px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 16,
+          }}
+        >
+          <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0, letterSpacing: "-0.02em", color: "var(--ink, #111111)", display: "inline-flex", alignItems: "center", gap: 8 }}>
+            Social Inbox
+            <InfoHelp text="Unified inbox consolidating incoming comments and direct messages across all connected social channels" />
+          </h1>
 
-          {/* Replied Status Card */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 20,
-              background: "#ffffff",
-              padding: "12px 22px",
-              borderRadius: 12,
-              border: "1px solid #d3cec6",
-              boxShadow: "0 4px 16px rgba(20,20,19,0.04)",
-            }}
-          >
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 800, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                Replied Status
+          {/* Replied Status & Actions */}
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, background: "var(--canvas, #f5f1ec)", padding: "6px 12px", borderRadius: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.04em", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                Replied
+                <InfoHelp text="Tracks the ratio of conversations and audience comments that have received replies" />
+              </span>
+              <span style={{ fontSize: 14, fontWeight: 800, color: "var(--ink)" }}>{confirmedX} <span style={{ color: "var(--slate)", fontWeight: 500 }}>/ {totalY}</span></span>
+              <div style={{ width: 80, height: 6, background: "rgba(0,0,0,0.06)", borderRadius: 3, overflow: "hidden" }}>
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${progressPercent}%` }}
+                  transition={{ duration: 0.4 }}
+                  style={{ height: "100%", background: "var(--arc, #ff5600)" }}
+                />
               </div>
-              <div style={{ fontSize: 16, fontWeight: 900, color: "var(--ink)", marginTop: 2 }}>
-                {confirmedX} <span style={{ fontWeight: 500, color: "var(--slate)", fontSize: 14 }}>/ {totalY}</span>
-              </div>
-            </div>
-            <div style={{ width: 140, height: 8, background: "rgba(20,20,19,0.08)", borderRadius: 4, overflow: "hidden" }}>
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${progressPercent}%` }}
-                transition={{ duration: 0.4 }}
-                style={{ height: "100%", background: "linear-gradient(90deg, var(--arc, #ff5600), #ff7a38)" }}
-              />
             </div>
             <button
               onClick={() => loadInboxStream(true)}
               disabled={refreshing}
               style={{
-                border: "1px solid rgba(20,20,19,0.12)",
-                background: "rgba(20,20,19,0.02)",
+                padding: "8px",
                 borderRadius: 8,
-                cursor: "pointer",
-                color: "var(--slate)",
+                border: "1px solid #d3cec6",
+                background: "#ffffff",
+                cursor: refreshing ? "default" : "pointer",
+                color: refreshing ? "var(--slate)" : "var(--ink)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                padding: 8,
-                transition: "all 0.2s",
+                transition: "all 0.2s"
               }}
-              title="Refresh stream"
+              title="Refresh Inbox"
             >
-              <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
+              <RefreshCw size={16} className={refreshing ? "spin" : ""} />
             </button>
           </div>
         </div>
@@ -397,15 +664,7 @@ export default function SocialInboxPage() {
       <div style={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden" }}>
         {/* ── Left Pane: Comment & Thread List ── */}
         <div
-          style={{
-            width: "clamp(320px, 26vw, 380px)",
-            flexShrink: 0,
-            borderRight: "1px solid #d3cec6",
-            background: "#ffffff",
-            display: "flex",
-            flexDirection: "column",
-            minHeight: 0,
-          }}
+          className={`w-full md:w-[320px] md:max-w-[320px] flex-shrink-0 border-r border-[#d3cec6] bg-white min-h-0 ${selectedItem ? "hidden md:flex" : "flex"} flex-col`}
         >
           {/* Controls: Search, Account & Status Filter */}
           <div style={{ padding: "12px 16px", borderBottom: "1px solid rgba(20,20,19,0.06)", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -482,12 +741,12 @@ export default function SocialInboxPage() {
             {loading ? (
               <div style={{ padding: 24, textAlign: "center", color: "var(--slate)" }}>
                 <Loader2 size={24} className="animate-spin" style={{ margin: "0 auto 8px" }} />
-                <div style={{ fontSize: 13 }}>Aggregating live comments...</div>
+                <div style={{ fontSize: 13 }}>Loading conversations...</div>
               </div>
             ) : filteredItems.length === 0 ? (
               <div style={{ padding: 32, textAlign: "center", color: "var(--slate)" }}>
                 <MessageCircle size={32} style={{ margin: "0 auto 12px", opacity: 0.4 }} />
-                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>No comments found</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>No conversations found</div>
                 <div style={{ fontSize: 12, marginTop: 4 }}>Try selecting another platform or clearing search</div>
               </div>
             ) : (
@@ -500,7 +759,7 @@ export default function SocialInboxPage() {
                 return (
                   <div
                     key={item.id}
-                    onClick={() => setSelectedItemId(item.id)}
+                    onClick={() => handleSelectItem(item)}
                     style={{
                       padding: "14px 16px",
                       borderBottom: "1px solid rgba(20,20,19,0.06)",
@@ -512,17 +771,28 @@ export default function SocialInboxPage() {
                     }}
                   >
                     {/* Header: Platform icon + Author + Timestamp */}
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, flex: 1, overflow: "hidden" }}>
-                        <img src={getPlatformIcon(item.platform)} style={{ width: 16, height: 16, flexShrink: 0 }} alt="" />
-                        <span style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {item.authorName}
-                        </span>
-                        {showHandle && (
-                          <span style={{ fontSize: 11, color: "var(--slate)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {item.authorHandle}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1, overflow: "hidden" }}>
+                        <div style={{ position: "relative" }}>
+                          {item.authorAvatar ? (
+                            <img src={item.authorAvatar} style={{ width: 32, height: 32, borderRadius: "50%", objectFit: "cover" }} alt="" />
+                          ) : (
+                            <div style={{ width: 32, height: 32, borderRadius: "50%", background: getAvatarColor(item.authorName), color: "#fff", display: "grid", placeItems: "center", fontWeight: 700, fontSize: 13 }}>
+                              {item.authorName?.[0]?.toUpperCase() || "U"}
+                            </div>
+                          )}
+                          <img src={getPlatformIcon(item.platform)} style={{ width: 14, height: 14, position: "absolute", bottom: -2, right: -2, border: "2px solid #fff", borderRadius: "50%" }} alt="" />
+                        </div>
+                        <div style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {item.authorName}
                           </span>
-                        )}
+                          {showHandle && (
+                            <span style={{ fontSize: 11, color: "var(--slate)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              {item.authorHandle}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <span style={{ fontSize: 11, color: "var(--slate)", flexShrink: 0, whiteSpace: "nowrap" }}>
                         {timeAgo(item.createdAt)}
@@ -576,220 +846,178 @@ export default function SocialInboxPage() {
         </div>
 
         {/* ── Right Pane: Thread Detail & Reply Composer ── */}
-        <div className="no-scrollbar" style={{ flex: 1, background: "var(--canvas, #f5f1ec)", overflowY: "auto", msOverflowStyle: "none", scrollbarWidth: "none", padding: 24, minHeight: 0 }}>
+        <div className={`${!selectedItem ? "hidden md:flex" : "flex"} flex-1 flex-col h-full overflow-hidden`} style={{ background: "#ffffff" }}>
           {selectedItem ? (
-            <div style={{ maxWidth: 820, margin: "0 auto" }}>
-              {/* Post Context Banner */}
-              <div
-                style={{
-                  background: "#ffffff",
-                  borderRadius: 12,
-                  padding: 16,
-                  border: "1px solid #d3cec6",
-                  marginBottom: 20,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 16,
-                }}
-              >
-                {selectedItem.postThumbnail && (
-                  <img
-                    src={selectedItem.postThumbnail}
-                    style={{ width: 64, height: 64, borderRadius: 8, objectFit: "cover", flexShrink: 0 }}
-                    alt=""
-                  />
-                )}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                    <img src={getPlatformIcon(selectedItem.platform)} style={{ width: 16, height: 16, flexShrink: 0 }} alt="" />
-                    <span style={{ fontSize: 12, fontWeight: 700, color: "var(--slate)", textTransform: "capitalize" }}>
-                      {selectedItem.platform} Post Context
-                    </span>
+            <div style={{ display: "flex", flexDirection: "column", flex: 1, width: "100%", maxWidth: 900, margin: "0 auto", height: "100%", overflow: "hidden", background: "#ffffff", borderLeft: "1px solid rgba(0,0,0,0.06)", borderRight: "1px solid rgba(0,0,0,0.06)" }}>
+              
+              {/* ── Instagram-Style Header ── */}
+              <div style={{ background: "#ffffff", padding: "12px 16px", borderBottom: "1px solid rgba(0,0,0,0.08)", display: "flex", alignItems: "center", gap: 12, flexShrink: 0, zIndex: 10 }}>
+                <button onClick={() => setSelectedItemId(null)} className="md:hidden flex items-center justify-center p-2 -ml-2 rounded-full hover:bg-slate-100" style={{ color: "var(--ink)", border: "none", background: "transparent", cursor: "pointer" }}>
+                  <ArrowLeft size={24} strokeWidth={2} />
+                </button>
+                <AuthorAvatar src={selectedItem.authorAvatar} name={selectedItem.authorName} size={40} />
+                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: "1.2" }}>
+                    {selectedItem.authorName}
                   </div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {selectedItem.postTitle}
+                  <div style={{ fontSize: 13, color: "var(--slate)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
+                    {selectedItem.authorHandle} • <img src={getPlatformIcon(selectedItem.platform)} style={{ width: 12, height: 12 }} alt="" title={selectedItem.platform} />
                   </div>
                 </div>
               </div>
 
-              {/* Original Comment Card */}
-              <div
-                style={{
-                  background: "#ffffff",
-                  borderRadius: 12,
-                  padding: 20,
-                  border: "1px solid #d3cec6",
-                  marginBottom: 16,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-                  {selectedItem.authorAvatar ? (
-                    <img src={selectedItem.authorAvatar} style={{ width: 40, height: 40, borderRadius: "50%", flexShrink: 0 }} alt="" />
-                  ) : (
-                    <div style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(20,20,19,0.08)", display: "grid", placeItems: "center", fontWeight: 700, flexShrink: 0 }}>
-                      {selectedItem.authorName?.[0] || "U"}
-                    </div>
-                  )}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 15, fontWeight: 750, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {selectedItem.authorName}
-                    </div>
-                    <div style={{ fontSize: 12, color: "var(--slate)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {selectedItem.authorHandle && selectedItem.authorHandle.toLowerCase() !== selectedItem.authorName.toLowerCase() ? `${selectedItem.authorHandle} · ` : ""}{timeAgo(selectedItem.createdAt)}
+              {/* ── Chat Messages Area ── */}
+              <div className="no-scrollbar" style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
+                <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 6, marginTop: "auto" }}>
+                  
+                  {/* Post Context Embedded Card */}
+                  <div style={{ alignSelf: "center", maxWidth: "85%", width: "100%", background: "#f8f9fa", borderRadius: 16, padding: 12, marginBottom: 24, border: "1px solid rgba(0,0,0,0.05)", display: "flex", gap: 12, alignItems: "center" }}>
+                    <PostThumbnailImage src={selectedItem.postThumbnail} platform={selectedItem.platform} postId={selectedItem.postId} size={56} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", textTransform: "capitalize", marginBottom: 2 }}>Replying to {selectedItem.platform} Post</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{selectedItem.postTitle}</div>
                     </div>
                   </div>
-                </div>
 
-                <p style={{ fontSize: 15, color: "var(--ink)", lineHeight: 1.5, margin: "0 0 16px" }}>
-                  {selectedItem.text}
-                </p>
+                  {/* Original Message and Replies */}
+                  {threadLoadingId === selectedItem.id ? (
+                    <div style={{ display: "flex", justifyContent: "center", padding: 24, color: "var(--slate)" }}>
+                      <Loader2 size={22} className="animate-spin" />
+                    </div>
+                  ) : (selectedItem.replies?.length > 0 ? selectedItem.replies : [selectedItem]).map((msg, idx, arr) => {
+                    const isSelf = msg.isSelf || false;
+                    const rawText = msg.text || selectedItem.text || "";
+                    const msgText = rawText.trim() === "" ? "[📸 Media Attachment]" : rawText;
+                    const nextMsg = arr[idx + 1];
+                    const isLastInGroup = !nextMsg || nextMsg.isSelf !== isSelf;
 
-                {/* AI Copilot Action Buttons */}
-                <div style={{ display: "flex", alignItems: "center", gap: 8, pt: 12, borderTop: "1px solid rgba(20,20,19,0.06)" }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "var(--slate)", display: "flex", alignItems: "center", gap: 4 }}>
-                    <Sparkles size={13} style={{ color: "var(--arc, #ff5600)" }} /> AI Suggestions:
-                  </span>
-                  <button
-                    onClick={() => handleAiCopilot("friendly")}
-                    disabled={generatingAi}
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: 14,
-                      border: "1px solid rgba(20,20,19,0.1)",
-                      background: "#fff",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Friendly
-                  </button>
-                  <button
-                    onClick={() => handleAiCopilot("professional")}
-                    disabled={generatingAi}
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: 14,
-                      border: "1px solid rgba(20,20,19,0.1)",
-                      background: "#fff",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Professional
-                  </button>
-                  <button
-                    onClick={() => handleAiCopilot("quick_thanks")}
-                    disabled={generatingAi}
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: 14,
-                      border: "1px solid rgba(20,20,19,0.1)",
-                      background: "#fff",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Quick Thanks
-                  </button>
-                </div>
-              </div>
-
-              {/* Replies Thread */}
-              {selectedItem.replies?.length > 0 && (
-                <div style={{ paddingLeft: 18, borderLeft: "3px solid var(--arc, #ff5600)", marginBottom: 20, display: "grid", gap: 12 }}>
-                  {selectedItem.replies.map((r) => {
-                    const rName = r.authorName || selectedItem.accountName || "Account Owner";
-                    const rHandle = r.authorHandle || `@${rName.toLowerCase().replace(/\s+/g, '')}`;
                     return (
-                      <div key={r.id} style={{ background: "#ffffff", padding: 14, borderRadius: 10, border: "1px solid #d3cec6" }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
-                            {r.authorAvatar ? (
-                              <img src={r.authorAvatar} style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0 }} alt="" />
-                            ) : (
-                              <div style={{ width: 26, height: 26, borderRadius: "50%", background: "rgba(255,86,0,0.1)", color: "var(--arc, #ff5600)", display: "grid", placeItems: "center", fontWeight: 750, fontSize: 11, flexShrink: 0 }}>
-                                {rName[0]?.toUpperCase() || "A"}
-                              </div>
+                      <div key={msg.id || idx} style={{ display: "flex", gap: 8, alignItems: "flex-end", flexDirection: isSelf ? "row-reverse" : "row", width: "100%", marginBottom: isLastInGroup ? 16 : 2 }}>
+                        {!isSelf && (
+                          <div style={{ flexShrink: 0, width: 28, height: 28 }}>
+                            {isLastInGroup && (
+                              <AuthorAvatar src={selectedItem.authorAvatar} name={selectedItem.authorName} size={28} />
                             )}
-                            <span style={{ fontSize: 13, fontWeight: 750, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                              {rName}
-                            </span>
-                            <span style={{ fontSize: 11, color: "var(--slate)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                              {rHandle}
-                            </span>
                           </div>
-                          <span style={{ fontSize: 11, color: "var(--slate)", flexShrink: 0 }}>{timeAgo(r.createdAt)}</span>
+                        )}
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: isSelf ? "flex-end" : "flex-start", maxWidth: "75%" }}>
+                          <div
+                            style={{
+                              background: isSelf ? "var(--arc, #ff5600)" : "#efefef",
+                              color: isSelf ? "#ffffff" : "var(--ink)",
+                              padding: "10px 16px",
+                              borderRadius: 22,
+                              borderBottomRightRadius: isSelf && isLastInGroup ? 4 : 22,
+                              borderBottomLeftRadius: !isSelf && isLastInGroup ? 4 : 22,
+                              fontSize: 15,
+                              lineHeight: 1.4,
+                              wordBreak: "break-word"
+                            }}
+                          >
+                            {msgText}
+                          </div>
                         </div>
-                        <div style={{ fontSize: 13.5, color: "var(--ink)", lineHeight: 1.45, paddingLeft: 34 }}>{r.text}</div>
                       </div>
                     );
                   })}
                 </div>
-              )}
+              </div>
 
-              {/* Reply Composer Box */}
-              <div style={{ background: "#ffffff", borderRadius: 12, padding: 16, border: "1px solid #d3cec6" }}>
-                <textarea
-                  rows={4}
-                  placeholder={`Replying to ${selectedItem.authorHandle}...`}
-                  value={replyText}
-                  onChange={(e) => setReplyText(e.target.value)}
-                  style={{
-                    width: "100%",
-                    border: "none",
-                    outline: "none",
-                    resize: "vertical",
-                    fontSize: 14,
-                    fontFamily: "inherit",
-                    boxSizing: "border-box",
-                  }}
-                />
+              {/* ── Composer Area ── */}
+              <div style={{ background: "#ffffff", padding: "12px 16px 24px", flexShrink: 0, zIndex: 10, borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+                
+                {/* Copilot Suggestions */}
+                <div className="no-scrollbar" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, overflowX: "auto", paddingBottom: 4 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--arc)", display: "flex", alignItems: "center", gap: 4, flexShrink: 0, paddingRight: 4 }}>
+                    <Sparkles size={14} /> AI
+                  </div>
+                  {["Friendly", "Professional", "Quick Thanks"].map(mood => (
+                    <button
+                      key={mood}
+                      onClick={() => handleAiCopilot(mood.toLowerCase().replace(" ", "_"))}
+                      disabled={generatingAi}
+                      style={{
+                        padding: "6px 14px",
+                        borderRadius: 20,
+                        background: "#f1f5f9",
+                        border: "none",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: "var(--ink)",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        flexShrink: 0,
+                        transition: "background 0.2s"
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = "#e2e8f0"}
+                      onMouseLeave={(e) => e.currentTarget.style.background = "#f1f5f9"}
+                    >
+                      {generatingAi ? <Loader2 size={12} className="animate-spin" /> : mood}
+                    </button>
+                  ))}
+                </div>
 
                 {replyErrorMsg && (
-                  <div style={{ color: "#dc2626", fontSize: 12, marginTop: 6, display: "flex", alignItems: "center", gap: 4 }}>
+                  <div style={{ color: "#dc2626", fontSize: 12, marginBottom: 8, display: "flex", alignItems: "center", gap: 4 }}>
                     <AlertCircle size={14} /> {replyErrorMsg}
                   </div>
                 )}
-                {replySuccessMsg && (
-                  <div style={{ color: "#16a34a", fontSize: 12, marginTop: 6, display: "flex", alignItems: "center", gap: 4 }}>
-                    <CheckCircle2 size={14} /> {replySuccessMsg}
-                  </div>
-                )}
 
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, pt: 12, borderTop: "1px solid rgba(20,20,19,0.06)" }}>
-                  <span style={{ fontSize: 11, color: "var(--slate)" }}>{replyText.length} / 1248</span>
-                  <button
-                    onClick={handleSendReply}
-                    disabled={!replyText.trim() || sendingReply}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "8px 20px",
-                      borderRadius: 8,
-                      border: "none",
-                      background: replyText.trim() ? "var(--arc, #ff5600)" : "rgba(20,20,19,0.1)",
-                      color: "#ffffff",
-                      fontSize: 13,
-                      fontWeight: 700,
-                      cursor: replyText.trim() ? "pointer" : "not-allowed",
-                      transition: "all 0.2s",
+                <div style={{ display: "flex", alignItems: "flex-end", gap: 10, background: "#f1f5f9", padding: "10px 16px", borderRadius: 24 }}>
+                  <textarea
+                    rows={1}
+                    placeholder="Message..."
+                    value={replyText}
+                    onChange={(e) => {
+                      setReplyText(e.target.value);
+                      e.target.style.height = "auto";
+                      e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
                     }}
-                  >
-                    {sendingReply ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                    {sendingReply ? "Sending..." : "Send Reply"}
-                  </button>
+                    style={{
+                      flex: 1,
+                      border: "none",
+                      outline: "none",
+                      resize: "none",
+                      fontSize: 15,
+                      fontFamily: "inherit",
+                      background: "transparent",
+                      padding: "4px 0",
+                      maxHeight: 120,
+                      color: "var(--ink)",
+                      lineHeight: 1.4
+                    }}
+                  />
+                  {replyText.trim() ? (
+                    <button
+                      onClick={handleSendReply}
+                      disabled={sendingReply}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: "var(--link, #0095f6)",
+                        fontSize: 15,
+                        fontWeight: 700,
+                        cursor: sendingReply ? "default" : "pointer",
+                        padding: "4px 4px 4px 12px",
+                        flexShrink: 0,
+                        transition: "opacity 0.2s",
+                        opacity: sendingReply ? 0.5 : 1
+                      }}
+                    >
+                      {sendingReply ? <Loader2 size={18} className="animate-spin" /> : "Send"}
+                    </button>
+                  ) : null}
                 </div>
               </div>
             </div>
           ) : (
             <div style={{ height: "100%", display: "grid", placeItems: "center", color: "var(--slate)" }}>
               <div style={{ textAlign: "center" }}>
-                <MessagesSquare size={48} style={{ opacity: 0.3, margin: "0 auto 12px" }} />
-                <div style={{ fontSize: 16, fontWeight: 600, color: "var(--ink)" }}>Select a comment thread to view details</div>
+                <MessagesSquare size={64} strokeWidth={1} style={{ margin: "0 auto 16px", color: "var(--ink)" }} />
+                <div style={{ fontSize: 20, fontWeight: 700, color: "var(--ink)" }}>Your Messages</div>
+                <div style={{ fontSize: 14, marginTop: 8 }}>Select a conversation to start chatting</div>
               </div>
             </div>
           )}

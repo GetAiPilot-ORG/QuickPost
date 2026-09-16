@@ -129,6 +129,48 @@ const buildFallbackInstagramProfile = (userId: string): InstagramProfile => ({
   account_type: 'BUSINESS',
 });
 
+const subscribeInstagramInboxWebhook = async (
+  instagramUserId: string,
+  accessToken: string,
+  requestId: string
+): Promise<boolean> => {
+  const version = Deno.env.get('IG_GRAPH_VERSION') || 'v24.0';
+  const fields =
+    Deno.env.get('INBOX_INSTAGRAM_SUBSCRIBED_FIELDS') ||
+    Deno.env.get('INSTAPILOT_SUBSCRIBED_FIELDS') ||
+    'messages,messaging_postbacks,comments';
+  const endpoints = [
+    `https://graph.instagram.com/${version}/${instagramUserId}/subscribed_apps`,
+    `https://graph.facebook.com/${version}/${instagramUserId}/subscribed_apps`,
+  ];
+
+  for (const endpoint of endpoints) {
+    const target = new URL(endpoint);
+    target.searchParams.set('access_token', accessToken);
+    target.searchParams.set('subscribed_fields', fields);
+    try {
+      const response = await fetch(target, { method: 'POST' });
+      const body = await response.json().catch(() => ({}));
+      if (response.ok && body?.success !== false && !body?.error) {
+        logInfo('Unified inbox webhook subscription active', {
+          requestId,
+          instagramUserId,
+          subscribedFields: fields,
+        });
+        return true;
+      }
+    } catch (error) {
+      logError('Unified inbox webhook subscription attempt failed', {
+        requestId,
+        instagramUserId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return false;
+};
+
 const resolveAppUserId = async (
   supabase: ReturnType<typeof getSupabaseAdmin>,
   authUserId: string,
@@ -241,6 +283,11 @@ Deno.serve(async (request: Request) => {
 
     const supabase = getSupabaseAdmin();
     const appUserId = await resolveAppUserId(supabase, statePayload.uid, statePayload.email);
+    const inboxWebhookActive = await subscribeInstagramInboxWebhook(
+      igUser.id,
+      tokenForStorage.access_token,
+      requestId
+    );
     const accountPayload = {
       user_id: appUserId,
       page_id: igUser.id,
@@ -257,6 +304,7 @@ Deno.serve(async (request: Request) => {
       followers_count: igUser.followers_count ?? 0,
       media_count: igUser.media_count ?? 0,
       is_connected: true,
+      webhook_status: inboxWebhookActive ? 'active' : 'configure_in_meta',
       updated_at: new Date().toISOString(),
     };
 

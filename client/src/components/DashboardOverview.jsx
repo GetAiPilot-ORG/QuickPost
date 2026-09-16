@@ -19,6 +19,7 @@ import {
 import { useAuth } from "../context/AuthContext";
 import apiClient from "../utils/apiClient";
 import ComposerModal from "./ComposerModal";
+import InfoHelp from "./InfoHelp";
 
 const ranges = [7, 30, 90];
 
@@ -137,11 +138,14 @@ function getNextAction(data) {
   };
 }
 
-function MetricCard({ icon: Icon, label, value, detail, tone = "neutral" }) {
+function MetricCard({ icon: Icon, label, value, detail, tone = "neutral", info }) {
   return (
     <article className={`dash-card dash-metric is-${tone}`}>
       <div className="dash-card-head">
-        <span>{label}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+          <span>{label}</span>
+          {info && <InfoHelp text={info} />}
+        </div>
         <Icon size={17} />
       </div>
       <strong>{value}</strong>
@@ -199,6 +203,16 @@ export default function DashboardOverview() {
 
   useEffect(() => {
     fetchOverview();
+  }, [range, instagramAccountId]);
+
+  useEffect(() => {
+    const handleBroadcastCompleted = () => {
+      fetchOverview();
+    };
+    window.addEventListener("quickpost_broadcast_completed", handleBroadcastCompleted);
+    return () => {
+      window.removeEventListener("quickpost_broadcast_completed", handleBroadcastCompleted);
+    };
   }, [range, instagramAccountId]);
 
   useEffect(() => {
@@ -327,7 +341,10 @@ export default function DashboardOverview() {
       <section className="dash-grid primary-grid dash-animate">
         <article className={`dash-card dash-next is-${nextAction.tone}`}>
           <div className="dash-card-head">
-            <span>Next action</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+              <span>Next action</span>
+              <InfoHelp text="Recommended high-impact action based on queue status, pending posts, or account connection health" />
+            </div>
             <NextActionIcon size={18} />
           </div>
           <h2>{nextAction.title}</h2>
@@ -348,6 +365,7 @@ export default function DashboardOverview() {
           value={ops.successRate === null ? "No baseline" : `${ops.successRate}%`}
           detail={`${formatNumber(ops.sent)} sent, ${formatNumber(ops.failed)} failed in ${range} days`}
           tone={ops.failed > 0 ? "danger" : "success"}
+          info="Percentage of broadcasts successfully dispatched across all connected channels in the selected range"
         />
         <MetricCard
           icon={Clock3}
@@ -355,6 +373,7 @@ export default function DashboardOverview() {
           value={formatNumber(ops.queueCount)}
           detail={`${formatNumber(ops.processing)} processing, ${formatNumber(ops.scheduled)} waiting`}
           tone={ops.queueCount > 0 ? "warning" : "neutral"}
+          info="Posts waiting to be dispatched or actively undergoing processing by the publishing queue"
         />
         <MetricCard
           icon={Users}
@@ -362,6 +381,7 @@ export default function DashboardOverview() {
           value={formatNumber(data.accounts?.totalConnected || 0)}
           detail={(data.accounts?.needsReconnect || []).length ? "Reconnect needed" : "All visible accounts healthy"}
           tone={(data.accounts?.needsReconnect || []).length ? "danger" : "neutral"}
+          info="Total social media channels and pages currently authorized and connected to your workspace"
         />
       </section>
 
@@ -369,7 +389,10 @@ export default function DashboardOverview() {
         <article className="dash-card dash-growth">
           <div className="dash-section-title -mb-4">
             <div>
-              <span>Instagram growth</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                <span style={{ margin: 0 }}>Instagram growth</span>
+                <InfoHelp text="Performance trends and audience growth metrics synced directly from Meta Graph API" />
+              </div>
               <h2>Account momentum</h2>
             </div>
             <select
@@ -387,12 +410,13 @@ export default function DashboardOverview() {
           </div>
 
           <div className="dash-growth-stats">
-            <MetricInline label="Followers" value={formatNumber(growthSummary.followers)} detail={formatDelta(growthSummary.followerDelta)} />
-            <MetricInline label="Reach" value={formatNumber(growthSummary.reach)} detail={`Last ${range} days`} />
+            <MetricInline label="Followers" value={formatNumber(growthSummary.followers)} detail={formatDelta(growthSummary.followerDelta)} info="Total Instagram follower count and delta change during the selected time period" />
+            <MetricInline label="Reach" value={formatNumber(growthSummary.reach)} detail={`Last ${range} days`} info="Unique Instagram accounts that saw any of your posts or stories in the selected time range" />
             <MetricInline
               label="Profile views"
               value={formatNumber(growthSummary.profileViews)}
               detail={growthSummary.profileViews == null ? "Not returned by Meta" : "From Meta insights"}
+              info="Total visits to your Instagram business profile from Meta Insights"
             />
           </div>
 
@@ -406,13 +430,16 @@ export default function DashboardOverview() {
 
         <article className="dash-card dash-automation">
           <div className="dash-card-head">
+            <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
             <span>Automation lift</span>
+            <InfoHelp text="Automated direct messages, captured sales leads, and new follower conversions" />
+          </div>
             <ShieldCheck size={17} />
           </div>
           <div className="dash-mini-grid">
-            <MetricInline label="DMs sent" value={formatNumber(automation.autodm?.messagesSent || 0)} detail="AutoDM" />
-            <MetricInline label="Leads" value={formatNumber(automation.instapilot?.leadsCaptured || 0)} detail="InstaPilot" />
-            <MetricInline label="Followers gained" value={formatNumber(automation.autodm?.followersGained || 0)} detail="AutoDM tracked" />
+            <MetricInline label="DMs sent" value={formatNumber(automation.autodm?.messagesSent || 0)} detail="AutoDM" info="Automated direct messages triggered by comments and story interactions via AutoDM" />
+            <MetricInline label="Leads" value={formatNumber(automation.instapilot?.leadsCaptured || 0)} detail="InstaPilot" info="Qualified customer leads and contact information collected via InstaPilot AI bots" />
+            <MetricInline label="Followers gained" value={formatNumber(automation.autodm?.followersGained || 0)} detail="AutoDM tracked" info="Follower conversions driven by follow-gate DM automation flows" />
           </div>
         </article>
       </section>
@@ -421,7 +448,10 @@ export default function DashboardOverview() {
         <article className="dash-card dash-trend">
           <div className="dash-section-title">
             <div>
-              <span>Publishing cadence</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                <span style={{ margin: 0 }}>Publishing cadence</span>
+                <InfoHelp text="Volume breakdown of sent, scheduled, and failed broadcasts over the selected timeframe" />
+              </div>
               <h2>{formatNumber(ops.totalPosts)} posts in {range} days</h2>
             </div>
             <p>{formatDelta(ops.totalPostsDelta)} vs previous period</p>
@@ -588,7 +618,10 @@ export default function DashboardOverview() {
         <article className="dash-card dash-feed">
           <div className="dash-section-title">
             <div>
-              <span>Recent broadcasts</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                <span style={{ margin: 0 }}>Recent broadcasts</span>
+                <InfoHelp text="Log of latest broadcast dispatches across connected social channels" />
+              </div>
               <h2>What shipped lately</h2>
             </div>
             <button type="button" className="dash-small-link" onClick={() => navigate("/dashboard/history")}>
@@ -619,7 +652,10 @@ export default function DashboardOverview() {
         <article className="dash-card dash-issues">
           <div className="dash-section-title">
             <div>
-              <span>Account risk</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                <span style={{ margin: 0 }}>Account risk</span>
+                <InfoHelp text="OAuth authentication health and token validity across connected social networks" />
+              </div>
               <h2>{issues.length ? `${issues.length} item${issues.length === 1 ? "" : "s"} to review` : "No visible blockers"}</h2>
             </div>
             <AlertTriangle size={17} />
@@ -649,7 +685,10 @@ export default function DashboardOverview() {
         <article className="dash-card dash-top-content">
           <div className="dash-section-title">
             <div>
-              <span>Top Instagram content</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                <span style={{ margin: 0 }}>Top Instagram content</span>
+                <InfoHelp text="Highest performing posts and reels based on organic likes and comment engagement" />
+              </div>
               <h2>Best recent engagement</h2>
             </div>
             <BarChart3 size={17} />
@@ -686,10 +725,13 @@ export default function DashboardOverview() {
   );
 }
 
-function MetricInline({ label, value, detail }) {
+function MetricInline({ label, value, detail, info }) {
   return (
     <div className="dash-inline-metric">
-      <span>{label}</span>
+      <div style={{ display: "flex", alignItems: "center", gap: "4px", marginBottom: "6px" }}>
+        <span style={{ margin: 0 }}>{label}</span>
+        {info && <InfoHelp text={info} />}
+      </div>
       <strong>{value}</strong>
       <p>{detail}</p>
     </div>
@@ -926,8 +968,8 @@ function DashboardStyles() {
         gap: 16px;
       }
 
-      .dash-card-head svg,
-      .dash-section-title svg {
+      .dash-card-head > svg,
+      .dash-section-title > svg {
         width: 30px;
         height: 30px;
         padding: 7px;
@@ -996,17 +1038,17 @@ function DashboardStyles() {
         line-height: 1.4;
       }
 
-      .dash-card.is-danger .dash-card-head svg, .dash-metric.is-danger .dash-card-head svg {
+      .dash-card.is-danger .dash-card-head > svg, .dash-metric.is-danger .dash-card-head > svg {
         border-color: rgba(220, 38, 38, 0.16);
         background: #fff1ee;
         color: #dc2626;
       }
-      .dash-card.is-warning .dash-card-head svg, .dash-metric.is-warning .dash-card-head svg {
+      .dash-card.is-warning .dash-card-head > svg, .dash-metric.is-warning .dash-card-head > svg {
         border-color: rgba(217, 119, 6, 0.2);
         background: #fff7ed;
         color: #d97706;
       }
-      .dash-card.is-success .dash-card-head svg, .dash-metric.is-success .dash-card-head svg {
+      .dash-card.is-success .dash-card-head > svg, .dash-metric.is-success .dash-card-head > svg {
         border-color: rgba(5, 150, 105, 0.18);
         background: #ecfdf5;
         color: #059669;

@@ -171,7 +171,7 @@ function Header({ onMenuClick, sidebarOpen, isDesktop, topOffset = 0 }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div id="header-left-portal"></div>
         {/* Mobile menu toggle */}
-        {!isDesktop && (
+        {!isDesktop && !isEditorPage && (
           <button
             className="qp-header-icon-button"
             onClick={onMenuClick}

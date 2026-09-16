@@ -79,18 +79,21 @@ export function PostIntelligenceEngine(ctx) {
   const hasVideo = mediaFiles.some((m) => m.file?.type?.startsWith("video/"));
   const hasBoth  = hasImage && hasVideo;
 
+  const hasPlatform = (p) =>
+    (selectedChannels || []).some((c) => c === p || String(c).startsWith(p + ":"));
+
   /* ────────────────────────────────────────────────────────────
      YOUTUBE RULES
      ──────────────────────────────────────────────────────────── */
-  if (selectedChannels.includes("youtube")) {
+  if (hasPlatform("youtube")) {
 
-    // BLOCKING: YouTube cannot accept image-only posts
+    // BLOCKING: YouTube cannot accept image-only posts (including GIFs)
     if (hasImage && !hasVideo) {
       errors.push({
         id: RULE.YT_IMAGE_ONLY,
         platform: "youtube",
-        title: "YouTube doesn't support image posts",
-        message: "YouTube sirf video ya Shorts support karta hai. Image-only post nahi hoti. Video upload karein ya YouTube deselect karein.",
+        title: "YouTube doesn't support image or GIF posts",
+        message: "YouTube only supports video uploads (.mp4, .mov, .webm). GIFs and images cannot be uploaded. Please upload a video file or deselect YouTube.",
         blocking: true,
       });
     }
@@ -140,8 +143,8 @@ export function PostIntelligenceEngine(ctx) {
      ──────────────────────────────────────────────────────────── */
   if (
     postType === "reel" &&
-    selectedChannels.includes("instagram") &&
-    selectedChannels.includes("youtube")
+    hasPlatform("instagram") &&
+    hasPlatform("youtube")
   ) {
     warnings.push({
       id: RULE.REEL_FORMAT_MISMATCH,
@@ -154,7 +157,7 @@ export function PostIntelligenceEngine(ctx) {
   /* ────────────────────────────────────────────────────────────
      PINTEREST RULES
      ──────────────────────────────────────────────────────────── */
-  if (selectedChannels.includes("pinterest")) {
+  if (hasPlatform("pinterest")) {
     if (!platformData?.pinterest?.title?.trim()) {
       warnings.push({
         id: RULE.PINTEREST_TITLE,
@@ -176,7 +179,7 @@ export function PostIntelligenceEngine(ctx) {
   /* ────────────────────────────────────────────────────────────
      REDDIT RULES
      ──────────────────────────────────────────────────────────── */
-  if (selectedChannels.includes("reddit") && !platformData?.reddit?.subreddit?.trim()) {
+  if (hasPlatform("reddit") && !platformData?.reddit?.subreddit?.trim()) {
     warnings.push({
       id: RULE.REDDIT_SUBREDDIT,
       platform: "reddit",

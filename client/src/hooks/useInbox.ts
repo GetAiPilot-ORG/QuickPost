@@ -6,20 +6,20 @@ export function useInbox() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  const refresh = useCallback(async (isInitial = false) => {
+    if (isInitial) setLoading(true);
     setError(null);
     try {
       setConversations(await fetchInboxConversations());
     } catch (err: any) {
       setError(err.response?.data?.error || err.message || "Failed to load inbox");
     } finally {
-      setLoading(false);
+      if (isInitial) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    refresh();
+    refresh(true);
   }, [refresh]);
 
   return { conversations, loading, error, refresh };

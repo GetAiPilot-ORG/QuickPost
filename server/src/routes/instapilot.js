@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticateUser } from '../middleware/authenticateUser.js';
+import { broadcastRefresh } from '../services/sse.js';
 import {
   addKnowledgeSource,
   createBot,
@@ -21,6 +22,7 @@ import {
   updateConversation,
   updateKnowledgeSource,
   verifyMetaSignature,
+  syncInboxFromGraphAPI,
 } from '../services/instapilot.js';
 
 const router = express.Router();
@@ -30,7 +32,7 @@ const asyncHandler = (fn) => async (req, res) => {
     await fn(req, res);
   } catch (error) {
     console.error('[INSTAPILOT]', error.response?.data || error);
-    
+
     let errorMessage = error.message || 'InstaPilot request failed';
     if (error.response?.data?.error?.message) {
       errorMessage = `Meta API Error: ${error.response.data.error.message}`;
@@ -118,6 +120,11 @@ router.get('/inbox/conversations', authenticateUser, asyncHandler(async (req, re
   res.json({ success: true, conversations });
 }));
 
+router.post('/inbox/sync', authenticateUser, asyncHandler(async (req, res) => {
+  const result = await syncInboxFromGraphAPI(req.user.userId);
+  res.json({ success: true, ...result });
+}));
+
 router.get('/inbox/conversations/:id', authenticateUser, asyncHandler(async (req, res) => {
   const thread = await getConversation(req.user.userId, req.params.id);
   res.json({ success: true, ...thread });
@@ -138,6 +145,9 @@ router.get('/analytics', authenticateUser, asyncHandler(async (req, res) => {
   res.json({ success: true, analytics });
 }));
 
+import crypto from 'crypto';
+import supabase from '../services/supabase.js';
+
 router.get('/webhooks/instagram', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
@@ -155,17 +165,43 @@ router.get('/webhooks/instagram', (req, res) => {
 });
 
 router.post('/webhooks/instagram', asyncHandler(async (req, res) => {
-  console.log('--- 🛑 INSTAGRAM WEBHOOK PAYLOAD ---');
-  console.log(JSON.stringify(req.body, null, 2));
-  
   const signature = req.headers['x-hub-signature-256'];
   if (!verifyMetaSignature(req.rawBody, signature)) {
     console.error('❌ Invalid Meta webhook signature');
     return res.status(401).json({ success: false, error: 'Invalid Meta webhook signature' });
   }
 
-  const events = await processInstagramWebhook(req.body || {});
-  res.json({ success: true, events });
+  // Acknowledge immediately to Meta
+  res.status(200).json({ success: true, received: true });
+
+  // Funnel incoming webhook events into webhook_logs with deterministic dedupe_key
+  const payload = req.body || {};
+  for (const entry of payload.entry || []) {
+    const entryId = String(entry?.id || '');
+    for (const messaging of entry?.messaging || []) {
+      if (messaging?.message?.is_echo) continue;
+      const senderId = String(messaging?.sender?.id || '');
+      const igId = String(messaging?.recipient?.id || entryId);
+      const text = String(messaging?.message?.text || messaging?.message?.quick_reply?.payload || '');
+      const eventId = String(messaging?.message?.mid || `${entryId}-${messaging?.timestamp || Date.now()}`);
+      if (!senderId || !igId || !text) continue;
+
+      const dedupeKey = crypto.createHash('sha256').update([igId, senderId, 'messages', eventId, text].join('|')).digest('hex');
+
+      await supabase.from('webhook_logs').upsert({
+        ig_id: igId,
+        sender_id: senderId,
+        message_text: text,
+        processed: false,
+        event_type: 'messages',
+        event_id: eventId,
+        dedupe_key: dedupeKey,
+        payload: messaging,
+      }, { onConflict: 'dedupe_key', ignoreDuplicates: true }).catch((err) => {
+        console.warn('[INSTAPILOT] Webhook log upsert notice:', err.message);
+      });
+    }
+  }
 }));
 
 export default router;

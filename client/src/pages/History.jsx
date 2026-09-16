@@ -13,9 +13,12 @@ import {
   ChevronDown,
   ChevronUp,
   Share2,
+  Trash2,
 } from "lucide-react";
 import apiClient from "../utils/apiClient";
+import InfoHelp from "../components/InfoHelp";
 import { Skeleton } from "boneyard-js/react";
+import { formatUserFriendlyError } from "../components/Analytics";
 
 const API_BASE_URL = "/";
 
@@ -44,6 +47,28 @@ function History() {
 
   const toggleExpand = (id) => {
     setExpandedId(expandedId === id ? null : id);
+  };
+
+  const handleDeletePost = async (id, e) => {
+    e?.stopPropagation();
+    const post = broadcasts.find((b) => b.id === id);
+    const hasYt = post?.youtube_success || post?.youtube_video_id || post?.platform_data?.youtube?.videoId;
+    const confirmMsg = hasYt
+      ? "Are you sure you want to delete this post from QuickPost and YouTube?"
+      : "Are you sure you want to delete this post?";
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      const res = await apiClient.delete(`/api/broadcasts/${id}`);
+      if (res.data.success) {
+        setBroadcasts((prev) => prev.filter((b) => b.id !== id));
+      } else {
+        alert(res.data?.error || "Failed to delete post.");
+      }
+    } catch (error) {
+      console.error("Failed to delete post:", error);
+      alert("Failed to delete post.");
+    }
   };
 
   const formatDate = (dateString) => {
@@ -381,7 +406,10 @@ function History() {
       `}</style>
       <div className="history-header">
         <div>
-          <h1 className="history-title">Post History</h1>
+          <h1 className="history-title" style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+            Post History
+            <InfoHelp text="Chronological ledger of all completed multi-channel social broadcasts with delivery status and live URLs" />
+          </h1>
           <p className="history-subtitle">Review and track your multi-platform broadcasts</p>
         </div>
 
@@ -560,15 +588,23 @@ function History() {
                         <div className="history-date">
                           <Calendar className="w-3.5 h-3.5" />
                           {post.status === "scheduled"
-                            ? `Scheduled for ${formatDate(post.scheduled_for)}`
+                            ? `${post.last_error ? "Retrying at" : "Scheduled for"} ${formatDate(post.scheduled_for)}`
                             : formatDate(post.posted_at || post.created_at)}
                         </div>
                         <div className="flex items-center gap-2">
                           {post.status === "scheduled" && (
                             <span className="history-status-pill">
-                              Scheduled
+                              {post.last_error ? "Retrying" : "Scheduled"}
                             </span>
                           )}
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeletePost(post.id, e)}
+                            className="p-1.5 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-lg transition-colors"
+                            title="Delete Post"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                           <div className="history-chevron">
                             {expandedId === post.id ? (
                               <ChevronUp className="w-4 h-4 text-gray-400" />
@@ -649,9 +685,9 @@ function History() {
                                 )}
                               </div>
                             ) : (
-                              <div className="text-[10px] text-red-600 bg-red-50/50 p-2 rounded-lg border border-red-50 italic">
-                                {platform.error ||
-                                  "Connection timeout or API error"}
+                              <div className="text-[11px] text-red-700 bg-red-50 p-2.5 rounded-lg border border-red-200 leading-snug">
+                                {formatUserFriendlyError(platform.error || post.last_error, platform.id) ||
+                                  "Failed to publish to this channel"}
                               </div>
                             )}
                           </div>

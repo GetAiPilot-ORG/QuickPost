@@ -64,6 +64,12 @@ const base64UrlToBytes = (base64url: string): Uint8Array => {
   return bytes;
 };
 
+const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer => {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+};
+
 const verifyLocalJWT = async (token: string, secret: string) => {
   try {
     const parts = token.split('.');
@@ -83,7 +89,7 @@ const verifyLocalJWT = async (token: string, secret: string) => {
       ['verify']
     );
 
-    const signatureBytes = base64UrlToBytes(signatureEncoded);
+    const signatureBytes = toArrayBuffer(base64UrlToBytes(signatureEncoded));
     const isValid = await crypto.subtle.verify(
       'HMAC',
       key,
@@ -134,7 +140,7 @@ export const getAuthenticatedUser = async (authHeader: string | null, jwtSecretO
           email: payload.email,
           user_metadata: payload.user_metadata || {},
           app_metadata: payload.app_metadata || {},
-        },
+        } as any,
         error: null,
       };
     }

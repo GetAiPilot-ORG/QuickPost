@@ -5,6 +5,7 @@ import { default as supabase } from './supabase.js';
 import { executeBroadcast } from './postingService.js';
 import { downloadMedia } from '../utils/download.js';
 import { supermailbox } from './supermailbox.js';
+import { pendingBroadcastChannels } from '../config/queuePolicy.js';
 
 const QUEUE_NAME = process.env.BROADCAST_QUEUE_NAME || 'broadcast-publish';
 const getRedisUrl = () => process.env.REDIS_URL || process.env.BULLMQ_REDIS_URL;
@@ -17,8 +18,15 @@ const PERMANENT_ERROR_CODES = [
   'REAUTH_REQUIRED',
   'INVALID_CAPTION',
   'UNSUPPORTED_COMBINATION',
+  'UNAUTHORIZED',
+  '401',
 ];
 const PERMANENT_ERROR_PATTERNS = [
+  'NO YOUTUBE CHANNEL',
+  'YOUTUBESIGNUPREQUIRED',
+  'CHANNELNOTFOUND',
+  'UNAUTHORIZED',
+  'INVALID_GRANT',
   'ASPECT RATIO IS NOT SUPPORTED',
   'INVALID ASPECT RATIO',
   'UNSUPPORTED ASPECT RATIO',
@@ -164,7 +172,7 @@ export async function processBroadcastJob(broadcastId) {
   } = post;
 
   const currentAttempt = Math.max(Number(attempt_count) || 1, 1);
-  const channels = platform_data?.selectedChannels || [];
+  const channels = pendingBroadcastChannels(post);
   const filePaths = platform_data?.filePaths || [];
   const startTime = Date.now();
   const resolvedMediaUrls = Array.isArray(media_urls) && media_urls.length > 0
@@ -174,6 +182,16 @@ export async function processBroadcastJob(broadcastId) {
       : [];
 
   log('log', id, `Worker processing attempt ${currentAttempt}`, { channels });
+
+  if (channels.length === 0) {
+    await setStatus(id, 'sent', {
+      posted_at: post.posted_at || new Date().toISOString(),
+      last_error: null,
+      processing_started_at: null,
+    });
+    log('log', id, 'All selected channels were already published; duplicate retry skipped');
+    return;
+  }
 
   let processingFilePaths = filePaths.filter((filePath) => filePath && fs.existsSync(filePath));
 
@@ -243,7 +261,7 @@ export async function processBroadcastJob(broadcastId) {
       processing_started_at: null,
       scheduled_for: new Date(Date.now() + backoffSeconds * 1000).toISOString(),
     });
-    
+
     cleanupFiles(processingFilePaths);
   }
 }

@@ -6,21 +6,38 @@ import InboxConversationList from "@/components/instagram/InboxConversationList"
 import LeadPanel from "@/components/instagram/LeadPanel";
 import { Button } from "@/components/ui/button";
 import { useInbox } from "@/hooks/useInbox";
-import { supabase } from "@/lib/supabase";
+import { syncInstagramInbox } from "@/services/instagramApi";
 
 export default function InstagramInbox() {
   const { conversations, loading, error, refresh } = useInbox();
   const [selectedId, setSelectedId] = useState<string | undefined>();
   const [refreshKey, setRefreshKey] = useState(0);
+  const [syncing, setSyncing] = useState(false);
 
   const handleRefresh = async () => {
+    setSyncing(true);
+    try {
+      await syncInstagramInbox();
+    } catch (e) {
+      console.warn('[INSTAPILOT] Manual sync warning:', e);
+    } finally {
+      setSyncing(false);
+    }
     await refresh();
     setRefreshKey((prev) => prev + 1);
   };
 
+  // Auto-select first conversation if none selected
+  useEffect(() => {
+    if (!selectedId && conversations.length > 0) {
+      setSelectedId(conversations[0].id);
+    }
+  }, [conversations, selectedId]);
+
   useEffect(() => {
     // Connect to Backend SSE for realtime updates (bypasses Supabase RLS)
-    const eventSource = new EventSource(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/instapilot/stream`);
+    const streamUrl = `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/instapilot/stream`;
+    const eventSource = new EventSource(streamUrl);
     
     eventSource.onmessage = (e) => {
       if (e.data === 'refresh') {
@@ -28,8 +45,20 @@ export default function InstagramInbox() {
       }
     };
 
+    eventSource.onerror = (err) => {
+      console.warn('[SSE] Reconnecting to stream...', err);
+    };
+
+    // Safety background poll every 4 seconds to guarantee sync
+    const pollInterval = setInterval(() => {
+      if (!document.hidden) {
+        handleRefresh();
+      }
+    }, 4000);
+
     return () => {
       eventSource.close();
+      clearInterval(pollInterval);
     };
   }, [refresh]);
 
@@ -50,9 +79,9 @@ export default function InstagramInbox() {
                 Builder
               </Link>
             </Button>
-            <Button type="button" variant="outline" onClick={handleRefresh} className="gap-2">
-              <RefreshCw className="h-4 w-4" />
-              Refresh
+            <Button type="button" variant="outline" onClick={handleRefresh} disabled={syncing} className="gap-2">
+              <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+              {syncing ? "Syncing..." : "Refresh"}
             </Button>
           </div>
         </header>

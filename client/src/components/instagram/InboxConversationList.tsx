@@ -30,7 +30,17 @@ export default function InboxConversationList({
         {conversations.length === 0 ? (
           <div className="p-5 text-sm text-[var(--slate)]">No Instagram DMs have arrived yet.</div>
         ) : null}
-        {conversations.map((conversation) => {
+        {conversations
+          .filter(c => c.instagram_messages && c.instagram_messages.length > 0)
+          .filter(c => c.instagram_username || c.instagram_name)
+          .sort((a, b) => {
+            const latestA = [...(a.instagram_messages || [])].sort((x, y) => new Date(y.created_at).getTime() - new Date(x.created_at).getTime())[0];
+            const latestB = [...(b.instagram_messages || [])].sort((x, y) => new Date(y.created_at).getTime() - new Date(x.created_at).getTime())[0];
+            const timeA = latestA ? new Date(latestA.created_at).getTime() : 0;
+            const timeB = latestB ? new Date(latestB.created_at).getTime() : 0;
+            return timeB - timeA;
+          })
+          .map((conversation) => {
           const latest = [...(conversation.instagram_messages || [])].sort(
             (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
           )[0];

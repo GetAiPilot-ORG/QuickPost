@@ -181,7 +181,7 @@ const OrbitalArc = () => (
   </svg>
 );
 
-function Sidebar() {
+function Sidebar({ onClose }) {
   const location = useLocation();
   const navigate = useNavigate();
   const selectedDashboardPlatform =
@@ -654,6 +654,7 @@ function Sidebar() {
         }}
       >
         <Link
+          onClick={() => onClose && onClose()}
           to="/"
           className="flex items-center gap-3"
           style={{ textDecoration: "none" }}
@@ -869,6 +870,7 @@ function Sidebar() {
                   </div>
                 ) : (
                   <Link
+                    onClick={() => onClose && onClose()}
                     to={to}
                     className={`qp-sidebar-nav-item${active ? " is-active" : ""}`}
                     style={style}
@@ -898,6 +900,7 @@ function Sidebar() {
 
                       return (
                         <Link
+                          onClick={() => onClose && onClose()}
                           key={item.to}
                           to={item.to}
                           className={`sidebar-subnav-link${itemActive ? " active" : ""}`}
@@ -1285,6 +1288,7 @@ function Sidebar() {
                   { to: "/dashboard/billing", label: "Plans and Billing", icon: <CreditCard size={15} /> },
                 ].map((item) => (
                   <Link
+                    onClick={() => onClose && onClose()}
                     key={item.to}
                     to={item.to}
                     className="qp-sidebar-account-link"
@@ -1303,7 +1307,7 @@ function Sidebar() {
                 {isFree(user?.plan) && (
                   <button
                     type="button"
-                    onClick={() => navigate("/dashboard/billing")}
+                    onClick={() => { navigate("/dashboard/billing"); onClose && onClose(); }}
                     className="qp-sidebar-account-upgrade"
                   >
                     <Sparkles size={15} />

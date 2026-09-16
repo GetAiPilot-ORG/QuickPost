@@ -23,13 +23,14 @@ import {
   ThumbsUp,
 } from "lucide-react";
 import apiClient from "../utils/apiClient";
+import InfoHelp from "../components/InfoHelp";
 
 const tabs = ["Dashboard", "Videos", "Shorts", "Posts", "Playlists", "Analytics", "Access"];
 const YOUTUBE_ICON = "/icons/youtube-color-icon.svg";
 const ACTIVE_ACCOUNT_KEY = "quickpost_youtube_active_account";
 const WELCOME_KEY = "quickpost_youtube_studio_welcome_seen";
 const stickers = {
-  Posts: "https://illustrations.popsy.co/amber/product-launch.svg",
+  Posts: "/icons/stressed-man-looking-at-a-system-error-warning-message-vector-removebg-preview.png",
   Playlists: "https://illustrations.popsy.co/amber/graphic-design.svg",
   Shorts: "https://illustrations.popsy.co/amber/video-call.svg",
   Videos: "https://illustrations.popsy.co/amber/web-design.svg",
@@ -81,21 +82,23 @@ const tableHeaders = {
 
 function EmptyState({ type }) {
   const copy = {
-    Posts: ["Create your first post to start a conversation and get feedback from your community.", "Create post"],
+    Posts: ["Post sync is not supported by YouTube.", null],
     Playlists: ["Create your playlist, then add existing content or upload new videos.", "New playlist"],
     Shorts: ["No shorts found for this channel.", "Upload videos"],
   }[type] || ["No content found for this channel.", "Upload videos"];
 
   return (
     <div style={{ minHeight: 360, display: "grid", placeItems: "center", color: "var(--slate)" }}>
-      <div style={{ textAlign: "center", maxWidth: 360 }}>
-        <div style={{ width: 170, height: 138, margin: "0 auto 18px", display: "grid", placeItems: "center" }}>
+      <div className={type === 'Posts' ? "text-center max-w-[360px] md:max-w-[700px] w-full" : "text-center max-w-[360px] w-full"}>
+        <div className={type === 'Posts' ? "w-[260px] h-[220px] md:w-[600px] md:h-[480px] mx-auto mb-[18px] grid place-items-center" : "w-[170px] h-[138px] mx-auto mb-[18px] grid place-items-center"}>
           <img src={stickers[type] || stickers.Videos} alt="" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", mixBlendMode: "multiply" }} />
         </div>
         <p style={{ margin: 0, fontSize: 16, lineHeight: 1.45 }}>{copy[0]}</p>
-        <a href="/dashboard/compose" style={{ marginTop: 18, display: "inline-flex", height: 38, alignItems: "center", borderRadius: 999, padding: "0 18px", background: "var(--ink)", color: "var(--canvas)", textDecoration: "none", fontWeight: 800, fontSize: 13 }}>
-          {copy[1]}
-        </a>
+        {copy[1] && (
+          <a href="/dashboard/compose" style={{ marginTop: 18, display: "inline-flex", height: 38, alignItems: "center", borderRadius: 999, padding: "0 18px", background: "var(--ink)", color: "var(--canvas)", textDecoration: "none", fontWeight: 800, fontSize: 13 }}>
+            {copy[1]}
+          </a>
+        )}
       </div>
     </div>
   );
@@ -203,7 +206,7 @@ export default function YouTubeManagerPage() {
       const { data } = await apiClient.get("/api/youtube/accounts");
       const nextAccounts = data.accounts || [];
       setAccounts(nextAccounts);
-      setActiveId((current) => nextAccounts.some((account) => account.id === current) ? current : nextAccounts[0]?.id || null);
+      setActiveId((current) => nextAccounts.some((account) => String(account.id) === String(current)) ? current : nextAccounts[0]?.id || null);
     } catch (err) {
       setError(err.response?.data?.error || "Failed to load YouTube accounts");
     } finally {
@@ -213,6 +216,13 @@ export default function YouTubeManagerPage() {
 
   useEffect(() => {
     loadAccounts();
+    const handleBroadcastCompleted = () => {
+      loadAccounts();
+    };
+    window.addEventListener("quickpost_broadcast_completed", handleBroadcastCompleted);
+    return () => {
+      window.removeEventListener("quickpost_broadcast_completed", handleBroadcastCompleted);
+    };
   }, []);
 
   useEffect(() => {
@@ -220,7 +230,7 @@ export default function YouTubeManagerPage() {
   }, [activeId]);
 
   const active = useMemo(
-    () => accounts.find((account) => account.id === activeId) || accounts[0],
+    () => accounts.find((account) => String(account.id) === String(activeId)) || accounts[0],
     [accounts, activeId],
   );
   const health = active?.youtube;
@@ -235,7 +245,7 @@ export default function YouTubeManagerPage() {
       `${video.title} ${video.description}`.toLowerCase().includes(normalized)
     );
   }, [allVideos, activeTab, query]);
-  
+
   const paginatedVideos = useMemo(() => {
     return videos.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
   }, [videos, page, rowsPerPage]);
@@ -269,7 +279,7 @@ export default function YouTubeManagerPage() {
         privacyStatus,
       });
       const nextStatus = data.privacyStatus || privacyStatus;
-      setAccounts((current) => current.map((account) => account.id !== active.id ? account : {
+      setAccounts((current) => current.map((account) => String(account.id) !== String(active.id) ? account : {
         ...account,
         videos: (account.videos || []).map((video) => video.id === videoId ? { ...video, privacyStatus: nextStatus } : video),
       }));
@@ -322,73 +332,94 @@ export default function YouTubeManagerPage() {
               <span style={{ color: "var(--slate)", fontSize: 12 }}>Multi-account workspace</span>
             </span>
           </div>
-          <h1 style={{ margin: 0, fontSize: "clamp(30px, 4vw, 44px)", lineHeight: 1, letterSpacing: 0, fontWeight: 900 }}>
+          <h1 style={{ margin: 0, fontSize: "clamp(30px, 4vw, 44px)", lineHeight: 1, letterSpacing: 0, fontWeight: 900, display: "inline-flex", alignItems: "center", gap: 12 }}>
             {activeTab === "Dashboard" ? "Channel dashboard" : "Channel content"}
+            <InfoHelp text="Unified YouTube studio management for uploading videos, publishing shorts, and tracking viewer analytics" />
           </h1>
         </div>
 
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", position: "relative" }}>
-          <button
-            onClick={() => setPickerOpen((open) => !open)}
-            style={{ minWidth: 320, maxWidth: 380, height: 56, borderRadius: 8, border: "1px solid rgba(20,20,19,0.12)", background: "var(--white)", padding: "0 12px", display: "flex", alignItems: "center", gap: 11, cursor: "pointer", boxShadow: "0 8px 20px rgba(20,20,19,0.06)", outline: "none" }}
-          >
-            <img src={active?.profilePicture || YOUTUBE_ICON} alt="" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", background: "#f4f4f2", border: "1px solid rgba(20,20,19,0.08)" }} />
-            <span style={{ flex: 1, textAlign: "left", minWidth: 0 }}>
-              <strong style={{ display: "block", fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{active?.username || "Select YouTube account"}</strong>
-              <span style={{ color: "var(--slate)", fontSize: 11, fontWeight: 700 }}>{formatNumber(health?.statistics?.subscriberCount)} subscribers</span>
-            </span>
-            <span style={{ borderRadius: 999, background: status.bg, color: status.color, padding: "5px 9px", fontSize: 11, fontWeight: 850 }}>{status.label}</span>
-            <ChevronDown size={16} />
-          </button>
-          {pickerOpen && (
-            <div style={{ position: "absolute", top: 64, right: 104, width: 420, maxWidth: "calc(100vw - 32px)", zIndex: 20, ...panel, padding: 0, overflow: "hidden", boxShadow: "0 22px 54px rgba(20,20,19,0.16)" }}>
-              <div style={{ padding: 14, borderBottom: "1px solid rgba(20,20,19,0.08)", background: "var(--white)" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
-                  <div>
-                    <strong style={{ display: "block", fontSize: 14 }}>Switch channel</strong>
-                    <span style={{ color: "var(--slate)", fontSize: 12 }}>{accounts.length} connected YouTube accounts</span>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ position: "relative" }}>
+            <button
+              onClick={() => setPickerOpen((open) => !open)}
+              style={{ minWidth: 280, width: "100%", maxWidth: 380, height: 56, borderRadius: 8, border: "1px solid rgba(20,20,19,0.12)", background: "var(--white)", padding: "0 12px", display: "flex", alignItems: "center", gap: 11, cursor: "pointer", boxShadow: "0 8px 20px rgba(20,20,19,0.06)", outline: "none" }}
+            >
+              <img src={active?.profilePicture || YOUTUBE_ICON} alt="" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", background: "#f4f4f2", border: "1px solid rgba(20,20,19,0.08)" }} />
+              <span style={{ flex: 1, textAlign: "left", minWidth: 0 }}>
+                <strong style={{ display: "block", fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{active?.username || "Select YouTube account"}</strong>
+                <span style={{ color: "var(--slate)", fontSize: 11, fontWeight: 700 }}>{formatNumber(health?.statistics?.subscriberCount)} subscribers</span>
+              </span>
+              <span style={{ borderRadius: 999, background: status.bg, color: status.color, padding: "5px 9px", fontSize: 11, fontWeight: 850 }}>{status.label}</span>
+              <ChevronDown size={16} />
+            </button>
+            {pickerOpen && (
+              <div style={{ position: "absolute", top: 64, left: 0, width: 420, maxWidth: "calc(100vw - 32px)", zIndex: 20, ...panel, padding: 0, overflow: "hidden", boxShadow: "0 22px 54px rgba(20,20,19,0.16)" }}>
+                <div style={{ padding: 14, borderBottom: "1px solid rgba(20,20,19,0.08)", background: "var(--white)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+                    <div>
+                      <strong style={{ display: "block", fontSize: 14 }}>Switch channel</strong>
+                      <span style={{ color: "var(--slate)", fontSize: 12 }}>{accounts.length} connected YouTube accounts</span>
+                    </div>
+                    <span style={{ width: 32, height: 32, borderRadius: 8, background: "var(--canvas-lifted)", display: "grid", placeItems: "center" }}>
+                      <img src={YOUTUBE_ICON} alt="" style={{ width: 20, height: 20 }} />
+                    </span>
                   </div>
-                  <span style={{ width: 32, height: 32, borderRadius: 8, background: "var(--canvas-lifted)", display: "grid", placeItems: "center" }}>
-                    <img src={YOUTUBE_ICON} alt="" style={{ width: 20, height: 20 }} />
-                  </span>
+                  <label style={{ height: 38, display: "flex", alignItems: "center", gap: 8, border: "1px solid rgba(20,20,19,0.12)", borderRadius: 8, padding: "0 10px", background: "var(--canvas)" }}>
+                    <Search size={15} color="var(--slate)" />
+                    <input
+                      value={accountQuery}
+                      onChange={(event) => setAccountQuery(event.target.value)}
+                      placeholder="Search account"
+                      style={{ flex: 1, border: 0, outline: "none", background: "transparent", color: "var(--ink)", fontSize: 13 }}
+                    />
+                  </label>
                 </div>
-                <label style={{ height: 38, display: "flex", alignItems: "center", gap: 8, border: "1px solid rgba(20,20,19,0.12)", borderRadius: 8, padding: "0 10px", background: "var(--canvas)" }}>
-                  <Search size={15} color="var(--slate)" />
-                  <input
-                    value={accountQuery}
-                    onChange={(event) => setAccountQuery(event.target.value)}
-                    placeholder="Search account"
-                    style={{ flex: 1, border: 0, outline: "none", background: "transparent", color: "var(--ink)", fontSize: 13 }}
-                  />
-                </label>
+                <div style={{ maxHeight: 390, overflowY: "auto", padding: 8 }}>
+                  {visibleAccounts.length === 0 ? (
+                    <p style={{ margin: 0, padding: 14, color: "var(--slate)", fontSize: 13 }}>No account matched.</p>
+                  ) : visibleAccounts.map((account) => {
+                    const accountStatus = statusCopy(account.youtube?.capabilities?.longUploadsStatus);
+                    const selected = account.id === active?.id;
+                    return (
+                      <div
+                        key={account.id}
+                        style={{ width: "100%", border: selected ? "1px solid rgba(20,20,19,0.18)" : "1px solid transparent", borderRadius: 8, background: selected ? "var(--canvas-lifted)" : "transparent", padding: "9px 10px", marginBottom: 2 }}
+                      >
+                        <button
+                          onClick={() => { setActiveId(account.id); setPickerOpen(false); setAccountQuery(""); }}
+                          style={{ width: "100%", display: "grid", gridTemplateColumns: "42px minmax(0,1fr) auto 18px", alignItems: "center", gap: 10, cursor: "pointer", textAlign: "left", outline: "none", background: "transparent", border: "none", padding: 0 }}
+                        >
+                          <img src={account.profilePicture || YOUTUBE_ICON} alt="" style={{ width: 42, height: 42, borderRadius: "50%", objectFit: "cover", background: "#f4f4f2", border: "1px solid rgba(20,20,19,0.08)" }} />
+                          <span style={{ minWidth: 0 }}>
+                            <strong style={{ display: "block", fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{account.username || "YouTube channel"}</strong>
+                            <span style={{ color: "var(--slate)", fontSize: 11, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}>
+                              {formatNumber(account.youtube?.statistics?.subscriberCount)} subscribers · {formatNumber(account.youtube?.statistics?.videoCount)} videos · {formatNumber(account.youtube?.statistics?.viewCount)} views
+                            </span>
+                          </span>
+                          <span style={{ borderRadius: 999, background: accountStatus.bg, color: accountStatus.color, padding: "5px 8px", fontSize: 11, fontWeight: 850, whiteSpace: "nowrap" }}>{accountStatus.label}</span>
+                          {selected ? <Check size={16} color="var(--ink)" /> : <span />}
+                        </button>
+                        {accountStatus.label === "Action needed" && (
+                          <div style={{ marginTop: 10, marginBottom: 2, padding: "8px 12px", background: accountStatus.bg, borderRadius: 6, fontSize: 12, color: accountStatus.color, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                            <span style={{ lineHeight: 1.4 }}>{accountStatus.text}</span>
+                            <a
+                              href={accountStatus.text.includes("Phone verification") ? "https://www.youtube.com/verify" : "https://studio.youtube.com"}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{ color: accountStatus.color, fontWeight: 800, textDecoration: "underline", whiteSpace: "nowrap" }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              Fix this
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-              <div style={{ maxHeight: 390, overflowY: "auto", padding: 8 }}>
-                {visibleAccounts.length === 0 ? (
-                  <p style={{ margin: 0, padding: 14, color: "var(--slate)", fontSize: 13 }}>No account matched.</p>
-                ) : visibleAccounts.map((account) => {
-                  const accountStatus = statusCopy(account.youtube?.capabilities?.longUploadsStatus);
-                  const selected = account.id === active?.id;
-                  return (
-                    <button
-                      key={account.id}
-                      onClick={() => { setActiveId(account.id); setPickerOpen(false); setAccountQuery(""); }}
-                      style={{ width: "100%", minHeight: 62, border: selected ? "1px solid rgba(20,20,19,0.18)" : "1px solid transparent", borderRadius: 8, background: selected ? "var(--canvas-lifted)" : "transparent", padding: "9px 10px", display: "grid", gridTemplateColumns: "42px minmax(0,1fr) auto 18px", alignItems: "center", gap: 10, cursor: "pointer", textAlign: "left", outline: "none" }}
-                    >
-                      <img src={account.profilePicture || YOUTUBE_ICON} alt="" style={{ width: 42, height: 42, borderRadius: "50%", objectFit: "cover", background: "#f4f4f2", border: "1px solid rgba(20,20,19,0.08)" }} />
-                      <span style={{ minWidth: 0 }}>
-                        <strong style={{ display: "block", fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{account.username || "YouTube channel"}</strong>
-                        <span style={{ color: "var(--slate)", fontSize: 11, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}>
-                          {formatNumber(account.youtube?.statistics?.subscriberCount)} subscribers · {formatNumber(account.youtube?.statistics?.videoCount)} videos · {formatNumber(account.youtube?.statistics?.viewCount)} views
-                        </span>
-                      </span>
-                      <span style={{ borderRadius: 999, background: accountStatus.bg, color: accountStatus.color, padding: "5px 8px", fontSize: 11, fontWeight: 850, whiteSpace: "nowrap" }}>{accountStatus.label}</span>
-                      {selected ? <Check size={16} color="var(--ink)" /> : <span />}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+            )}
+          </div>
           <button onClick={loadAccounts} disabled={loading} style={{ height: 58, borderRadius: 10, border: "1px solid rgba(20,20,19,0.14)", background: "var(--white)", color: "var(--ink)", padding: "0 16px", display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 850, cursor: "pointer", outline: "none" }}>
             <RefreshCw size={16} /> Refresh
           </button>
@@ -434,11 +465,25 @@ export default function YouTubeManagerPage() {
       {activeTab === "Dashboard" && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 395px))", justifyContent: "start", gap: 24, marginTop: 26, alignItems: "start" }}>
           <section style={{ ...panel, padding: 24 }}>
-            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 850 }}>Latest video performance</h2>
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 850, display: "inline-flex", alignItems: "center", gap: 8 }}>
+              Latest video performance
+              <InfoHelp text="Real-time views, comments, and engagement on your most recent YouTube upload" />
+            </h2>
             {latestVideo ? (
               <>
                 <a href={latestVideo.url} target="_blank" rel="noreferrer" style={{ marginTop: 18, height: 194, borderRadius: 8, overflow: "hidden", display: "block", position: "relative", background: "#111", color: "#fff" }}>
-                  {latestVideo.thumbnail && <img src={latestVideo.thumbnail} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
+                  {(latestVideo.thumbnail || latestVideo.id) && (
+                    <img
+                      src={latestVideo.thumbnail || `https://i.ytimg.com/vi/${latestVideo.id}/hqdefault.jpg`}
+                      alt={latestVideo.title}
+                      onError={(e) => {
+                        if (latestVideo.id && !e.target.src.includes('hqdefault.jpg')) {
+                          e.target.src = `https://i.ytimg.com/vi/${latestVideo.id}/hqdefault.jpg`;
+                        }
+                      }}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                  )}
                   <strong style={{ position: "absolute", left: 24, bottom: 22, width: "78%", fontSize: 16, lineHeight: 1.2 }}>{latestVideo.title}</strong>
                 </a>
                 <div style={{ display: "flex", gap: 22, marginTop: 14, color: "var(--slate)", alignItems: "center" }}>
@@ -458,7 +503,10 @@ export default function YouTubeManagerPage() {
           </section>
 
           <section style={{ ...panel, padding: 24, alignSelf: "start" }}>
-            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 850 }}>Channel analytics</h2>
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 850, display: "inline-flex", alignItems: "center", gap: 8 }}>
+              Channel analytics
+              <InfoHelp text="Cumulative subscribers, total channel views, and video counts synced via Google YouTube Data API" />
+            </h2>
             <p style={{ margin: "18px 0 0", color: "var(--slate)" }}>Current subscribers</p>
             <strong style={{ display: "block", fontSize: 40, marginTop: 6 }}>{formatNumber(health?.statistics?.subscriberCount)}</strong>
             <div style={{ borderTop: "1px solid rgba(20,20,19,0.12)", marginTop: 28, paddingTop: 18, display: "grid", gap: 14 }}>
@@ -550,103 +598,114 @@ export default function YouTubeManagerPage() {
           {activeTab === "Posts" ? (
             <YouTubePostsUnavailable />
           ) : (
-          <>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", minWidth: 1040, borderCollapse: "collapse", background: "var(--white)" }}>
-              <thead>
-                <tr style={{ borderBottom: "1px solid rgba(20,20,19,0.12)", color: "var(--ink)" }}>
-                  {(tableHeaders[activeTab] || tableHeaders.Videos).map((header, idx) => (
-                    <th key={header} style={{ width: idx === 0 ? "auto" : 120, padding: "16px 10px", textAlign: "left", fontWeight: 500, fontSize: 13, color: "var(--slate)" }}>{header}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <TableSkeletonRows />
-                ) : activeTab === "Playlists" || videos.length === 0 ? (
-                  <tr><td colSpan={6}><EmptyState type={activeTab} /></td></tr>
-                ) : paginatedVideos.map((video) => (
-                  <tr key={video.id} style={{ borderBottom: "1px solid rgba(20,20,19,0.12)", color: "var(--ink)" }}>
-                    <td style={{ padding: "10px", verticalAlign: "top" }}>
-                      <a href={video.url} target="_blank" rel="noreferrer" style={{ display: "grid", gridTemplateColumns: "120px minmax(240px, 1fr)", gap: 16, color: "var(--ink)", textDecoration: "none" }}>
-                        <span style={{ position: "relative", width: 120, height: 68, borderRadius: 7, overflow: "hidden", background: "#111", display: "block" }}>
-                          {video.thumbnail && <img src={video.thumbnail} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
-                          {video.duration && <span style={{ position: "absolute", right: 5, bottom: 5, background: "rgba(0,0,0,0.85)", color: "#fff", borderRadius: 3, padding: "1px 5px", fontSize: 12, fontWeight: 500 }}>{parseDuration(video.duration)}</span>}
-                        </span>
-                        <span style={{ minWidth: 0, paddingTop: 4 }}>
-                          <span style={{ display: "block", fontSize: 14, fontWeight: 500, lineHeight: 1.35, maxWidth: 640, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{video.title}</span>
-                          <span style={{ display: "block", marginTop: 5, color: "var(--slate)", fontSize: 12, lineHeight: 1.45, maxWidth: 640, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{video.description || "No description"}</span>
-                          <span style={{ display: "flex", gap: 14, marginTop: 10, color: "var(--slate)" }}>
-                            <Pencil size={16} /><BarChart3 size={16} /><MessageSquare size={16} />
-                          </span>
-                        </span>
-                      </a>
-                    </td>
-                    <td style={{ padding: "10px", verticalAlign: "middle", color: "var(--slate)" }}>-</td>
-                    <td style={{ padding: "10px", verticalAlign: "middle" }}>
-                      <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 400 }}>
-                        {visibilityIcon(video.privacyStatus)}
-                        <CustomSelect
-                          value={video.privacyStatus}
-                          options={[
-                            { value: "public", label: "Public" },
-                            { value: "unlisted", label: "Unlisted" },
-                            { value: "private", label: "Private" },
-                          ]}
-                          onChange={(val) => {
-                            if (updatingVideoId !== video.id) updateVisibility(video.id, val);
-                          }}
-                          renderValue={(val) => <span style={{ textTransform: "capitalize" }}>{val}</span>}
-                          dropdownStyle={{ top: "100%", left: 0, marginTop: 4, minWidth: 100 }}
-                        />
-                      </label>
-                    </td>
-                    <td style={{ padding: "10px", verticalAlign: "middle" }}><span style={{ display: "block", fontSize: 13, fontWeight: 500 }}>{formatDate(video.publishedAt)}</span><span style={{ display: "block", marginTop: 5, color: "var(--slate)", fontSize: 12, textTransform: "capitalize" }}>{video.uploadStatus}</span></td>
-                    <td style={{ padding: "10px", verticalAlign: "middle", textAlign: "left", fontSize: 13 }}>{formatNumber(video.views)}</td>
-                    <td style={{ padding: "10px 18px 10px 10px", verticalAlign: "middle", textAlign: "left", fontSize: 13 }}>{formatNumber(video.comments)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          
-          {activeTab !== "Playlists" && videos.length > 0 && (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 32, padding: "12px 24px", color: "var(--slate)", fontSize: 13, borderTop: "1px solid rgba(20,20,19,0.12)", background: "var(--white)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span>Rows per page:</span>
-                <div style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
-                  <CustomSelect
-                    value={rowsPerPage}
-                    options={[
-                      { value: 10, label: "10" },
-                      { value: 30, label: "30" },
-                      { value: 50, label: "50" },
-                    ]}
-                    onChange={(val) => { setRowsPerPage(val); setPage(0); }}
-                    dropdownStyle={{ bottom: "100%", left: "50%", transform: "translateX(-50%)", marginBottom: 8, minWidth: 60, textAlign: "center" }}
-                  />
+            <>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", minWidth: 1040, borderCollapse: "collapse", background: "var(--white)" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid rgba(20,20,19,0.12)", color: "var(--ink)" }}>
+                      {(tableHeaders[activeTab] || tableHeaders.Videos).map((header, idx) => (
+                        <th key={header} style={{ width: idx === 0 ? "auto" : 120, padding: "16px 10px", textAlign: "left", fontWeight: 500, fontSize: 13, color: "var(--slate)" }}>{header}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loading ? (
+                      <TableSkeletonRows />
+                    ) : activeTab === "Playlists" || videos.length === 0 ? (
+                      <tr><td colSpan={6}><EmptyState type={activeTab} /></td></tr>
+                    ) : paginatedVideos.map((video) => (
+                      <tr key={video.id} style={{ borderBottom: "1px solid rgba(20,20,19,0.12)", color: "var(--ink)" }}>
+                        <td style={{ padding: "10px", verticalAlign: "top" }}>
+                          <a href={video.url} target="_blank" rel="noreferrer" style={{ display: "grid", gridTemplateColumns: "120px minmax(240px, 1fr)", gap: 16, color: "var(--ink)", textDecoration: "none" }}>
+                            <span style={{ position: "relative", width: 120, height: 68, borderRadius: 7, overflow: "hidden", background: "#111", display: "block" }}>
+                              {(video.thumbnail || video.id) && (
+                                <img
+                                  src={video.thumbnail || `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`}
+                                  alt=""
+                                  onError={(e) => {
+                                    if (video.id && !e.target.src.includes('hqdefault.jpg')) {
+                                      e.target.src = `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`;
+                                    }
+                                  }}
+                                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                                />
+                              )}
+                              {video.duration && <span style={{ position: "absolute", right: 5, bottom: 5, background: "rgba(0,0,0,0.85)", color: "#fff", borderRadius: 3, padding: "1px 5px", fontSize: 12, fontWeight: 500 }}>{parseDuration(video.duration)}</span>}
+                            </span>
+                            <span style={{ minWidth: 0, paddingTop: 4 }}>
+                              <span style={{ display: "block", fontSize: 14, fontWeight: 500, lineHeight: 1.35, maxWidth: 640, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{video.title}</span>
+                              <span style={{ display: "block", marginTop: 5, color: "var(--slate)", fontSize: 12, lineHeight: 1.45, maxWidth: 640, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{video.description || "No description"}</span>
+                              <span style={{ display: "flex", gap: 14, marginTop: 10, color: "var(--slate)" }}>
+                                <Pencil size={16} /><BarChart3 size={16} /><MessageSquare size={16} />
+                              </span>
+                            </span>
+                          </a>
+                        </td>
+                        <td style={{ padding: "10px", verticalAlign: "middle", color: "var(--slate)" }}>-</td>
+                        <td style={{ padding: "10px", verticalAlign: "middle" }}>
+                          <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 400 }}>
+                            {visibilityIcon(video.privacyStatus)}
+                            <CustomSelect
+                              value={video.privacyStatus}
+                              options={[
+                                { value: "public", label: "Public" },
+                                { value: "unlisted", label: "Unlisted" },
+                                { value: "private", label: "Private" },
+                              ]}
+                              onChange={(val) => {
+                                if (updatingVideoId !== video.id) updateVisibility(video.id, val);
+                              }}
+                              renderValue={(val) => <span style={{ textTransform: "capitalize" }}>{val}</span>}
+                              dropdownStyle={{ top: "100%", left: 0, marginTop: 4, minWidth: 100 }}
+                            />
+                          </label>
+                        </td>
+                        <td style={{ padding: "10px", verticalAlign: "middle" }}><span style={{ display: "block", fontSize: 13, fontWeight: 500 }}>{formatDate(video.publishedAt)}</span><span style={{ display: "block", marginTop: 5, color: "var(--slate)", fontSize: 12, textTransform: "capitalize" }}>{video.uploadStatus}</span></td>
+                        <td style={{ padding: "10px", verticalAlign: "middle", textAlign: "left", fontSize: 13 }}>{formatNumber(video.views)}</td>
+                        <td style={{ padding: "10px 18px 10px 10px", verticalAlign: "middle", textAlign: "left", fontSize: 13 }}>{formatNumber(video.comments)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {activeTab !== "Playlists" && videos.length > 0 && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 32, padding: "12px 24px", color: "var(--slate)", fontSize: 13, borderTop: "1px solid rgba(20,20,19,0.12)", background: "var(--white)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span>Rows per page:</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+                      <CustomSelect
+                        value={rowsPerPage}
+                        options={[
+                          { value: 10, label: "10" },
+                          { value: 30, label: "30" },
+                          { value: 50, label: "50" },
+                        ]}
+                        onChange={(val) => { setRowsPerPage(val); setPage(0); }}
+                        dropdownStyle={{ bottom: "100%", left: "50%", transform: "translateX(-50%)", marginBottom: 8, minWidth: 60, textAlign: "center" }}
+                      />
+                    </div>
+                  </div>
+
+                  <span>{`${page * rowsPerPage + 1}-${Math.min((page + 1) * rowsPerPage, videos.length)} of ${videos.length}`}</span>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
+                    <button disabled={page === 0} onClick={() => setPage(0)} style={{ background: "transparent", border: "none", padding: 0, cursor: page === 0 ? "default" : "pointer", color: page === 0 ? "rgba(20,20,19,0.2)" : "var(--slate)", display: "flex", alignItems: "center" }}>
+                      <ChevronsLeft size={20} />
+                    </button>
+                    <button disabled={page === 0} onClick={() => setPage(p => p - 1)} style={{ background: "transparent", border: "none", padding: 0, cursor: page === 0 ? "default" : "pointer", color: page === 0 ? "rgba(20,20,19,0.2)" : "var(--slate)", display: "flex", alignItems: "center" }}>
+                      <ChevronLeft size={20} />
+                    </button>
+                    <button disabled={(page + 1) * rowsPerPage >= videos.length} onClick={() => setPage(p => p + 1)} style={{ background: "transparent", border: "none", padding: 0, cursor: (page + 1) * rowsPerPage >= videos.length ? "default" : "pointer", color: (page + 1) * rowsPerPage >= videos.length ? "rgba(20,20,19,0.2)" : "var(--slate)", display: "flex", alignItems: "center" }}>
+                      <ChevronRight size={20} />
+                    </button>
+                    <button disabled={(page + 1) * rowsPerPage >= videos.length} onClick={() => setPage(Math.ceil(videos.length / rowsPerPage) - 1)} style={{ background: "transparent", border: "none", padding: 0, cursor: (page + 1) * rowsPerPage >= videos.length ? "default" : "pointer", color: (page + 1) * rowsPerPage >= videos.length ? "rgba(20,20,19,0.2)" : "var(--slate)", display: "flex", alignItems: "center" }}>
+                      <ChevronsRight size={20} />
+                    </button>
+                  </div>
                 </div>
-              </div>
-              
-              <span>{`${page * rowsPerPage + 1}-${Math.min((page + 1) * rowsPerPage, videos.length)} of ${videos.length}`}</span>
-              
-              <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
-                <button disabled={page === 0} onClick={() => setPage(0)} style={{ background: "transparent", border: "none", padding: 0, cursor: page === 0 ? "default" : "pointer", color: page === 0 ? "rgba(20,20,19,0.2)" : "var(--slate)", display: "flex", alignItems: "center" }}>
-                  <ChevronsLeft size={20} />
-                </button>
-                <button disabled={page === 0} onClick={() => setPage(p => p - 1)} style={{ background: "transparent", border: "none", padding: 0, cursor: page === 0 ? "default" : "pointer", color: page === 0 ? "rgba(20,20,19,0.2)" : "var(--slate)", display: "flex", alignItems: "center" }}>
-                  <ChevronLeft size={20} />
-                </button>
-                <button disabled={(page + 1) * rowsPerPage >= videos.length} onClick={() => setPage(p => p + 1)} style={{ background: "transparent", border: "none", padding: 0, cursor: (page + 1) * rowsPerPage >= videos.length ? "default" : "pointer", color: (page + 1) * rowsPerPage >= videos.length ? "rgba(20,20,19,0.2)" : "var(--slate)", display: "flex", alignItems: "center" }}>
-                  <ChevronRight size={20} />
-                </button>
-                <button disabled={(page + 1) * rowsPerPage >= videos.length} onClick={() => setPage(Math.ceil(videos.length / rowsPerPage) - 1)} style={{ background: "transparent", border: "none", padding: 0, cursor: (page + 1) * rowsPerPage >= videos.length ? "default" : "pointer", color: (page + 1) * rowsPerPage >= videos.length ? "rgba(20,20,19,0.2)" : "var(--slate)", display: "flex", alignItems: "center" }}>
-                  <ChevronsRight size={20} />
-                </button>
-              </div>
-            </div>
-          )}
-          </>
+              )}
+            </>
           )}
         </>
       )}

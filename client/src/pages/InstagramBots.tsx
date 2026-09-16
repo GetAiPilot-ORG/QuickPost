@@ -21,6 +21,7 @@ import {
   Zap,
 } from "lucide-react";
 import BotBuilderForm from "@/components/instagram/BotBuilderForm";
+import InfoHelp from "@/components/InfoHelp";
 import KnowledgeBaseUploader from "@/components/instagram/KnowledgeBaseUploader";
 import TestChat from "@/components/instagram/TestChat";
 import { Button } from "@/components/ui/button";
@@ -129,24 +130,10 @@ export default function InstagramBots() {
               </div>
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <h1 className="text-3xl font-semibold tracking-[-0.035em] text-[var(--ink)] sm:text-4xl">Build your Instagram DM bot</h1>
-                <div className="group relative">
-                  <button
-                    type="button"
-                    className="flex h-8 w-8 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-blue-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-100 focus:outline-none focus:ring-4 focus:ring-blue-500/10"
-                    aria-label="What does this bot do?"
-                  >
-                    <Info className="h-4 w-4" />
-                  </button>
-                  <div className="pointer-events-none absolute left-1/2 top-[calc(100%+10px)] z-50 hidden w-[340px] -translate-x-1/2 rounded-xl border border-blue-200 bg-white p-4 text-sm leading-6 text-blue-950 shadow-[0_18px_50px_rgba(15,23,42,0.18)] group-hover:block group-focus-within:block sm:left-full sm:top-1/2 sm:ml-3 sm:-translate-y-1/2 sm:translate-x-0">
-                    <div className="mb-1 flex items-center gap-2 font-semibold text-blue-950">
-                      <Info className="h-4 w-4 text-blue-700" />
-                      Yeh bot kya karta hai?
-                    </div>
-                    <p className="text-blue-900">
-                      Instagram DMs me customer questions ka answer deta hai using your business knowledge. Agar answer clear na ho, payment/refund issue ho, ya user human mange, bot chat ko human reply ke liye mark karta hai.
-                    </p>
-                  </div>
-                </div>
+                <InfoHelp
+                  text="Yeh bot Instagram DMs me customer questions ka answer deta hai using your business knowledge. Agar answer clear na ho, payment/refund issue ho, ya user human mange, bot chat ko human reply ke liye mark karta hai."
+                  maxWidth="max-w-[320px]"
+                />
               </div>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--slate)]">
                 Follow the 4 steps below. First connect, save bot identity, add knowledge base answers, then test & activate live. Click any step to switch view.
@@ -242,7 +229,7 @@ export default function InstagramBots() {
                 <div>
                   <p className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.18em] text-[var(--arc)]">
                     Workspace
-                    <Info className="h-3.5 w-3.5 normal-case tracking-normal text-[var(--slate)]" title="Only one InstaPilot bot is allowed. Use Edit Existing Bot to update it." />
+                    <InfoHelp text="Only one InstaPilot bot is allowed. Use Edit Existing Bot to update it." />
                   </p>
                   <h2 className="mt-1 text-lg font-semibold text-[var(--ink)]">Bots</h2>
                 </div>

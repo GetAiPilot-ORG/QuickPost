@@ -14,7 +14,7 @@ import { postToReddit } from './reddit.js';
 import { postToGoogleBusiness } from './googleBusiness.js';
 import googleOAuth from './googleOAuth.js';
 import googleBusinessOAuth from './googleBusinessOAuth.js';
-import { updateBroadcastResults } from './broadcasts.js';
+import { checkpointBroadcastChannels, updateBroadcastResults } from './broadcasts.js';
 import { resolveMentions } from './mentions.js';
 import { createOrUpdateComposerAutomation } from './autodm.js';
 import { getValidInstagramTokensForPosting, isInstagramAuthError } from './instagramToken.js';
@@ -309,6 +309,11 @@ export async function executeBroadcast(broadcastId, userId, caption, mediaUrls, 
       setAggregateResult(results, provider);
     }
 
+    const selectedChannelResults = Object.fromEntries(
+      Object.entries(results).filter(([channel]) => channels.includes(channel))
+    );
+    await checkpointBroadcastChannels(broadcastId, selectedChannelResults);
+
     const failedPlatformEntries = Object.entries(results)
       .filter(([platform, result]) =>
         !['mediaUrl', 'mediaUrls', 'instagramAccounts'].includes(platform) &&
@@ -322,8 +327,7 @@ export async function executeBroadcast(broadcastId, userId, caption, mediaUrls, 
     const failedPlatforms = failedPlatformEntries.map((failure) => `${failure.platform}: ${failure.error}`);
 
     if (failedPlatforms.length > 0) {
-      const status = failedPlatforms.length === platformPromises.length ? 'failed' : 'sent';
-      await updateBroadcastResults(broadcastId, results, status);
+      await updateBroadcastResults(broadcastId, results, 'failed');
       const requiresReconnect = failedPlatformEntries.some((failure) =>
         (failure.platform === 'instagram' || failure.platform.startsWith('instagram:')) && isInstagramAuthError(failure.error)
       );
@@ -366,7 +370,6 @@ export async function executeBroadcast(broadcastId, userId, caption, mediaUrls, 
 
   } catch (error) {
     console.error(`❌ executeBroadcast error for ${broadcastId}:`, error);
-    await updateBroadcastResults(broadcastId, { error: error.message }, 'failed');
     throw error;
   }
 }

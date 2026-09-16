@@ -19,14 +19,14 @@ function base64urlEncode(obj) {
 }
 
 class GoogleOAuthService {
-  constructor() {}
+  constructor() { }
 
   createClient() {
     return new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET,
       process.env.GOOGLE_REDIRECT_URI ||
-        "http://localhost:5000/api/auth/google/callback",
+      "http://localhost:5000/api/auth/google/callback",
     );
   }
 
@@ -79,6 +79,7 @@ class GoogleOAuthService {
       let channelId = userInfo.id;
       let channelStatus = null;
       let channelStats = null;
+      let channelThumbnail = null;
       try {
         const channelRes = await youtube.channels.list({
           part: "snippet,status,statistics",
@@ -90,6 +91,7 @@ class GoogleOAuthService {
           channelTitle = channel.snippet.title;
           channelStatus = channel.status || null;
           channelStats = channel.statistics || null;
+          channelThumbnail = channel.snippet?.thumbnails?.default?.url || channel.snippet?.thumbnails?.medium?.url || null;
         }
       } catch (err) {
         console.warn(
@@ -105,7 +107,7 @@ class GoogleOAuthService {
         userInfo: {
           email: userInfo.email,
           name: userInfo.name,
-          picture: userInfo.picture,
+          picture: channelThumbnail || userInfo.picture,
           googleId: userInfo.id,
           channelId,
           username: channelTitle,
@@ -208,7 +210,7 @@ class GoogleOAuthService {
       console.error("Error refreshing token:", error);
       // Detailed error for the user
       const isInvalidGrant = error.response?.data?.error === 'invalid_grant' || error.message?.includes('invalid_grant');
-      const message = isInvalidGrant 
+      const message = isInvalidGrant
         ? "YouTube connection expired. Please reconnect your YouTube account."
         : `Failed to refresh YouTube access token: ${error.message}`;
       throw new Error(message);
@@ -229,9 +231,16 @@ class GoogleOAuthService {
         .from("social_tokens")
         .select("*")
         .eq("user_id", userId)
-        .eq("provider", "youtube");
-      if (accountId) query = query.eq("id", accountId);
-      const { data, error } = await query.limit(1).single();
+        .in("provider", ["youtube", "google"]);
+      if (accountId) {
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(accountId);
+        if (isUUID) {
+          query = query.or(`id.eq.${accountId},account_id.eq.${accountId}`);
+        } else {
+          query = query.eq("account_id", accountId);
+        }
+      }
+      const { data, error } = await query.limit(1).maybeSingle();
       console.log("✅ [GOOGLE_OAUTH] DB fetch complete. Token found:", !!data);
 
       if (error || !data) {
@@ -249,14 +258,9 @@ class GoogleOAuthService {
         throw new Error("YouTube account not connected");
       }
 
-      if (!isExpiryValid) {
-        console.warn(
-          "⚠️ [GOOGLE_OAUTH] Missing/invalid YouTube token expiry, using stored access token",
-        );
-        return data.access_token;
-      }
+      const shouldRefresh = (!isExpiryValid && hasRefreshToken) || (isExpiryValid && (expiry - now < 5 * 60 * 1000));
 
-      if (expiry - now < 5 * 60 * 1000) {
+      if (shouldRefresh) {
         if (!hasRefreshToken) {
           throw new Error(
             "YouTube connection expired. Please reconnect your YouTube account.",
@@ -350,14 +354,20 @@ class GoogleOAuthService {
     return ids.map((id) => {
       const video = byId.get(id);
       if (!video) return null;
+      const thumbnails = video.snippet?.thumbnails || {};
+      const bestThumbnail =
+        thumbnails.maxres?.url ||
+        thumbnails.standard?.url ||
+        thumbnails.high?.url ||
+        thumbnails.medium?.url ||
+        thumbnails.default?.url ||
+        `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+
       return {
         id,
         title: video.snippet?.title || "Untitled video",
         description: video.snippet?.description || "",
-        thumbnail:
-          video.snippet?.thumbnails?.medium?.url ||
-          video.snippet?.thumbnails?.default?.url ||
-          null,
+        thumbnail: bestThumbnail,
         publishedAt: video.snippet?.publishedAt,
         privacyStatus: video.status?.privacyStatus || "unknown",
         uploadStatus: video.status?.uploadStatus || "uploaded",
