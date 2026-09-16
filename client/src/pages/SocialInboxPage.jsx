@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MessagesSquare,
@@ -19,6 +19,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import apiClient from "../utils/apiClient";
+import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import InfoHelp from "../components/InfoHelp";
 
@@ -185,6 +186,7 @@ export default function SocialInboxPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState(null);
   const [threadLoadingId, setThreadLoadingId] = useState(null);
+  const selectedItemRef = useRef(null);
 
   // Session-only states (Stateless requirements)
   const [repliedIds, setRepliedIds] = useState(new Set());
@@ -221,12 +223,21 @@ export default function SocialInboxPage() {
       }
       if (res.data?.success) {
         const aggregatedItems = res.data.items || [];
-        setItems(aggregatedItems);
         setPlatformStatuses(res.data.platformStatuses || {});
-        inboxClientCache.set(clientCacheKey, {
-          items: aggregatedItems,
-          platformStatuses: res.data.platformStatuses || {},
-          cachedAt: Date.now(),
+        setItems((currentItems) => {
+          const currentById = new Map(currentItems.map((item) => [item.id, item]));
+          const mergedItems = aggregatedItems.map((item) => {
+            const current = currentById.get(item.id);
+            return current?.threadLoaded
+              ? { ...item, replies: current.replies || [], threadLoaded: true }
+              : item;
+          });
+          inboxClientCache.set(clientCacheKey, {
+            items: mergedItems,
+            platformStatuses: res.data.platformStatuses || {},
+            cachedAt: Date.now(),
+          });
+          return mergedItems;
         });
 
         // Initialize unread IDs for items marked unread
@@ -237,7 +248,7 @@ export default function SocialInboxPage() {
       }
     } catch (err) {
       console.error("Failed to load inbox stream:", err);
-      setItems([]);
+      if (!inboxClientCache.has(clientCacheKey)) setItems([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -300,6 +311,84 @@ export default function SocialInboxPage() {
   const selectedItem = useMemo(() => {
     return items.find((i) => i.id === selectedItemId) || null;
   }, [items, selectedItemId]);
+
+  useEffect(() => {
+    selectedItemRef.current = selectedItem;
+  }, [selectedItem]);
+
+  useEffect(() => {
+    const realtimeUserId = user?.id || user?.userId;
+    if (!realtimeUserId) return undefined;
+
+    let refreshTimer;
+    const changedConversationIds = new Set();
+
+    const refreshFromDatabase = async () => {
+      await loadInboxStream();
+      const selected = selectedItemRef.current;
+      const selectedChanged = selected?.databaseId && changedConversationIds.has(selected.databaseId);
+      changedConversationIds.clear();
+      if (!selected?.threadLoaded || !selectedChanged) return;
+      try {
+        const { data } = await apiClient.get(`/api/inbox/conversations/${selected.databaseId}/messages`, {
+          params: { limit: 50 },
+        });
+        if (data?.success) {
+          setItems((currentItems) => currentItems.map((item) =>
+            item.databaseId === selected.databaseId
+              ? { ...item, replies: data.messages || [], threadLoaded: true }
+              : item
+          ));
+          void apiClient.post(`/api/inbox/conversations/${selected.databaseId}/read`).catch(() => {});
+        }
+      } catch (error) {
+        console.warn("Failed to refresh active inbox thread:", error);
+      }
+    };
+
+    const scheduleRefresh = (payload) => {
+      const changedId = payload.new?.id || payload.old?.id;
+      if (changedId) changedConversationIds.add(changedId);
+      window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => void refreshFromDatabase(), 250);
+    };
+
+    const channel = supabase
+      .channel(`social-inbox-${realtimeUserId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "inbox_conversations",
+          filter: `user_id=eq.${realtimeUserId}`,
+        },
+        scheduleRefresh
+      )
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          console.info("[INBOX-REALTIME] Connected");
+        }
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.warn(`[INBOX-REALTIME] Subscription status: ${status}`);
+        }
+      });
+
+    const refreshIfVisible = () => {
+      if (document.visibilityState === "visible") void loadInboxStream();
+    };
+    const fallbackPoll = window.setInterval(refreshIfVisible, 15_000);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    window.addEventListener("focus", refreshIfVisible);
+
+    return () => {
+      window.clearTimeout(refreshTimer);
+      window.clearInterval(fallbackPoll);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+      window.removeEventListener("focus", refreshIfVisible);
+      void supabase.removeChannel(channel);
+    };
+  }, [loadInboxStream, user?.id, user?.userId]);
 
   const handleSelectItem = useCallback(async (item) => {
     setSelectedItemId(item.id);

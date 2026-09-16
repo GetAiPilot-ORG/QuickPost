@@ -160,7 +160,7 @@ function InstagramAccountCard({ account, busy, setBusy, onChanged }: { account: 
             </div>
           </div>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--slate)]">
-            Your Instagram account is connected. Keep webhook enabled so DMs can reach your bot.
+            Your Instagram account is connected. InstaPilot automation is optional and separate from the main Social Inbox.
           </p>
         </div>
       </div>
@@ -175,15 +175,15 @@ function InstagramAccountCard({ account, busy, setBusy, onChanged }: { account: 
             />
             <StatusRow
               good={webhookReady}
-              title={webhookReady ? "DM receiving is ready" : "DM receiving needs setup"}
-              text={webhookReady ? "New Instagram messages can appear in Inbox." : "Click Enable DM sync so incoming messages reach InstaPilot."}
+              title={webhookReady ? "Bot DM automation is ready" : "Bot DM automation needs setup"}
+              text={webhookReady ? "InstaPilot can react to incoming DMs." : "The main Social Inbox still works; enable this only when you want InstaPilot to process DMs."}
             />
           </div>
           <div className="flex flex-wrap gap-2 border-t border-black/10 pt-4">
             {!webhookReady ? (
               <Button type="button" onClick={subscribeWebhooks} disabled={busy} className="gap-2 bg-[var(--arc)] text-white hover:bg-[#d95f27]">
                 <RefreshCw className="h-4 w-4" />
-                Enable DM sync
+                Enable bot DM automation
               </Button>
             ) : null}
             <Button type="button" variant="outline" asChild className="bg-white">

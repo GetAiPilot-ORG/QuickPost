@@ -30,6 +30,9 @@
 - Social Inbox Stage 1 keeps the live aggregator temporarily, with tenant-scoped Redis caching, 3.5-second provider timeouts, one-message Meta previews, and lazy full-thread reads on selection.
 - Inbox refresh requests bypass and repopulate the Redis cache; successful replies invalidate the tenant cache. Redis failures fall back to uncached aggregation.
 - Social Inbox Stage 2 reads normalized conversation previews and messages from `inbox_conversations` and `inbox_messages`, using `(timestamp, id)` cursors; `inbox_sync_state` holds per-account incremental sync state.
-- The legacy aggregator remains a migration/backfill fallback and writes fetched items into the unified inbox. Instagram messaging webhooks mirror directly into the unified tables; provider enrichment stays off the webhook response path.
+- The legacy aggregator remains a migration/backfill fallback and writes fetched items into the unified inbox. Instagram messaging webhooks persist to unified inbox tables before optional InstaPilot automation runs; the main Social Inbox never depends on an imported bot account or InstaPilot's DM-sync status.
 - Non-webhook inbox sources synchronize through the separate `worker:inbox` process on `INBOX_SYNC_CRON` (three minutes by default), with bounded five-account batches and per-account status in `inbox_sync_state`.
+- Instagram OAuth subscribes the account to Meta webhooks automatically; the inbox worker performs one idempotent subscription check per credential version for already-connected accounts.
 - Expired Meta credentials are skipped, and permanent authorization/scope failures cool down for 24 hours unless account credentials are updated; transient timeouts remain eligible for the next sync.
+- Social Inbox subscribes to Supabase Realtime changes on `inbox_conversations`, debounces burst updates, refreshes the active thread when affected, and revalidates when the browser tab becomes visible.
+- A visibility-aware 15-second database poll covers missed Realtime events; source freshness still depends on webhook delivery or the three-minute provider synchronization worker.

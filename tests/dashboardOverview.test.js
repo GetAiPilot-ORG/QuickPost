@@ -45,11 +45,12 @@ describe('dashboard overview aggregation', () => {
   });
 
   it('handles empty broadcasts and connected account health', () => {
-    const summary = summarizeBroadcasts([], 30, new Date('2026-07-17T12:00:00.000Z'));
+    const now = new Date('2026-07-17T12:00:00.000Z');
+    const summary = summarizeBroadcasts([], 30, now);
     const accounts = summarizeConnectedAccounts({
       instagramAccounts: [{ id: 'one', username: 'brand', connected: true, token_expiry: '2026-07-01T00:00:00.000Z' }],
       youtube: { connected: true, username: 'channel', token_expiry: '2026-08-01T00:00:00.000Z' },
-    });
+    }, now);
 
     expect(summary.operations.successRate).toBeNull();
     expect(summary.operations.nextScheduled).toBeNull();

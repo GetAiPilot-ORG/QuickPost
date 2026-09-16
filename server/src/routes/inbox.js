@@ -286,7 +286,7 @@ export async function fetchYouTubeComments(tokenRow) {
 
     return { status: 'ok', items: commentItems };
   } catch (err) {
-    console.error('❌ [INBOX-YT] Failed:', err.response?.data?.error?.message || err.message);
+    console.error(`❌ [INBOX-YT] Failed for account ${tokenRow.account_id || tokenRow.username || 'unknown'} (User: ${tokenRow.user_id}):`, err.response?.data?.error?.message || err.message);
     return { status: 'error', error: err.response?.data?.error?.message || err.message, items: [] };
   }
 }
@@ -362,7 +362,7 @@ export async function fetchInstagramComments(tokenRow) {
 
     return { status: 'ok', items: conversationItems };
   } catch (err) {
-    console.error('❌ [INBOX-IG] Failed:', err.response?.data?.error?.message || err.message);
+    console.error(`❌ [INBOX-IG] Failed for @${tokenRow.username || tokenRow.account_id || 'unknown'} (User: ${tokenRow.user_id}):`, err.response?.data?.error?.message || err.message);
     return { status: 'error', error: err.response?.data?.error?.message || err.message, items: [] };
   }
 }
@@ -424,7 +424,7 @@ export async function fetchBlueskyComments(tokenRow) {
 
     return { status: 'ok', items: commentItems };
   } catch (err) {
-    console.error('❌ [INBOX-BSKY] Failed:', err.message);
+    console.error(`❌ [INBOX-BSKY] Failed for @${tokenRow.username || tokenRow.account_id || 'unknown'} (User: ${tokenRow.user_id}):`, err.message);
     return { status: 'error', error: err.message, items: [] };
   }
 }
@@ -473,7 +473,7 @@ export async function fetchMastodonComments(tokenRow) {
 
     return { status: 'ok', items: commentItems };
   } catch (err) {
-    console.error('❌ [INBOX-MASTO] Failed:', err.message);
+    console.error(`❌ [INBOX-MASTO] Failed for @${tokenRow.username || tokenRow.account_id || 'unknown'} (User: ${tokenRow.user_id}):`, err.message);
     return { status: 'error', error: err.message, items: [] };
   }
 }
@@ -545,7 +545,7 @@ export async function fetchFacebookComments(tokenRow) {
 
     return { status: 'ok', items: conversationItems };
   } catch (err) {
-    console.error('❌ [INBOX-FB] Failed:', err.message);
+    console.error(`❌ [INBOX-FB] Failed for @${tokenRow.username || tokenRow.account_id || 'unknown'} (User: ${tokenRow.user_id}):`, err.message);
     return { status: 'error', error: err.response?.data?.error?.message || err.message, items: [] };
   }
 }
