@@ -21,6 +21,7 @@ import inboxRouter from './routes/inbox.js';
 import { initScheduler } from './services/scheduler.js';
 import supabase from './services/supabase.js';
 import { processInstagramWebhook } from './services/instapilot.js';
+import { persistInstagramWebhookToUnifiedInbox } from './services/unifiedInboxWebhook.js';
 import { sseClients, broadcastRefresh } from './services/sse.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -441,9 +442,25 @@ async function handleWebhookLogRecord(log) {
   };
 
   try {
+    const inboxResults = await persistInstagramWebhookToUnifiedInbox(metaPayload);
+    const persistedCount = inboxResults.filter((result) => result.persisted).length;
+    if (persistedCount) {
+      console.log(`[${logId}] ✅ Unified inbox persisted ${persistedCount} Instagram message(s)`);
+    } else {
+      console.warn(`[${logId}] ⚠️ Unified inbox could not map Instagram recipient`, {
+        recipients: inboxResults.map((result) => result.recipientId).filter(Boolean),
+      });
+    }
+  } catch (e) {
+    console.error(`[${logId}] ❌ Unified inbox webhook persistence failed:`, e.message || e);
+  }
+
+  // InstaPilot is an optional downstream automation consumer. A missing bot or
+  // imported InstaPilot account must never prevent the main Social Inbox write.
+  try {
     await processInstagramWebhook(metaPayload);
   } catch (e) {
-    console.error(`[${logId}] ❌ Error processing reconstructed webhook:`, e.message || e);
+    console.error(`[${logId}] ❌ Optional InstaPilot processing failed:`, e.message || e);
   }
 }
 

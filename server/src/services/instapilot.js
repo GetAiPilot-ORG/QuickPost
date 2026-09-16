@@ -3,7 +3,6 @@ import axios from 'axios';
 import supabase from './supabase.js';
 import { consumeUsage } from './entitlements.js';
 import { broadcastRefresh } from './sse.js';
-import { persistInboxItems } from './unifiedInbox.js';
 
 const GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v21.0';
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
@@ -1076,26 +1075,6 @@ async function handleInboundMessage({ senderId, recipientId, messaging, injected
     created_at: createdAt,
   });
   if (inboundError) console.error('❌ Failed to insert INBOUND message:', inboundError);
-  if (!inboundError) {
-    void persistInboxItems(account.user_id, [{
-      id: `ig:${senderId}`,
-      platform: 'instagram',
-      accountId: account.instagram_business_account_id,
-      accountName: account.instagram_username || 'Instagram Account',
-      externalConversationId: senderId,
-      commentId: senderId,
-      replyRecipientId: senderId,
-      authorName: conversation.instagram_name || conversation.instagram_username || 'Instagram User',
-      authorHandle: conversation.instagram_username ? `@${conversation.instagram_username}` : '',
-      authorAvatar: conversation.profile_pic_url || null,
-      text,
-      createdAt,
-      unread: true,
-      replied: false,
-      ingestionSource: 'instagram_webhook',
-      replies: [{ id: metaMessageId, text, createdAt, isSelf: false }],
-    }]).catch((error) => console.warn('[INSTAPILOT] Unified inbox mirror failed:', error.message));
-  }
   console.log(`[TIMING] INBOUND message inserted for conv ${conversation.id} at ${new Date().toISOString()}`);
   broadcastRefresh('InboundMessage');
 

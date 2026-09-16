@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import supabase from '../services/supabase.js';
 import { persistInboxItems, recordInboxSyncState } from '../services/unifiedInbox.js';
+import { ensureInstagramWebhookSubscription } from '../services/unifiedInboxWebhook.js';
 import {
   fetchBlueskyComments,
   fetchFacebookComments,
@@ -12,6 +13,7 @@ import {
 const schedule = process.env.INBOX_SYNC_CRON || '*/3 * * * *';
 const authErrorCooldownMs = Number(process.env.INBOX_AUTH_ERROR_COOLDOWN_HOURS || 24) * 60 * 60 * 1000;
 let running = false;
+const webhookSubscriptionCredentials = new Set();
 
 const adapters = {
   instagram: fetchInstagramComments,
@@ -49,6 +51,18 @@ async function syncAccount(row) {
   const adapter = adapters[provider];
   if (!adapter) return;
   if (isMetaTokenExpired(row) || shouldCoolDown(row, row._syncState)) return;
+
+  if (provider === 'instagram' && row.access_token) {
+    const subscriptionKey = `${row.user_id}:${accountId(row)}:${row.updated_at || row.token_expiry || ''}`;
+    if (!webhookSubscriptionCredentials.has(subscriptionKey)) {
+      webhookSubscriptionCredentials.add(subscriptionKey);
+      const subscription = await ensureInstagramWebhookSubscription(row);
+      if (!subscription.ok && !subscription.skipped) {
+        console.warn(`⚠️ [INBOX-IG] Webhook subscription unavailable for @${row.username || accountId(row)}: ${subscription.reason}`);
+      }
+    }
+  }
+
   try {
     const result = await adapter(row);
     if (result.status === 'ok') await persistInboxItems(row.user_id, result.items || []);
