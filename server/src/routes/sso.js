@@ -22,8 +22,8 @@ import { clearEntitlementsCache } from '../services/entitlements.js';
 const router = express.Router();
 
 console.log('[SSO-EVAL] env check:', {
-  SOCIAL_PILOT_SSO_SECRET: process.env.SOCIAL_PILOT_SSO_SECRET,
-  SUPABASE_URL: process.env.SUPABASE_URL,
+  SOCIAL_PILOT_SSO_SECRET: process.env.SOCIAL_PILOT_SSO_SECRET ? 'present' : 'missing',
+  SUPABASE_URL: process.env.SUPABASE_URL ? 'present' : 'missing',
   SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ? 'present' : 'missing'
 });
 
@@ -105,15 +105,7 @@ router.post('/sso', async (req, res) => {
 
     // ── Verify HMAC (constant-time) ──────────────────────────────────────
     const expected = hmacSign(encoded, SSO_SECRET);
-    console.log('[SSO-DEBUG] Verify:', {
-      tokenLength: token.length,
-      encoded,
-      signature,
-      expected,
-      secretLen: SSO_SECRET?.length,
-      secretStart: SSO_SECRET?.substring(0, 10),
-      match: constantTimeEqual(signature, expected)
-    });
+    console.log('[SSO-DEBUG] Verify signature match:', constantTimeEqual(signature, expected));
     if (!constantTimeEqual(signature, expected)) {
       console.warn('[SSO] Signature mismatch — rejected');
       return res.status(401).json({ success: false, error: 'Invalid SSO token' });

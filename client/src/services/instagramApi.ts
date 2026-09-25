@@ -68,8 +68,7 @@ export async function fetchInboxConversations() {
 }
 
 export async function fetchConversationThread(conversationId: string) {
-  const cacheBuster = Date.now();
-  const { data } = await apiClient.get(`/api/instapilot/inbox/conversations/${conversationId}?_t=${cacheBuster}`);
+  const { data } = await apiClient.get(`/api/instapilot/inbox/conversations/${conversationId}`);
   return data;
 }
 
@@ -81,6 +80,11 @@ export async function updateConversation(conversationId: string, payload: Record
 export async function sendManualInstagramReply(conversationId: string, message: string) {
   const { data } = await apiClient.post(`/api/instapilot/inbox/conversations/${conversationId}/reply`, { message });
   return data.message;
+}
+
+export async function syncInstagramInbox() {
+  const { data } = await apiClient.post("/api/instapilot/inbox/sync");
+  return data;
 }
 
 export async function fetchInstagramAnalytics() {

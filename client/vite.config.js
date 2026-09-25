@@ -37,23 +37,15 @@ export default defineConfig(({ mode }) => {
     build: {
       sourcemap: isDev,
       chunkSizeWarningLimit: 400,
-      rollupOptions: {
+      rolldownOptions: {
         output: {
-          manualChunks: {
-            'react-vendor': ['react', 'react-dom', 'scheduler'],
-            'motion-vendor': ['framer-motion', 'gsap'],
-            'supabase-vendor': ['@supabase/supabase-js'],
-            'icons-vendor': ['lucide-react', 'react-icons'],
-            'radix-vendor': [
-              '@radix-ui/react-avatar',
-              '@radix-ui/react-dialog',
-              '@radix-ui/react-dropdown-menu',
-              '@radix-ui/react-label',
-              '@radix-ui/react-select',
-              '@radix-ui/react-separator',
-              '@radix-ui/react-slot',
-              '@radix-ui/react-switch',
-              '@radix-ui/react-tabs',
+          codeSplitting: {
+            groups: [
+              { name: 'react-vendor', test: /node_modules\/(react|react-dom|scheduler)\// },
+              { name: 'motion-vendor', test: /node_modules\/(framer-motion|gsap)\// },
+              { name: 'supabase-vendor', test: /node_modules\/@supabase\// },
+              { name: 'icons-vendor', test: /node_modules\/(lucide-react|react-icons)\// },
+              { name: 'radix-vendor', test: /node_modules\/@radix-ui\// },
             ],
           },
         },

@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import apiClient from "../utils/apiClient";
 import ComposerModal from "./ComposerModal";
+import InfoHelp from "./InfoHelp";
 import PostPreviewModal from "./PostPreviewModal";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -2094,9 +2095,13 @@ function Dashboard() {
                 margin: 0,
                 letterSpacing: "-0.025em",
                 lineHeight: 1.08,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 12,
               }}
             >
               Analytics
+              <InfoHelp text="Multi-channel broadcasting analytics, real-time post engagement rates, and delivery logs" />
             </h1>
 
           </div>
@@ -2437,8 +2442,9 @@ function Dashboard() {
                 <span style={{ fontSize: 13, fontWeight: 700, color: css.ink }}>
                   {filtered.length}
                 </span>
-                <span style={{ fontSize: 12, color: css.slate }}>
+                <span style={{ fontSize: 12, color: css.slate, display: "inline-flex", alignItems: "center", gap: 4 }}>
                   {activeTab === "queue" ? "scheduled" : "total"}
+                  <InfoHelp text={activeTab === "queue" ? "Total queued posts waiting to publish" : "Total broadcasts matching current filters"} />
                 </span>
               </div>
               <div
@@ -2468,8 +2474,9 @@ function Dashboard() {
                       ).length
                     }
                   </span>
-                  <span style={{ fontSize: 12, color: css.slate }}>
+                  <span style={{ fontSize: 12, color: css.slate, display: "inline-flex", alignItems: "center", gap: 4 }}>
                     success
+                    <InfoHelp text="Posts with confirmed successful broadcast to at least one target channel" />
                   </span>
                 </div>
               )}

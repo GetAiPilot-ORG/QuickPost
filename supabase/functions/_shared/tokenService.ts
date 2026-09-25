@@ -1,5 +1,3 @@
-import { requireEnv } from './db.ts';
-
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -17,6 +15,12 @@ const bytesToBase64 = (bytes: Uint8Array): string => {
   let raw = '';
   for (const byte of bytes) raw += String.fromCharCode(byte);
   return btoa(raw);
+};
+
+const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer => {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
 };
 
 const loadKeys = async (): Promise<CryptoKey[]> => {
@@ -40,10 +44,7 @@ const loadKeys = async (): Promise<CryptoKey[]> => {
     
     if (keyBytes.length !== 32) continue;
     
-    const keyBuffer = keyBytes.buffer.slice(
-      keyBytes.byteOffset,
-      keyBytes.byteOffset + keyBytes.byteLength
-    );
+    const keyBuffer = toArrayBuffer(keyBytes);
 
     const key = await crypto.subtle.importKey('raw', keyBuffer, { name: 'AES-GCM' }, false, [
       'encrypt',
@@ -79,12 +80,9 @@ export const decryptTokenBundle = async (ciphertext: string): Promise<TokenBundl
 
   const keys = await loadKeys();
   const iv = base64ToBytes(ivBase64);
-  const ivBuffer = iv.buffer.slice(iv.byteOffset, iv.byteOffset + iv.byteLength);
+  const ivBuffer = toArrayBuffer(iv);
   const encryptedBytes = base64ToBytes(payloadBase64);
-  const encryptedBuffer = encryptedBytes.buffer.slice(
-    encryptedBytes.byteOffset,
-    encryptedBytes.byteOffset + encryptedBytes.byteLength
-  );
+  const encryptedBuffer = toArrayBuffer(encryptedBytes);
 
   let decrypted: ArrayBuffer | null = null;
   let lastError: Error | null = null;
@@ -114,6 +112,6 @@ export const decryptTokenBundle = async (ciphertext: string): Promise<TokenBundl
 
   return {
     pageAccessToken: parsed.pageAccessToken,
-    userAccessToken: parsed.userAccessToken,
+    userAccessToken: parsed.userAccessToken || '',
   };
 };

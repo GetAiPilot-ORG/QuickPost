@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAutoDM } from '../../context/AutoDMContext';
 import { useAuth } from '../../context/AuthContext';
+import InfoHelp from '../../components/InfoHelp';
 import {
   AlertCircle,
   ArrowRight,
@@ -32,11 +33,14 @@ const dateOptions = [
   { value: '90', label: 'Last 90 days' },
 ];
 
-function Metric({ label, value, icon: Icon, loading }) {
+function Metric({ label, value, icon: Icon, loading, info }) {
   return (
     <div className="autodm-home-metric">
       <Icon size={20} />
-      <p>{label}</p>
+      <p className="inline-flex items-center gap-1">
+        {label}
+        {info && <InfoHelp text={info} />}
+      </p>
       {loading ? <span className="skeleton-shimmer" /> : <strong>{value.toLocaleString()}</strong>}
     </div>
   );
@@ -169,10 +173,10 @@ export default function AutoDMHomePage() {
           </div>
         </div>
         <div className="autodm-metrics-card">
-          <Metric label="Messages Sent" value={metrics.messages_sent} icon={Send} loading={metricsLoading} />
-          <Metric label="Messages Seen" value={metrics.messages_seen} icon={Eye} loading={metricsLoading} />
-          <Metric label="Total Clicks" value={metrics.total_clicks} icon={MousePointer} loading={metricsLoading} />
-          <Metric label="Followers Gained" value={metrics.followers_gained} icon={Users} loading={metricsLoading} />
+          <Metric label="Messages Sent" value={metrics.messages_sent} icon={Send} loading={metricsLoading} info="Total automated direct messages successfully delivered to users" />
+          <Metric label="Messages Seen" value={metrics.messages_seen} icon={Eye} loading={metricsLoading} info="Direct messages confirmed opened or read by recipients" />
+          <Metric label="Total Clicks" value={metrics.total_clicks} icon={MousePointer} loading={metricsLoading} info="Total link clicks and button taps on cards sent inside AutoDM conversations" />
+          <Metric label="Followers Gained" value={metrics.followers_gained} icon={Users} loading={metricsLoading} info="New Instagram followers acquired directly through follow-gate DM flows" />
         </div>
       </section>
 

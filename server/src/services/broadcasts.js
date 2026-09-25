@@ -166,65 +166,39 @@ export async function updateBroadcastResults(
     const updateData = {
       status: status,
       posted_at: status === "sent" ? new Date().toISOString() : null,
-
-      // Instagram results
-      instagram_success: results.instagram?.success || false,
-      instagram_post_id: results.instagram?.mediaId || null,
-      instagram_url:
-        results.instagram?.url || results.instagram?.permalink || null,
-      instagram_error: results.instagram?.error || null,
-
-      // YouTube results
-      youtube_success: results.youtube?.success || false,
-      youtube_video_id: results.youtube?.videoId || null,
-      youtube_url: results.youtube?.videoUrl || null,
-      youtube_shorts_url: results.youtube?.shortsUrl || null,
-      youtube_error: results.youtube?.error || null,
-
-      // Pinterest results
-      pinterest_success: results.pinterest?.success || false,
-      pinterest_pin_id: results.pinterest?.pinId || null,
-      pinterest_url: results.pinterest?.url || null,
-      pinterest_error: results.pinterest?.error || null,
-
-      // Facebook results
-      facebook_success: results.facebook?.success || false,
-      facebook_post_id: results.facebook?.postId || null,
-      facebook_url: results.facebook?.postUrl || null,
-      facebook_error: results.facebook?.error || null,
-
-      // LinkedIn results
-      linkedin_success: results.linkedin?.success || false,
-      linkedin_post_id: results.linkedin?.postId || null,
-      linkedin_url: results.linkedin?.url || null,
-      linkedin_error: results.linkedin?.error || null,
-
-      // Mastodon results
-      mastodon_success: results.mastodon?.success || false,
-      mastodon_post_id: results.mastodon?.id || null,
-      mastodon_url: results.mastodon?.url || null,
-      mastodon_error: results.mastodon?.error || null,
-
-
-
-      // Bluesky results
-      bluesky_success: results.bluesky?.success || false,
-      bluesky_post_id: results.bluesky?.uri || results.bluesky?.id || null,
-      bluesky_url: results.bluesky?.url || null,
-      bluesky_error: results.bluesky?.error || null,
-
-      // Threads results
-      threads_success: results.threads?.success || false,
-      threads_post_id: results.threads?.postId || null,
-      threads_url: results.threads?.url || null,
-      threads_error: results.threads?.error || null,
-
-      // X results
-      x_success: results.x?.success || false,
-      x_post_id: results.x?.postId || null,
-      x_url: results.x?.url || null,
-      x_error: results.x?.error || null,
+      processing_started_at: null,
     };
+
+    if (status === 'sent') updateData.last_error = null;
+
+    const resultMappings = {
+      instagram: { id: 'mediaId', idColumn: 'instagram_post_id', url: ['url', 'permalink'], urlColumn: 'instagram_url' },
+      youtube: { id: 'videoId', idColumn: 'youtube_video_id', url: ['videoUrl'], urlColumn: 'youtube_url', shortsUrl: 'shortsUrl' },
+      pinterest: { id: 'pinId', idColumn: 'pinterest_pin_id', url: ['url'], urlColumn: 'pinterest_url' },
+      facebook: { id: 'postId', idColumn: 'facebook_post_id', url: ['postUrl', 'url'], urlColumn: 'facebook_url' },
+      linkedin: { id: 'postId', idColumn: 'linkedin_post_id', url: ['url'], urlColumn: 'linkedin_url' },
+      mastodon: { id: 'id', idColumn: 'mastodon_post_id', url: ['url'], urlColumn: 'mastodon_url' },
+      bluesky: { id: ['uri', 'id'], idColumn: 'bluesky_post_id', url: ['url'], urlColumn: 'bluesky_url' },
+      threads: { id: 'postId', idColumn: 'threads_post_id', url: ['url'], urlColumn: 'threads_url' },
+      x: { id: 'postId', idColumn: 'x_post_id', url: ['url'], urlColumn: 'x_url' },
+    };
+
+    const firstValue = (result, keys) => {
+      for (const key of Array.isArray(keys) ? keys : [keys]) {
+        if (result?.[key] != null) return result[key];
+      }
+      return null;
+    };
+
+    for (const [provider, mapping] of Object.entries(resultMappings)) {
+      if (!Object.prototype.hasOwnProperty.call(results, provider)) continue;
+      const result = results[provider] || {};
+      updateData[`${provider}_success`] = Boolean(result.success);
+      updateData[mapping.idColumn] = firstValue(result, mapping.id);
+      updateData[mapping.urlColumn] = firstValue(result, mapping.url);
+      updateData[`${provider}_error`] = result.error || null;
+      if (mapping.shortsUrl) updateData.youtube_shorts_url = result[mapping.shortsUrl] || null;
+    }
 
     const { data, error } = await supabase
       .from("broadcasts")
@@ -241,6 +215,34 @@ export async function updateBroadcastResults(
     );
     return null;
   }
+}
+
+export async function checkpointBroadcastChannels(broadcastId, channelResults = {}) {
+  const { data: current, error: readError } = await supabase
+    .from('broadcasts')
+    .select('platform_data')
+    .eq('id', broadcastId)
+    .single();
+  if (readError) throw readError;
+
+  const platformData = current?.platform_data || {};
+  const previousResults = platformData.channelResults || {};
+  const completedChannels = new Set(platformData.completedChannels || []);
+  for (const [channel, result] of Object.entries(channelResults)) {
+    if (result?.success) completedChannels.add(channel);
+  }
+
+  const { error: updateError } = await supabase
+    .from('broadcasts')
+    .update({
+      platform_data: {
+        ...platformData,
+        channelResults: { ...previousResults, ...channelResults },
+        completedChannels: [...completedChannels],
+      },
+    })
+    .eq('id', broadcastId);
+  if (updateError) throw updateError;
 }
 
 /**

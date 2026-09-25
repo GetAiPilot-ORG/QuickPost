@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import apiClient from "../utils/apiClient";
 import ComposerModal from "../components/ComposerModal";
+import InfoHelp from "../components/InfoHelp";
 import CalendarView from "../components/CalendarView";
 import { Skeleton } from "boneyard-js/react";
 import { useDialog } from "../context/DialogContext";
@@ -91,7 +92,7 @@ const STATUS_CONFIG = {
   },
 };
 
-function StatusBadge({ status }) {
+function StatusBadge({ status, lastError }) {
   const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.scheduled;
   const Icon = cfg.icon;
   return (
@@ -99,7 +100,7 @@ function StatusBadge({ status }) {
       className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border ${cfg.color}`}
     >
       <Icon className={`w-3 h-3 ${cfg.pulse ? "animate-spin" : ""}`} />
-      {cfg.label}
+      {status === "scheduled" && lastError ? "Retrying" : cfg.label}
     </span>
   );
 }
@@ -291,7 +292,7 @@ function QueueCard({ post, onCancel, onRetry, onRefresh, autoEditId }) {
 
           {/* Platforms + status */}
           <div className="flex items-center gap-2 flex-wrap">
-            <StatusBadge status={post.status} />
+            <StatusBadge status={post.status} lastError={post.last_error} />
             <div className="flex items-center gap-1 flex-wrap">
               {channels.map((id) => (
                 <span
@@ -563,9 +564,13 @@ export default function ScheduledQueue() {
                 letterSpacing: "-0.025em",
                 lineHeight: 1.08,
                 fontFamily: "var(--font)",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 12,
               }}
             >
               Scheduled Queue
+              <InfoHelp text="Automated schedule dispatcher that publishes queued multi-channel content at exact scheduled times" />
             </h1>
             <p className="text-xs text-gray-500 font-medium mt-1.5 max-w-md">
               Manage and track upcoming social broadcasts across all connected channels.
