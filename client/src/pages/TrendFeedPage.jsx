@@ -1100,6 +1100,7 @@ export default function TrendFeedPage() {
   const [selectedFormat, setSelectedFormat] = useState("all");
   const [selectedNiche, setSelectedNiche] = useState("all");
   const [selectedRegion, setSelectedRegion] = useState("US");
+  const [regionOpen, setRegionOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
@@ -1285,19 +1286,17 @@ export default function TrendFeedPage() {
 
   // Bookmark / Save
   const toggleSaveIdea = (post) => {
-    setSavedIdeas((current) => {
-      const exists = current.some((item) => item.id === post.id);
-      let updated;
-      if (exists) {
-        updated = current.filter((item) => item.id !== post.id);
-        toast("Removed from Inspiration Board", { icon: "🗑️" });
-      } else {
-        updated = [post, ...current];
-        toast.success("Saved to Inspiration Board!");
-      }
-      localStorage.setItem(savedIdeasStorageKey, JSON.stringify(updated));
-      return updated;
-    });
+    const exists = savedIdeas.some((item) => item.id === post.id);
+    let updated;
+    if (exists) {
+      updated = savedIdeas.filter((item) => item.id !== post.id);
+      toast("Removed from Inspiration Board", { icon: "🗑️" });
+    } else {
+      updated = [post, ...savedIdeas];
+      toast.success("Saved to Inspiration Board!");
+    }
+    setSavedIdeas(updated);
+    localStorage.setItem(savedIdeasStorageKey, JSON.stringify(updated));
   };
 
   const clearAllSavedIdeas = () => {
@@ -1388,23 +1387,40 @@ export default function TrendFeedPage() {
               )}
             </div>
 
-            {/* Region Dropdown */}
-            <div className="relative">
-              <select
-                value={selectedRegion}
-                onChange={(e) => setSelectedRegion(e.target.value)}
-                className="h-9 pl-3 pr-7 rounded-lg bg-white border border-neutral-200 text-xs font-medium text-neutral-700 shadow-sm outline-none focus:border-neutral-400 cursor-pointer appearance-none hover:bg-neutral-50 transition-colors"
+            {/* Custom Region Dropdown */}
+            <div className="relative ml-0 sm:ml-2">
+              <button
+                onClick={() => setRegionOpen(!regionOpen)}
+                className="flex items-center justify-between min-w-[120px] h-9 pl-3 pr-2.5 rounded-lg bg-white border border-neutral-200 text-xs font-medium text-neutral-700 shadow-sm outline-none hover:bg-neutral-50 transition-colors"
               >
-                {REGION_OPTIONS.map((r) => (
-                  <option key={r.code} value={r.code}>
-                    {r.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                size={13}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none"
-              />
+                <span>{REGION_OPTIONS.find(r => r.code === selectedRegion)?.label || "Region"}</span>
+                <ChevronDown size={13} className={`text-neutral-400 transition-transform ${regionOpen ? 'rotate-180' : ''}`} />
+              </button>
+              
+              <AnimatePresence>
+                {regionOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setRegionOpen(false)} />
+                    <motion.div
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 4 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute left-0 sm:left-auto sm:right-0 top-full mt-1.5 w-40 bg-white border border-neutral-200 rounded-lg shadow-lg overflow-hidden z-50 py-1"
+                    >
+                      {REGION_OPTIONS.map((r) => (
+                        <button
+                          key={r.code}
+                          onClick={() => { setSelectedRegion(r.code); setRegionOpen(false); }}
+                          className={`w-full text-left px-3 py-2 text-xs font-medium transition-colors ${selectedRegion === r.code ? 'bg-neutral-50 text-neutral-900 font-bold' : 'text-neutral-600 hover:bg-neutral-50 hover:text-neutral-900'}`}
+                        >
+                          {r.label}
+                        </button>
+                      ))}
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
             </div>
 
             {/* Saved Board */}
@@ -1450,39 +1466,39 @@ export default function TrendFeedPage() {
           </div>
         </div>
 
-        {/* Row 2: Unified Filter & Niche Ribbon */}
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
+        {/* Row 2 & 3: Unified Filter & Niche Ribbon (Stacked) */}
+        <div className="flex flex-col gap-3 py-1">
           {/* Format Segmented Tab */}
-          <div className="bg-neutral-200/70 p-0.5 rounded-lg flex items-center gap-0.5 border border-neutral-300/40 flex-shrink-0">
-            {FORMAT_TABS.map((tab) => {
-              const active = selectedFormat === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setSelectedFormat(tab.id)}
-                  className={`h-7 px-2.5 rounded-md text-xs font-medium whitespace-nowrap transition-all ${
-                    active
-                      ? "bg-white text-neutral-950 shadow-sm font-semibold"
-                      : "text-neutral-600 hover:text-neutral-900 hover:bg-white/40"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              );
-            })}
+          <div className="flex items-center overflow-x-auto no-scrollbar">
+            <div className="bg-neutral-200/70 p-1 rounded-lg flex items-center gap-1.5 border border-neutral-300/40 flex-shrink-0">
+              {FORMAT_TABS.map((tab) => {
+                const active = selectedFormat === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setSelectedFormat(tab.id)}
+                    className={`h-8 px-3.5 rounded-md text-xs font-medium whitespace-nowrap transition-all ${
+                      active
+                        ? "bg-white text-neutral-950 shadow-sm font-semibold"
+                        : "text-neutral-600 hover:text-neutral-900 hover:bg-white/40"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          <div className="h-5 w-px bg-neutral-300 flex-shrink-0 mx-1" />
-
           {/* Niche Categories Ribbon */}
-          <div className="flex items-center gap-1.5 flex-1">
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
             {NICHE_PILLS.map((niche) => {
               const active = selectedNiche === niche.id;
               return (
                 <button
                   key={niche.id}
                   onClick={() => setSelectedNiche(niche.id)}
-                  className={`h-7 px-3 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
+                  className={`h-8 px-4 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
                     active
                       ? "bg-neutral-900 text-white shadow-sm font-semibold"
                       : "bg-white text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 border border-neutral-200/80"

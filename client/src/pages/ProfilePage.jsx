@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LogOut, ChevronRight, Mail, Phone, Instagram, Facebook, Globe, MapPin, Briefcase, UserRound, Shield, CreditCard, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useAutoDM } from '../context/AutoDMContext';
@@ -7,8 +7,71 @@ import BillingPage from './BillingPage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+const COUNTRIES = [
+  "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo", "Costa Rica", "Croatia", "Cuba", "Cyprus", "Czech Republic", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia", "Norway", "Oman", "Pakistan", "Palau", "Palestine", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Taiwan", "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States", "Uruguay", "Uzbekistan", "Vanuatu", "Vatican City", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"
+];
+
+const COUNTRY_CODES = [
+  { code: "+1", country: "US/CA" }, { code: "+7", country: "RU/KZ" }, { code: "+20", country: "EG" },
+  { code: "+27", country: "ZA" }, { code: "+31", country: "NL" }, { code: "+32", country: "BE" },
+  { code: "+33", country: "FR" }, { code: "+34", country: "ES" }, { code: "+39", country: "IT" },
+  { code: "+41", country: "CH" }, { code: "+44", country: "UK" }, { code: "+49", country: "DE" },
+  { code: "+52", country: "MX" }, { code: "+54", country: "AR" }, { code: "+55", country: "BR" },
+  { code: "+60", country: "MY" }, { code: "+61", country: "AU" }, { code: "+62", country: "ID" },
+  { code: "+63", country: "PH" }, { code: "+64", country: "NZ" }, { code: "+65", country: "SG" },
+  { code: "+66", country: "TH" }, { code: "+81", country: "JP" }, { code: "+82", country: "KR" },
+  { code: "+84", country: "VN" }, { code: "+86", country: "CN" }, { code: "+90", country: "TR" },
+  { code: "+91", country: "IN" }, { code: "+92", country: "PK" }, { code: "+93", country: "AF" },
+  { code: "+94", country: "LK" }, { code: "+95", country: "MM" }, { code: "+98", country: "IR" },
+  { code: "+212", country: "MA" }, { code: "+213", country: "DZ" }, { code: "+234", country: "NG" },
+  { code: "+254", country: "KE" }, { code: "+880", country: "BD" }, { code: "+966", country: "SA" },
+  { code: "+971", country: "AE" }, { code: "+977", country: "NP" }
+];
 
 function ProfileSettingsPanel({ user }) {
+  const [selectedCity, setSelectedCity] = useState("Bhopal");
+  const [selectedLocation, setSelectedLocation] = useState({ state: "Madhya Pradesh", country: "India" });
+
+  useEffect(() => {
+    if (!selectedCity || selectedCity.trim().length < 2) {
+      setSelectedLocation({ state: "", country: "" });
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(selectedCity)}&count=5&format=json`);
+        const data = await res.json();
+
+        // Find the first best result globally
+        const matchedCity = data.results?.[0];
+
+        if (matchedCity) {
+          setSelectedLocation({
+            state: matchedCity.admin1 || matchedCity.admin2 || matchedCity.admin3 || matchedCity.admin4 || "", // admin1 is typically the state, but fallback to district/region if missing
+            country: matchedCity.country || ""
+          });
+          return;
+        }
+
+        // If not found, clear it so the user can type it manually
+        setSelectedLocation({ state: "", country: "" });
+      } catch (err) {
+        console.error(err);
+      }
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [selectedCity]);
+
   return (
     <div className="flex flex-col xl:flex-row gap-8 mt-6">
       {/* Left Column Summary Card */}
@@ -16,18 +79,18 @@ function ProfileSettingsPanel({ user }) {
         <div className="bg-white rounded-2xl shadow-sm border border-black/10 overflow-hidden">
           {/* Header Graphic */}
           <div className="bg-[#fcfbf9] h-40 w-full border-b border-black/5 flex items-center justify-center relative overflow-hidden">
-             <div className="absolute inset-0 opacity-40 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-slate-200 via-[#fcfbf9] to-[#fcfbf9]"></div>
-             <img src="https://illustrations.popsy.co/amber/freelancer.svg" alt="Illustration" className="h-48 absolute -bottom-4 right-0 mix-blend-multiply opacity-90" />
+            <div className="absolute inset-0 opacity-40 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-slate-200 via-[#fcfbf9] to-[#fcfbf9]"></div>
+            <img src="https://static.vecteezy.com/system/resources/thumbnails/073/601/719/small/abstract-modern-orange-and-yellow-curve-background-with-white-lines-smooth-gradient-wallpaper-design-for-banners-templates-covers-web-pages-presentations-and-more-vector.jpg" alt="Illustration" className="absolute inset-0 w-full h-full object-cover opacity-60" />
           </div>
-          
+
           <div className="p-6">
             <div className="flex justify-between items-start mb-6">
               <div>
                 <h2 className="text-2xl font-bold text-[#1a1a1a]">{user?.name || 'Getaipilot'}</h2>
                 <p className="text-[#666666] text-sm font-medium mt-0.5">Musicians</p>
                 <p className="text-xs text-[#888888] mt-1.5 flex items-center gap-1">
-                   <MapPin className="w-3.5 h-3.5" />
-                   Bhopal, Madhya Pradesh
+                  <MapPin className="w-3.5 h-3.5" />
+                  Bhopal, Madhya Pradesh
                 </p>
               </div>
               <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100 uppercase tracking-wider">
@@ -37,93 +100,93 @@ function ProfileSettingsPanel({ user }) {
             </div>
 
             <div className="mt-6 border-t border-black/5 pt-6">
-               {(() => {
-                 const subscription = user?.entitlements?.subscription;
-                 const planId = user?.entitlements?.plan?.id || 'free';
-                 const planStatus = subscription?.status || 'inactive';
+              {(() => {
+                const subscription = user?.entitlements?.subscription;
+                const planId = user?.entitlements?.plan?.id || 'free';
+                const planStatus = subscription?.status || 'inactive';
 
-                 const planLabel = user?.entitlements?.plan?.name || 'Free';
+                const planLabel = user?.entitlements?.plan?.name || 'Free';
 
-                 let daysRemaining = 0;
-                 let percentRemaining = 0;
-                 const isForever = planId === 'free';
+                let daysRemaining = 0;
+                let percentRemaining = 0;
+                const isForever = planId === 'free';
 
-                 if (subscription?.current_period_end) {
-                   const diffTime = new Date(subscription.current_period_end) - new Date();
-                   daysRemaining = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
-                   
-                   const interval = subscription?.billing_interval || 'monthly';
-                   let totalDays = 30;
-                   if (interval === 'quarterly') totalDays = 90;
-                   else if (interval === 'six_months') totalDays = 180;
-                   else if (interval === 'year' || interval === 'yearly') totalDays = 365;
+                if (subscription?.current_period_end) {
+                  const diffTime = new Date(subscription.current_period_end) - new Date();
+                  daysRemaining = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
 
-                   percentRemaining = Math.min(100, Math.max(0, Math.round((daysRemaining / totalDays) * 100)));
-                 } else if (planId === 'free') {
-                   percentRemaining = 100;
-                 }
+                  const interval = subscription?.billing_interval || 'monthly';
+                  let totalDays = 30;
+                  if (interval === 'quarterly') totalDays = 90;
+                  else if (interval === 'six_months') totalDays = 180;
+                  else if (interval === 'year' || interval === 'yearly') totalDays = 365;
 
-                 return (
-                   <>
-                     <div className="flex justify-between items-center mb-3.5">
-                       <h3 className="text-sm font-semibold text-[#1a1a1a]">Current role</h3>
-                       <Briefcase className="w-4 h-4 text-[#888888]" />
-                     </div>
-                     <div className="flex flex-wrap gap-2.5">
-                        <span className="text-xs font-bold bg-[#f7f5f2] text-[#444444] px-3.5 py-1.5 rounded-full border border-black/5">Personal</span>
-                        <span className="text-xs font-bold bg-[#f7f5f2] text-[#444444] px-3.5 py-1.5 rounded-full border border-black/5">{planLabel}</span>
-                        <span className="text-xs font-bold bg-[#f7f5f2] text-[#444444] px-3.5 py-1.5 rounded-full border border-black/5">India</span>
-                        <span className="text-xs font-bold bg-[#f7f5f2] text-[#444444] px-3.5 py-1.5 rounded-full border border-black/5">Premium</span>
-                     </div>
+                  percentRemaining = Math.min(100, Math.max(0, Math.round((daysRemaining / totalDays) * 100)));
+                } else if (planId === 'free') {
+                  percentRemaining = 100;
+                }
 
-                     <div className="mt-6 bg-[#f7f5f2] rounded-xl p-5 border border-black/5">
-                       <div className="flex justify-between items-center mb-4">
-                         <h3 className="text-[11px] font-bold text-[#1a1a1a] flex items-center gap-2 uppercase tracking-wider">
-                            <span className="w-5 h-5 rounded flex items-center justify-center bg-white text-emerald-700 text-xs shadow-sm">👑</span> 
-                            SUBSCRIPTION TIMELINE
-                         </h3>
-                         <span className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${planStatus === 'active' ? 'text-emerald-700 bg-emerald-100' : 'text-amber-700 bg-amber-100'}`}>
-                           {planStatus}
-                         </span>
-                       </div>
-                       <p className="font-bold text-[#1a1a1a] text-lg">{planLabel}</p>
-                       <p className="text-[12px] text-[#666666] font-medium mt-1">
-                         {isForever ? 'Forever' : `${daysRemaining} days remaining`}
-                       </p>
-                       <div className="w-full bg-black/10 rounded-full h-1.5 mt-4 overflow-hidden">
-                         <div 
-                           className="bg-[#0f3d32] h-1.5 rounded-full transition-all duration-500" 
-                           style={{ width: `${percentRemaining}%` }}
-                         ></div>
-                       </div>
-                     </div>
-                   </>
-                 );
-               })()}
+                return (
+                  <>
+                    <div className="flex justify-between items-center mb-3.5">
+                      <h3 className="text-sm font-semibold text-[#1a1a1a]">Current role</h3>
+                      <Briefcase className="w-4 h-4 text-[#888888]" />
+                    </div>
+                    <div className="flex flex-wrap gap-2.5">
+                      <span className="text-xs font-bold bg-[#f7f5f2] text-[#444444] px-3.5 py-1.5 rounded-full border border-black/5">Personal</span>
+                      <span className="text-xs font-bold bg-[#f7f5f2] text-[#444444] px-3.5 py-1.5 rounded-full border border-black/5">{planLabel}</span>
+                      <span className="text-xs font-bold bg-[#f7f5f2] text-[#444444] px-3.5 py-1.5 rounded-full border border-black/5">India</span>
+                      <span className="text-xs font-bold bg-[#f7f5f2] text-[#444444] px-3.5 py-1.5 rounded-full border border-black/5">Premium</span>
+                    </div>
+
+                    <div className="mt-6 bg-[#f7f5f2] rounded-xl p-5 border border-black/5">
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-[11px] font-bold text-[#1a1a1a] flex items-center gap-2 uppercase tracking-wider">
+                          <span className="w-5 h-5 rounded flex items-center justify-center bg-white text-emerald-700 text-xs shadow-sm">👑</span>
+                          SUBSCRIPTION TIMELINE
+                        </h3>
+                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${planStatus === 'active' ? 'text-emerald-700 bg-emerald-100' : 'text-amber-700 bg-amber-100'}`}>
+                          {planStatus}
+                        </span>
+                      </div>
+                      <p className="font-bold text-[#1a1a1a] text-lg">{planLabel}</p>
+                      <p className="text-[12px] text-[#666666] font-medium mt-1">
+                        {isForever ? 'Forever' : `${daysRemaining} days remaining`}
+                      </p>
+                      <div className="w-full bg-black/10 rounded-full h-1.5 mt-4 overflow-hidden">
+                        <div
+                          className="bg-[#0f3d32] h-1.5 rounded-full transition-all duration-500"
+                          style={{ width: `${percentRemaining}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
 
             <div className="grid grid-cols-3 gap-2 mt-4">
-               <button className="bg-[#f7f5f2] hover:bg-[#efedea] transition-colors rounded-xl p-3 flex flex-col justify-between items-start text-left group border border-black/5">
-                  <div className="flex justify-between items-center w-full mb-1.5">
-                     <span className="text-[11px] font-bold text-[#1a1a1a] leading-tight">Ready for work</span>
-                     <ChevronRight className="w-3 h-3 text-[#888888] group-hover:text-[#1a1a1a]" />
-                  </div>
-                  <span className="text-[10px] text-[#666666] font-medium leading-relaxed mt-1">Premium tools are active.</span>
-               </button>
-               <button className="bg-[#f7f5f2] hover:bg-[#efedea] transition-colors rounded-xl p-3 flex flex-col justify-between items-start text-left group border border-black/5">
-                  <div className="flex justify-between items-center w-full mb-1.5">
-                     <span className="text-[11px] font-bold text-[#1a1a1a] leading-tight">Share profile</span>
-                     <ChevronRight className="w-3 h-3 text-[#888888] group-hover:text-[#1a1a1a]" />
-                  </div>
-                  <span className="text-[10px] text-[#666666] font-medium leading-relaxed mt-1">Keep your account details complete.</span>
-               </button>
-               <button className="bg-[#f7f5f2] hover:bg-[#efedea] transition-colors rounded-xl p-3 flex flex-col justify-between items-start text-left group border border-black/5">
-                  <div className="flex justify-between items-center w-full mb-1.5">
-                     <span className="text-[11px] font-bold text-[#1a1a1a] leading-tight">Update</span>
-                     <ChevronRight className="w-3 h-3 text-[#888888] group-hover:text-[#1a1a1a]" />
-                  </div>
-                  <span className="text-[10px] text-[#666666] font-medium leading-relaxed mt-1">Refresh billing and security details.</span>
-               </button>
+              <button className="bg-[#f7f5f2] hover:bg-[#efedea] transition-colors rounded-xl p-3 flex flex-col justify-between items-start text-left group border border-black/5">
+                <div className="flex justify-between items-center w-full mb-1.5">
+                  <span className="text-[11px] font-bold text-[#1a1a1a] leading-tight">Ready for work</span>
+                  <ChevronRight className="w-3 h-3 text-[#888888] group-hover:text-[#1a1a1a]" />
+                </div>
+                <span className="text-[10px] text-[#666666] font-medium leading-relaxed mt-1">Premium tools are active.</span>
+              </button>
+              <button className="bg-[#f7f5f2] hover:bg-[#efedea] transition-colors rounded-xl p-3 flex flex-col justify-between items-start text-left group border border-black/5">
+                <div className="flex justify-between items-center w-full mb-1.5">
+                  <span className="text-[11px] font-bold text-[#1a1a1a] leading-tight">Share profile</span>
+                  <ChevronRight className="w-3 h-3 text-[#888888] group-hover:text-[#1a1a1a]" />
+                </div>
+                <span className="text-[10px] text-[#666666] font-medium leading-relaxed mt-1">Keep your account details complete.</span>
+              </button>
+              <button className="bg-[#f7f5f2] hover:bg-[#efedea] transition-colors rounded-xl p-3 flex flex-col justify-between items-start text-left group border border-black/5">
+                <div className="flex justify-between items-center w-full mb-1.5">
+                  <span className="text-[11px] font-bold text-[#1a1a1a] leading-tight">Update</span>
+                  <ChevronRight className="w-3 h-3 text-[#888888] group-hover:text-[#1a1a1a]" />
+                </div>
+                <span className="text-[10px] text-[#666666] font-medium leading-relaxed mt-1">Refresh billing and security details.</span>
+              </button>
             </div>
           </div>
         </div>
@@ -150,7 +213,7 @@ function ProfileSettingsPanel({ user }) {
                   <Label className="text-xs font-bold text-[#444444]">Full Name</Label>
                   <div className="relative">
                     <UserRound className="absolute left-3.5 top-3 h-4 w-4 text-[#888888]" />
-                    <Input defaultValue={user?.name || 'Getaipilot'} className="pl-10 h-10 border-black/10 focus-visible:ring-[#0f3d32] text-[14px] rounded-lg bg-white shadow-sm" />
+                    <Input defaultValue={user?.name || 'Getaipilot'} readOnly className="pl-10 h-10 border-black/10 text-[14px] rounded-lg bg-white shadow-sm cursor-default focus-visible:ring-0" />
                   </div>
                 </div>
 
@@ -158,30 +221,45 @@ function ProfileSettingsPanel({ user }) {
                   <Label className="text-xs font-bold text-[#444444]">Primary Interest</Label>
                   <div className="relative">
                     <Briefcase className="absolute left-3.5 top-3 h-4 w-4 text-[#888888]" />
-                    <Input defaultValue="Musicians" className="pl-10 h-10 border-black/10 focus-visible:ring-[#0f3d32] text-[14px] rounded-lg bg-white shadow-sm" />
+                    <Input defaultValue="Musicians" readOnly className="pl-10 h-10 border-black/10 text-[14px] rounded-lg bg-white shadow-sm cursor-default focus-visible:ring-0" />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-3 gap-3">
                   <div className="space-y-2">
-                    <Label className="text-xs font-bold text-[#444444]">Country</Label>
+                    <Label className="text-xs font-bold text-[#444444]">City</Label>
                     <div className="relative">
-                      <Globe className="absolute left-2 top-3 h-4 w-4 text-[#888888]" />
-                      <Input defaultValue="India" className="pl-7 pr-1 h-10 border-black/10 focus-visible:ring-[#0f3d32] text-[12px] rounded-lg bg-white shadow-sm" />
+                      <MapPin className="absolute left-2 top-3 h-4 w-4 text-[#888888] z-10" />
+                      <Input
+                        value={selectedCity}
+                        readOnly
+                        placeholder="Enter City"
+                        className="pl-7 pr-1 h-10 border-black/10 text-[12px] rounded-lg bg-white shadow-sm cursor-default focus-visible:ring-0"
+                      />
                     </div>
                   </div>
                   <div className="space-y-2">
                     <Label className="text-xs font-bold text-[#444444]">State</Label>
                     <div className="relative">
                       <MapPin className="absolute left-2 top-3 h-4 w-4 text-[#888888]" />
-                      <Input defaultValue="Madhya P." className="pl-7 pr-1 h-10 border-black/10 focus-visible:ring-[#0f3d32] text-[12px] rounded-lg bg-white shadow-sm" />
+                      <Input
+                        value={selectedLocation.state}
+                        readOnly
+                        placeholder="Enter state"
+                        className="pl-7 pr-1 h-10 border-black/10 text-[12px] rounded-lg bg-white shadow-sm cursor-default focus-visible:ring-0"
+                      />
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-xs font-bold text-[#444444]">City</Label>
+                    <Label className="text-xs font-bold text-[#444444]">Country</Label>
                     <div className="relative">
-                      <MapPin className="absolute left-2 top-3 h-4 w-4 text-[#888888]" />
-                      <Input defaultValue="Bhopal" className="pl-7 pr-1 h-10 border-black/10 focus-visible:ring-[#0f3d32] text-[12px] rounded-lg bg-white shadow-sm" />
+                      <Globe className="absolute left-2 top-3 h-4 w-4 text-[#888888]" />
+                      <Input
+                        value={selectedLocation.country}
+                        readOnly
+                        placeholder="Enter country"
+                        className="pl-7 pr-1 h-10 border-black/10 text-[12px] rounded-lg bg-white shadow-sm cursor-default focus-visible:ring-0"
+                      />
                     </div>
                   </div>
                 </div>
@@ -198,40 +276,61 @@ function ProfileSettingsPanel({ user }) {
               <div className="space-y-6">
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
-                      <Label className="text-xs font-bold text-[#444444]">Email Address</Label>
-                      <span className="text-[10px] font-bold bg-[#f7f5f2] text-[#666666] px-2 py-0.5 rounded border border-black/5 uppercase tracking-widest">Read Only</span>
+                    <Label className="text-xs font-bold text-[#444444]">Email Address</Label>
+                    <span className="text-[10px] font-bold bg-[#f7f5f2] text-[#666666] px-2 py-0.5 rounded border border-black/5 uppercase tracking-widest">Read Only</span>
                   </div>
                   <div className="relative">
                     <Mail className="absolute left-3.5 top-3 h-4 w-4 text-[#888888]" />
-                    <Input defaultValue={user?.email || 'getaipilott@gmail.com'} readOnly className="pl-10 h-10 bg-[#f7f5f2] text-[#666666] border-black/10 cursor-not-allowed shadow-none text-[14px] rounded-lg" />
+                    <Input defaultValue={user?.email || 'getaipilott@gmail.com'} readOnly className="pl-10 h-10 bg-[#f7f5f2] text-[#666666] border-black/10 cursor-default shadow-none text-[14px] rounded-lg focus-visible:ring-0" />
                   </div>
                 </div>
 
                 <div className="space-y-2">
                   <Label className="text-xs font-bold text-[#444444]">Mobile Number</Label>
-                  <div className="relative">
-                    <Phone className="absolute left-3.5 top-3 h-4 w-4 text-[#888888]" />
-                    <Input defaultValue="+917828876750" className="pl-10 h-10 border-black/10 focus-visible:ring-[#0f3d32] text-[14px] rounded-lg bg-white shadow-sm" />
+                  <div className="relative flex">
+                    <div className="absolute left-0 top-0 h-10 w-[100px] z-10">
+                      <Select defaultValue="+91" disabled>
+                        <SelectTrigger className="h-10 w-[100px] border-0 border-r border-black/10 rounded-r-none rounded-l-lg bg-black/5 px-3 focus:ring-0 focus:ring-offset-0 shadow-none text-[13px] font-semibold text-[#444444] whitespace-nowrap cursor-default hover:cursor-default">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="min-w-[140px] max-h-[250px]">
+                          <SelectGroup>
+                            {COUNTRY_CODES.map(c => (
+                              <SelectItem key={c.code + c.country} value={c.code} className="text-[12px] font-medium">
+                                {c.country} ({c.code})
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Input
+                      type="tel"
+                      defaultValue="7828876750"
+                      maxLength={10}
+                      readOnly
+                      className="pl-[112px] h-10 border-black/10 text-[14px] rounded-lg bg-white shadow-sm w-full cursor-default focus-visible:ring-0"
+                    />
                   </div>
                 </div>
 
                 <div className="space-y-4 pt-1">
                   <div className="flex items-center gap-2 mb-2">
-                      <Label className="text-xs font-bold text-[#444444]">Social Presence</Label>
-                      <span className="text-[10px] font-bold border border-black/10 text-[#666666] px-2 py-0.5 rounded uppercase tracking-widest">Optional</span>
+                    <Label className="text-xs font-bold text-[#444444]">Social Presence</Label>
+                    <span className="text-[10px] font-bold border border-black/10 text-[#666666] px-2 py-0.5 rounded uppercase tracking-widest">Optional</span>
                   </div>
-                  
+
                   <div className="relative">
                     <Instagram className="absolute left-3.5 top-3 h-4 w-4 text-[#888888]" />
-                    <Input placeholder="Instagram URL" className="pl-10 h-10 border-black/10 focus-visible:ring-[#0f3d32] text-[14px] rounded-lg bg-white shadow-sm" />
+                    <Input placeholder="Instagram URL" readOnly className="pl-10 h-10 border-black/10 text-[14px] rounded-lg bg-white shadow-sm cursor-default focus-visible:ring-0" />
                   </div>
                   <div className="relative">
                     <Facebook className="absolute left-3.5 top-3 h-4 w-4 text-[#888888]" />
-                    <Input placeholder="Facebook URL" className="pl-10 h-10 border-black/10 focus-visible:ring-[#0f3d32] text-[14px] rounded-lg bg-white shadow-sm" />
+                    <Input placeholder="Facebook URL" readOnly className="pl-10 h-10 border-black/10 text-[14px] rounded-lg bg-white shadow-sm cursor-default focus-visible:ring-0" />
                   </div>
                   <div className="relative">
                     <Globe className="absolute left-3.5 top-3 h-4 w-4 text-[#888888]" />
-                    <Input placeholder="Website URL" className="pl-10 h-10 border-black/10 focus-visible:ring-[#0f3d32] text-[14px] rounded-lg bg-white shadow-sm" />
+                    <Input placeholder="Website URL" readOnly className="pl-10 h-10 border-black/10 text-[14px] rounded-lg bg-white shadow-sm cursor-default focus-visible:ring-0" />
                   </div>
                 </div>
               </div>
@@ -270,27 +369,27 @@ export default function ProfilePage() {
 
       <div className="w-full border-b border-black/10 mb-6">
         <div className="flex items-center gap-8 -mb-[1px] overflow-x-auto no-scrollbar">
-           <button 
-              className={`pb-3 text-xs font-bold uppercase tracking-wider transition-colors border-b-[3px] flex items-center gap-2 whitespace-nowrap ${activeTab === 'account' ? 'border-[#0f3d32] text-[#0f3d32]' : 'border-transparent text-[#888888] hover:text-[#1a1a1a]'}`}
-              onClick={() => setActiveTab('account')}
-           >
-              <UserRound className="w-[15px] h-[15px]" />
-              Profile Details
-           </button>
-           <button 
-              className={`pb-3 text-xs font-bold uppercase tracking-wider transition-colors border-b-[3px] flex items-center gap-2 whitespace-nowrap ${activeTab === 'platforms' ? 'border-[#0f3d32] text-[#0f3d32]' : 'border-transparent text-[#888888] hover:text-[#1a1a1a]'}`}
-              onClick={() => setActiveTab('platforms')}
-           >
-              <Shield className="w-[15px] h-[15px]" />
-              Connected Accounts
-           </button>
-           <button 
-              className={`pb-3 text-xs font-bold uppercase tracking-wider transition-colors border-b-[3px] flex items-center gap-2 whitespace-nowrap ${activeTab === 'billing' ? 'border-[#0f3d32] text-[#0f3d32]' : 'border-transparent text-[#888888] hover:text-[#1a1a1a]'}`}
-              onClick={() => setActiveTab('billing')}
-           >
-              <CreditCard className="w-[15px] h-[15px]" />
-              Plan & Billing
-           </button>
+          <button
+            className={`pb-3 text-xs font-bold uppercase tracking-wider transition-colors border-b-[3px] flex items-center gap-2 whitespace-nowrap ${activeTab === 'account' ? 'border-[#0f3d32] text-[#0f3d32]' : 'border-transparent text-[#888888] hover:text-[#1a1a1a]'}`}
+            onClick={() => setActiveTab('account')}
+          >
+            <UserRound className="w-[15px] h-[15px]" />
+            Profile Details
+          </button>
+          <button
+            className={`pb-3 text-xs font-bold uppercase tracking-wider transition-colors border-b-[3px] flex items-center gap-2 whitespace-nowrap ${activeTab === 'platforms' ? 'border-[#0f3d32] text-[#0f3d32]' : 'border-transparent text-[#888888] hover:text-[#1a1a1a]'}`}
+            onClick={() => setActiveTab('platforms')}
+          >
+            <Shield className="w-[15px] h-[15px]" />
+            Connected Accounts
+          </button>
+          <button
+            className={`pb-3 text-xs font-bold uppercase tracking-wider transition-colors border-b-[3px] flex items-center gap-2 whitespace-nowrap ${activeTab === 'billing' ? 'border-[#0f3d32] text-[#0f3d32]' : 'border-transparent text-[#888888] hover:text-[#1a1a1a]'}`}
+            onClick={() => setActiveTab('billing')}
+          >
+            <CreditCard className="w-[15px] h-[15px]" />
+            Plan & Billing
+          </button>
         </div>
       </div>
 

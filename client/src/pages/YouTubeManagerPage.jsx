@@ -31,9 +31,9 @@ const ACTIVE_ACCOUNT_KEY = "quickpost_youtube_active_account";
 const WELCOME_KEY = "quickpost_youtube_studio_welcome_seen";
 const stickers = {
   Posts: "/icons/stressed-man-looking-at-a-system-error-warning-message-vector-removebg-preview.png",
-  Playlists: "https://illustrations.popsy.co/amber/graphic-design.svg",
-  Shorts: "https://illustrations.popsy.co/amber/video-call.svg",
-  Videos: "https://illustrations.popsy.co/amber/web-design.svg",
+  Playlists: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT4P1NZMFWxpb9cHCU7YpOeqn7ExHZX4XXKM1308xggszElM6Zx9JAnVKI&s=10",
+  Shorts: "https://cdni.iconscout.com/illustration/premium/thumb/no-video-found-illustration-svg-download-png-7882958.png",
+  Videos: "https://cdni.iconscout.com/illustration/premium/thumb/no-video-found-illustration-svg-download-png-7882958.png",
 };
 
 function formatNumber(value) {
@@ -313,7 +313,7 @@ export default function YouTubeManagerPage() {
         <div style={{ position: "fixed", inset: 0, zIndex: 50, background: "rgba(20,20,19,0.72)", backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)", display: "grid", placeItems: "center", padding: 20 }}>
           <section style={{ width: "min(704px, 100%)", borderRadius: 22, background: "var(--white)", padding: "34px 34px 30px", textAlign: "center", boxShadow: "0 30px 80px rgba(20,20,19,0.32)" }}>
             <div style={{ width: "100%", height: 220, display: "grid", placeItems: "center", marginBottom: 18, overflow: "hidden" }}>
-              <img src="https://illustrations.popsy.co/amber/video-call.svg" alt="" style={{ width: 330, maxWidth: "84%", maxHeight: 210, objectFit: "contain", mixBlendMode: "multiply" }} />
+              <img src="https://cdni.iconscout.com/illustration/premium/thumb/no-video-found-illustration-svg-download-png-7882958.png" alt="" style={{ width: 330, maxWidth: "84%", maxHeight: 210, objectFit: "contain", mixBlendMode: "multiply" }} />
             </div>
             <h2 style={{ margin: "0 0 10px", fontSize: 30, lineHeight: 1.1, fontWeight: 900 }}>Welcome to your YouTube workspace</h2>
             <p style={{ margin: "0 auto", maxWidth: 520, color: "var(--slate)", fontSize: 16, lineHeight: 1.45 }}>Manage connected channels, videos, shorts, analytics, publishing access and visibility from one workspace.</p>

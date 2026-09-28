@@ -774,10 +774,9 @@ export default function ScheduledQueue() {
               className="bg-white rounded-2xl border border-dashed border-gray-200 p-20 text-center shadow-sm"
             >
               <img
-                src={`https://illustrations.popsy.co/amber/${activeFilter === 'failed' ? 'designer' :
-                  activeFilter === 'cancelled' ? 'creative-work' :
-                    'surreal-hourglass'
-                  }.svg`}
+                src={activeFilter === 'failed' ? 'https://img.magnific.com/free-vector/tiny-people-examining-operating-system-error-warning-web-page-isolated-flat-illustration_74855-11104.jpg?semt=ais_hybrid&w=740&q=80' : 
+                  activeFilter === 'cancelled' ? 'https://img.magnific.com/free-vector/cancelled-events-announcement-illustration_23-2148584716.jpg' : 
+                  'https://cdni.iconscout.com/illustration/premium/thumb/women-upload-data-from-cloud-illustration-svg-download-png-7581074.png'}
                 alt={`No ${activeFilter} posts`}
                 className="h-32 object-contain mx-auto mb-6"
               />
