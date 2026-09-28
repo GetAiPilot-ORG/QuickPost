@@ -92,7 +92,7 @@ function MessageHistoryDialog({ contact, messages, loading, onClose }) {
             <div className="autodm-empty">Loading messages...</div>
           ) : messages.length === 0 ? (
             <div className="autodm-empty">
-              <img src="https://illustrations.popsy.co/amber/graphic-design.svg" className="h-32 object-contain mx-auto mb-4" alt="No Message History" />
+              <img src="https://cdni.iconscout.com/illustration/premium/thumb/no-chat-history-screen-with-empty-conversation-status-for-messaging-interface-illustration-svg-download-png-15362220.png" className="h-32 object-contain mx-auto mb-4" alt="No Message History" />
               <p>No message history yet</p>
             </div>
           ) : (
@@ -224,7 +224,7 @@ export default function AutoDMContactsPage() {
           </div>
         ) : paginated.length === 0 ? (
           <div className="autodm-empty">
-            <img src="https://illustrations.popsy.co/amber/product-launch.svg" className="h-40 object-contain mx-auto mb-4" alt="No Contacts" />
+            <img src="https://img.magnific.com/free-vector/boycott-abstract-concept-vector-illustration-political-program-consumer-activism-collective-behavior-cancel-culture-moral-purchasing-solidarity-action-public-protest-abstract-metaphor_335657-1933.jpg?semt=ais_hybrid&w=740&q=80" className="h-40 object-contain mx-auto mb-4" alt="No Contacts" />
             <p>No contacts found</p>
             <span>Contacts appear after someone interacts with an automation.</span>
           </div>

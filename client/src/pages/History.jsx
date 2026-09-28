@@ -445,7 +445,7 @@ function History() {
       >
         {filteredBroadcasts.length === 0 ? (
           <div className="history-empty">
-            <img src="https://illustrations.popsy.co/amber/success.svg" alt="No posts found" className="h-40 object-contain mx-auto mb-6" />
+            <img src="https://static.vecteezy.com/system/resources/previews/014/814/208/non_2x/grab-this-amazing-flat-conceptual-icon-of-no-history-vector.jpg" alt="No posts found" className="h-40 object-contain mx-auto mb-6" />
             <h3 className="text-xl font-semibold text-gray-900 mb-2">
               No posts found
             </h3>

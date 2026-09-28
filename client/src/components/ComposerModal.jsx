@@ -2352,9 +2352,7 @@ function ComposerModal({
             )}
 
             {/* ── COMPOSER (main content) ── */}
-            {(!isMobile ||
-              mobileActiveTab === "compose" ||
-              mobileActiveTab === "insights") && (
+            {(!isMobile || mobileActiveTab === "compose") && (
               <div
                 style={{
                   flex: 1,
@@ -3039,7 +3037,7 @@ function ComposerModal({
                   mediaFiles={mediaFiles}
                 />
 
-                {panelItems.length > 0 && (
+                {!isMobile && panelItems.length > 0 && (
                   <div style={{ marginTop: 14 }}>
                     <IntelligencePanel panelItems={panelItems} />
                   </div>

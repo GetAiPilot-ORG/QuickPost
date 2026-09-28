@@ -108,7 +108,7 @@ export default function AutoDMHomePage() {
   if (!statusLoading && autodmAccounts.length === 0) {
     return (
       <section className="autodm-setup-card">
-        <img src="https://illustrations.popsy.co/amber/web-design.svg" alt="Setup Automation" className="h-40 object-contain mx-auto mb-2" />
+        <img src="https://cdni.iconscout.com/illustration/premium/thumb/women-upload-data-from-cloud-illustration-svg-download-png-7581074.png" alt="Setup Automation" className="h-40 object-contain mx-auto mb-2" />
         <h1>Set Up GAP AutoDM</h1>
         <p>Link Instagram once from Social Pilot. The same official connection powers AutoDM, autoposting, and InstaPilot.</p>
         {importError || autoDMStorageError ? (
@@ -136,7 +136,7 @@ export default function AutoDMHomePage() {
           <h1>Welcome back, {firstName}</h1>
           <span>Here's what's happening with your Instagram automation</span>
         </div>
-        <img src="https://illustrations.popsy.co/amber/graphic-design.svg" className="absolute right-32 top-1/2 -translate-y-1/2 h-28 opacity-20 sm:opacity-100 object-contain pointer-events-none" alt="" />
+
         <button className="autodm-create-btn relative z-10" onClick={() => navigate('/dashboard/auto-dm/automations/new')}>
           <Plus size={16} /> Create New
         </button>
@@ -185,7 +185,7 @@ export default function AutoDMHomePage() {
           <h3>Recent Automations</h3>
           {automationsLoading ? <div className="skeleton-shimmer" style={{ height: 80 }} /> : automations.length === 0 ? (
             <div className="autodm-empty compact">
-              <img src="https://illustrations.popsy.co/amber/product-launch.svg" className="h-20 object-contain mx-auto mb-2" alt="No Automations" />
+              <img src="https://static.vecteezy.com/system/resources/previews/014/337/128/non_2x/error-in-process-icon-with-gear-vector.jpg" className="h-20 object-contain mx-auto mb-2" alt="No Automations" />
               <p>No automations yet</p>
             </div>
           ) : automations.slice(0, 4).map((automation) => (
