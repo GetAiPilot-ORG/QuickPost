@@ -351,7 +351,7 @@ const resolveDeliveryPlan = async (userId: string) => {
         .from("hub_subscriptions")
         .select("plan,plan_id,subscription_status,expires_at")
         .eq("email", email)
-        .in("subscription_status", ["active", "trialing"]);
+        .in("subscription_status", ["active", "trialing", "created", "authenticated"]);
       hubSubs = (hData || []).map((s) => ({
         plan_id: s.plan_id || s.plan,
         status: s.subscription_status,
@@ -481,7 +481,7 @@ const buildTemplateButtons = (
       const title = cleanText(button.title).slice(0, 20);
       if (!title) return null;
 
-      if (button.type === "url" && cleanText(button.url)) {
+      if ((button.type === "url" || button.type === "web_url") && cleanText(button.url)) {
         return {
           type: "web_url" as const,
           title,

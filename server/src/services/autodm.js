@@ -1236,7 +1236,9 @@ export async function fetchInstagramMediaForUser(user, limit = 30, targetInstagr
 }
 
 function isAutoDMComposerEnabled(config) {
-  return Boolean(config?.enabled && Array.isArray(config.keywords) && config.keywords.length);
+  if (!config?.enabled) return false;
+  if (config.keywordMatchType === 'any') return true;
+  return Boolean(Array.isArray(config.keywords) && config.keywords.length);
 }
 
 function buildComposerAutomationPayload({ user, account, config, publication, sourceBroadcastId, sourceJobId }) {
@@ -1245,7 +1247,8 @@ function buildComposerAutomationPayload({ user, account, config, publication, so
     (publication?.mediaType === 'video' ? 'comment_on_reel' : 'comment_on_post');
   const responseFlow = config.responseFlow || { nodes: [], opening_message_enabled: false, opening_message: '' };
   const commentReplyText = config.commentReplyEnabled ? config.commentReplyText || null : null;
-  const keywords = config.keywords || [];
+  const isWildcard = config.keywordMatchType === 'any' || !config.keywords?.length || (config.keywords?.length === 1 && config.keywords[0] === '*');
+  const keywords = isWildcard ? ['*'] : (config.keywords || []);
 
   return {
     user_id: getPrimaryUserId(user),
