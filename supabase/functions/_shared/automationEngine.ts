@@ -2584,6 +2584,94 @@ export const processAutomationEvent = async (payload: AutomationInput) => {
         });
       }
 
+      // ── Also sync to Social Inbox (inbox_conversations + inbox_messages) in Realtime ──
+      try {
+        const contactSenderId = String(payload.senderId);
+        const contactHandle = senderProfile.username ? (senderProfile.username.startsWith('@') ? senderProfile.username : `@${senderProfile.username}`) : null;
+        const contactName = senderProfile.fullName || senderProfile.username || `Instagram user ${contactSenderId}`;
+        const contactAvatar = senderProfile.profilePictureUrl || null;
+        const accountId = String(selectedAccount.instagram_business_account_id || selectedAccount.page_id || selectedAccount.id);
+        const lastText = outboundLog.content || payload.messageText || '';
+
+        // 1. Upsert Conversation
+        const { data: inboxConv } = await supabase
+          .from("inbox_conversations")
+          .upsert({
+            user_id: automationOwnerUserId,
+            platform: "instagram",
+            account_id: accountId,
+            account_name: selectedAccount.username || selectedAccount.instagram_username || "Instagram Account",
+            external_conversation_id: contactSenderId,
+            contact_external_id: contactSenderId,
+            contact_name: contactName,
+            contact_handle: contactHandle,
+            contact_avatar_url: contactAvatar,
+            last_message_text: lastText,
+            last_message_at: new Date().toISOString(),
+            last_inbound_at: new Date().toISOString(),
+            last_outbound_at: new Date().toISOString(),
+            is_replied: true,
+            unread_count: 0,
+            status: "open",
+            metadata: { source: "autodm_automation" },
+          }, { onConflict: "user_id,platform,account_id,external_conversation_id" })
+          .select("id")
+          .single();
+
+        if (inboxConv?.id) {
+          // 2. Insert Inbound Message
+          const inMsgId = payload.eventId || `inbound-${contactSenderId}-${Date.now()}`;
+          await supabase.from("inbox_messages").upsert({
+            user_id: automationOwnerUserId,
+            conversation_id: inboxConv.id,
+            platform: "instagram",
+            account_id: accountId,
+            external_message_id: inMsgId,
+            direction: "inbound",
+            body: payload.messageText || "",
+            message_type: "text",
+            delivery_status: "received",
+            sent_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+            raw_payload: {},
+          }, { onConflict: "user_id,platform,account_id,external_message_id" });
+
+          // 3. Insert Outbound Action(s)
+          for (const [idx, action] of responseActions.entries()) {
+            const outMsgId = `outbound-${contactSenderId}-${Date.now()}-${idx}`;
+            const actionText = action.type === 'template'
+              ? (action.elements?.[0]?.title ? `${action.elements[0].title}${action.elements[0].subtitle ? '\n' + action.elements[0].subtitle : ''}` : '')
+              : (action.text || (action.imageUrl ? 'Here is your requested guide!\nTap below to view the resource.' : ''));
+            const actionImage = action.imageUrl || action.elements?.[0]?.image_url || null;
+            const actionButtons = action.buttons || action.elements?.[0]?.buttons || [];
+
+            await supabase.from("inbox_messages").upsert({
+              user_id: automationOwnerUserId,
+              conversation_id: inboxConv.id,
+              platform: "instagram",
+              account_id: accountId,
+              external_message_id: outMsgId,
+              direction: "outbound",
+              body: actionText,
+              media_url: actionImage,
+              message_type: action.type || "text",
+              delivery_status: "sent",
+              sent_at: new Date(Date.now() + idx * 200).toISOString(),
+              created_at: new Date(Date.now() + idx * 200).toISOString(),
+              raw_payload: {
+                imageUrl: actionImage,
+                buttons: actionButtons,
+                isInteractiveCard: Boolean(action.type === 'template' || actionButtons.length || actionImage),
+              },
+            }, { onConflict: "user_id,platform,account_id,external_message_id" });
+          }
+        }
+      } catch (inboxSyncErr) {
+        logError("Unified inbox sync error in automationEngine", {
+          error: (inboxSyncErr as Error)?.message || String(inboxSyncErr),
+        });
+      }
+
       // Update total_messages_sent count on contact (reply bheja toh sent count badhao)
       await supabase
         .from("contacts")

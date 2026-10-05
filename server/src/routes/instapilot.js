@@ -25,6 +25,9 @@ import {
   syncInboxFromGraphAPI,
 } from '../services/instapilot.js';
 
+import { clearTokensCache } from '../services/supabase.js';
+import { invalidateInboxCache } from './inbox.js';
+
 const router = express.Router();
 
 const asyncHandler = (fn) => async (req, res) => {
@@ -62,6 +65,8 @@ router.post('/accounts/import-social-instagram', authenticateUser, asyncHandler(
 
 router.delete('/accounts/:id', authenticateUser, asyncHandler(async (req, res) => {
   await disconnectAccount(req.user.userId, req.params.id);
+  clearTokensCache(req.user.userId);
+  await invalidateInboxCache([req.user.userId, req.user.authUserId, req.user.id].filter(Boolean));
   res.json({ success: true });
 }));
 
@@ -179,18 +184,18 @@ router.post('/webhooks/instagram', asyncHandler(async (req, res) => {
   for (const entry of payload.entry || []) {
     const entryId = String(entry?.id || '');
     for (const messaging of entry?.messaging || []) {
-      if (messaging?.message?.is_echo) continue;
+      const isEcho = Boolean(messaging?.message?.is_echo);
       const senderId = String(messaging?.sender?.id || '');
       const igId = String(messaging?.recipient?.id || entryId);
-      const text = String(messaging?.message?.text || messaging?.message?.quick_reply?.payload || '');
+      const text = String(messaging?.message?.text || messaging?.message?.quick_reply?.payload || (messaging?.message?.attachments ? '📎 Attachment' : ''));
       const eventId = String(messaging?.message?.mid || `${entryId}-${messaging?.timestamp || Date.now()}`);
       if (!senderId || !igId || !text) continue;
 
       const dedupeKey = crypto.createHash('sha256').update([igId, senderId, 'messages', eventId, text].join('|')).digest('hex');
 
       await supabase.from('webhook_logs').upsert({
-        ig_id: igId,
-        sender_id: senderId,
+        ig_id: isEcho ? senderId : igId,
+        sender_id: isEcho ? igId : senderId,
         message_text: text,
         processed: false,
         event_type: 'messages',

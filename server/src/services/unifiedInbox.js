@@ -80,7 +80,14 @@ function messagePayload(userId, conversation, item, message) {
     body: message.text || '',
     delivery_status: message.isSelf ? 'sent' : 'received',
     sent_at: sentAt,
-    raw_payload: {},
+    raw_payload: {
+      ...(message.raw_payload || {}),
+      imageUrl: message.imageUrl || null,
+      videoUrl: message.videoUrl || null,
+      shareUrl: message.shareUrl || null,
+      buttons: message.buttons || [],
+      isInteractiveCard: Boolean(message.isInteractiveCard),
+    },
   };
 }
 
@@ -99,6 +106,7 @@ export async function persistInboxItems(userId, items) {
     const replies = item.replies?.length ? item.replies : [{
       id: item.id,
       text: item.text,
+      imageUrl: item.imageUrl,
       createdAt: item.createdAt,
       isSelf: Boolean(item.replied),
     }];
@@ -107,35 +115,49 @@ export async function persistInboxItems(userId, items) {
     if (withExternalIds.length) {
       const { error: messageError } = await supabase
         .from('inbox_messages')
-        .upsert(withExternalIds, { onConflict: 'user_id,platform,account_id,external_message_id', ignoreDuplicates: true });
+        .upsert(withExternalIds, { onConflict: 'user_id,platform,account_id,external_message_id' });
       if (messageError) throw messageError;
     }
   }
 }
 
 export async function persistInboxThreadMessages(userId, platform, accountId, externalId, replies) {
+  if (!externalId || !Array.isArray(replies) || replies.length === 0) return;
+
   const { data: conversation, error } = await supabase
     .from('inbox_conversations')
-    .select('id,last_message_at,metadata')
+    .select('id,last_message_at,metadata,account_id,contact_handle')
     .eq('user_id', userId)
     .eq('platform', platform)
-    .eq('account_id', String(accountId))
-    .eq('external_conversation_id', String(externalId))
+    .or(`external_conversation_id.eq.${externalId},contact_external_id.eq.${externalId}`)
+    .limit(1)
     .maybeSingle();
+
   if (error) throw error;
-  if (!conversation || !Array.isArray(replies) || replies.length === 0) return;
-  const item = { platform, accountId };
+  if (!conversation) return;
+
+  const item = { platform, accountId: conversation.account_id || accountId };
   const messages = replies
     .map((message) => messagePayload(userId, conversation, item, message))
     .filter((message) => message.external_message_id);
   if (!messages.length) return;
   const { error: messageError } = await supabase
     .from('inbox_messages')
-    .upsert(messages, { onConflict: 'user_id,platform,account_id,external_message_id', ignoreDuplicates: true });
+    .upsert(messages, { onConflict: 'user_id,platform,account_id,external_message_id' });
   if (messageError) throw messageError;
+  const inboundWithAvatar = replies.find((r) => !r.isSelf && r.authorAvatar);
+  const convUpdates = {
+    metadata: { ...(conversation.metadata || {}), thread_complete: true },
+  };
+  if (inboundWithAvatar?.authorAvatar) {
+    convUpdates.contact_avatar_url = inboundWithAvatar.authorAvatar;
+  }
+  if (inboundWithAvatar?.authorName && inboundWithAvatar.authorName !== 'Instagram User' && inboundWithAvatar.authorName !== 'Facebook User') {
+    convUpdates.contact_name = inboundWithAvatar.authorName;
+  }
   const { error: conversationError } = await supabase
     .from('inbox_conversations')
-    .update({ metadata: { ...(conversation.metadata || {}), thread_complete: true } })
+    .update(convUpdates)
     .eq('user_id', userId)
     .eq('id', conversation.id);
   if (conversationError) throw conversationError;
@@ -173,24 +195,85 @@ function toInboxItem(row) {
 export async function listInboxConversations(userId, params = {}) {
   const limit = pageSize(params.limit);
   const cursor = decodeInboxCursor(params.cursor);
-  let query = supabase
-    .from('inbox_conversations')
-    .select('*')
-    .eq('user_id', userId)
-    .order('last_message_at', { ascending: false })
-    .order('id', { ascending: false })
-    .limit(limit + 1);
-  if (params.platform && params.platform !== 'all') query = query.eq('platform', params.platform);
-  if (params.accountId && params.accountId !== 'all') query = query.eq('account_id', params.accountId);
-  if (cursor) {
-    query = query.or(`last_message_at.lt.${cursor.at},and(last_message_at.eq.${cursor.at},id.lt.${cursor.id})`);
-  }
-  const { data, error } = await query;
+
+  // Fetch connected account identifiers for the user
+  const [{ data: activeIg }, { data: activeSocial }] = await Promise.all([
+    supabase
+      .from('instagram_accounts')
+      .select('id, instagram_business_account_id, page_id')
+      .eq('user_id', userId)
+      .eq('is_connected', true),
+    supabase
+      .from('social_tokens')
+      .select('provider, account_id, page_id, instagram_business_id')
+      .eq('user_id', userId)
+  ]);
+
+  const activeAccountSet = new Set();
+  (activeIg || []).forEach(a => {
+    if (a.id) activeAccountSet.add(String(a.id));
+    if (a.instagram_business_account_id) activeAccountSet.add(String(a.instagram_business_account_id));
+    if (a.page_id) activeAccountSet.add(String(a.page_id));
+  });
+  (activeSocial || []).forEach(s => {
+    if (s.account_id) activeAccountSet.add(String(s.account_id));
+    if (s.page_id) activeAccountSet.add(String(s.page_id));
+    if (s.instagram_business_id) activeAccountSet.add(String(s.instagram_business_id));
+  });
+
+  const [{ data, error }, { data: userContacts }, { data: globalContacts }] = await Promise.all([
+    (() => {
+      let q = supabase
+        .from('inbox_conversations')
+        .select('*')
+        .eq('user_id', userId)
+        .order('last_message_at', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(limit + 1);
+      if (params.platform && params.platform !== 'all') q = q.eq('platform', params.platform);
+      if (params.accountId && params.accountId !== 'all') q = q.eq('account_id', params.accountId);
+      if (cursor) {
+        q = q.or(`last_message_at.lt.${cursor.at},and(last_message_at.eq.${cursor.at},id.lt.${cursor.id})`);
+      }
+      return q;
+    })(),
+    supabase
+      .from('contacts')
+      .select('username, full_name, profile_picture_url, instagram_user_id')
+      .eq('user_id', userId),
+    supabase
+      .from('contacts')
+      .select('username, full_name, profile_picture_url, instagram_user_id')
+      .not('profile_picture_url', 'is', null)
+  ]);
+
   if (error) throw error;
+
+  const contactMap = new Map();
+  (globalContacts || []).forEach(c => {
+    if (c.username) contactMap.set(c.username.toLowerCase().replace(/^@/, ''), c);
+    if (c.instagram_user_id) contactMap.set(String(c.instagram_user_id), c);
+  });
+  (userContacts || []).forEach(c => {
+    if (c.username) contactMap.set(c.username.toLowerCase().replace(/^@/, ''), c);
+    if (c.instagram_user_id) contactMap.set(String(c.instagram_user_id), c);
+  });
+
   const hasMore = (data || []).length > limit;
   const rows = (data || []).slice(0, limit);
   return {
-    items: rows.map(toInboxItem),
+    items: rows.map((r) => {
+      const handle = (r.contact_handle || r.contact_name || '').toLowerCase().replace(/^@/, '');
+      const extId = String(r.contact_external_id || r.external_conversation_id || '');
+      const contact = contactMap.get(handle) || contactMap.get(extId);
+      if (contact) {
+        if (!r.contact_avatar_url && contact.profile_picture_url) r.contact_avatar_url = contact.profile_picture_url;
+        if ((!r.contact_name || r.contact_name === r.contact_handle) && contact.full_name) r.contact_name = contact.full_name;
+      }
+      const item = toInboxItem(r);
+      const isConnected = activeAccountSet.has(String(r.account_id));
+      return { ...item, accountConnected: isConnected };
+    }),
     nextCursor: hasMore ? encodeInboxCursor(rows.at(-1), 'last_message_at') : null,
   };
 }
@@ -213,13 +296,25 @@ export async function listInboxMessages(userId, conversationId, params = {}) {
   const rows = (data || []).slice(0, limit);
   const nextCursor = hasMore ? encodeInboxCursor(rows.at(-1), 'sent_at') : null;
   return {
-    messages: rows.reverse().map((row) => ({
-      id: row.external_message_id || row.id,
-      text: row.body,
-      createdAt: row.sent_at,
-      isSelf: row.direction === 'outbound',
-      status: row.delivery_status,
-    })),
+    messages: rows.reverse().map((row) => {
+      let imageUrl = row.raw_payload?.imageUrl || row.raw_payload?.image_url || null;
+      if (!imageUrl && row.body) {
+        const imgMatch = row.body.match(/(https?:\/\/[^\s]+(?:\.(?:png|jpg|jpeg|webp|gif)|res\.cloudinary\.com\/[^\s]+)[^\s]*)/i);
+        if (imgMatch) imageUrl = imgMatch[0];
+      }
+      return {
+        id: row.external_message_id || row.id,
+        text: row.body,
+        imageUrl,
+        videoUrl: row.raw_payload?.videoUrl || row.raw_payload?.video_url || null,
+        shareUrl: row.raw_payload?.shareUrl || row.raw_payload?.share_url || null,
+        buttons: row.raw_payload?.buttons || [],
+        isInteractiveCard: Boolean(row.raw_payload?.isInteractiveCard),
+        createdAt: row.sent_at,
+        isSelf: row.direction === 'outbound',
+        status: row.delivery_status,
+      };
+    }),
     nextCursor,
   };
 }
