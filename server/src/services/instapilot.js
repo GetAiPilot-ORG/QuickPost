@@ -1255,7 +1255,7 @@ export async function listConversations(userId) {
 export async function getConversation(userId, conversationId) {
   let { data: conversation, error } = await supabase
     .from('instagram_conversations')
-    .select('*, instagram_leads(*)')
+    .select('*, instagram_leads(*), instagram_accounts(is_connected, token_status, instagram_username)')
     .eq('user_id', userId)
     .eq('id', conversationId)
     .maybeSingle();
@@ -1306,6 +1306,11 @@ export async function manualReply(userId, conversationId, text) {
   const { conversation } = await getConversation(userId, conversationId);
   if (!conversation) throw new Error('Conversation not found');
   const account = await getOwnedAccount(userId, conversation.instagram_account_id);
+  if (!account || account.is_connected === false || account.token_status === 'disconnected') {
+    const error = new Error(`Instagram account @${account?.instagram_username || ''} is disconnected. Please reconnect your account to send replies.`);
+    error.status = 403;
+    throw error;
+  }
   await sendInstagramMessage({ account, recipientId: conversation.instagram_user_id, text, messagingType: 'RESPONSE' });
   const { data, error } = await supabase
     .from('instagram_messages')

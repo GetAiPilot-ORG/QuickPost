@@ -1,5 +1,7 @@
 import supabase from './supabase.js';
 import { persistInboxItems } from './unifiedInbox.js';
+import { decryptToken as decryptTokenEncryption } from './tokenEncryption.js';
+import { decryptToken as decryptInstaPilotToken } from './instapilot.js';
 
 const GRAPH_VERSION = process.env.IG_GRAPH_VERSION || process.env.META_GRAPH_VERSION || 'v24.0';
 
@@ -8,8 +10,41 @@ function cleanId(value) {
   return /^\d+$/.test(id) ? id : '';
 }
 
+function safeDecrypt(encToken) {
+  if (!encToken) return null;
+  let decrypted = null;
+  if (typeof encToken === 'string' && encToken.startsWith('enc:v1:')) {
+    try {
+      decrypted = decryptInstaPilotToken(encToken);
+    } catch {
+      try {
+        decrypted = decryptTokenEncryption(encToken);
+      } catch {
+        decrypted = encToken;
+      }
+    }
+  } else {
+    try {
+      decrypted = decryptTokenEncryption(encToken);
+    } catch {
+      decrypted = encToken;
+    }
+  }
+  if (typeof decrypted === 'object' && decrypted !== null) {
+    return decrypted.pageAccessToken || decrypted.userAccessToken || decrypted.accessToken || null;
+  }
+  if (typeof decrypted === 'string' && decrypted.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(decrypted);
+      return parsed.pageAccessToken || parsed.userAccessToken || parsed.accessToken || decrypted;
+    } catch {}
+  }
+  return decrypted;
+}
+
 export async function ensureInstagramWebhookSubscription(tokenRow) {
-  const accessToken = String(tokenRow?.access_token || '').trim();
+  const rawToken = tokenRow?.access_token_encrypted || tokenRow?.access_token;
+  const accessToken = String(safeDecrypt(rawToken) || rawToken || '').trim();
   const accountIds = [
     tokenRow?.instagram_business_id,
     tokenRow?.account_id,
@@ -17,13 +52,15 @@ export async function ensureInstagramWebhookSubscription(tokenRow) {
   ].map(cleanId).filter((value, index, values) => value && values.indexOf(value) === index);
   if (!accessToken || !accountIds.length) return { ok: false, skipped: true, reason: 'missing_credentials' };
 
-  const fields = process.env.INBOX_INSTAGRAM_SUBSCRIBED_FIELDS
-    || process.env.INSTAPILOT_SUBSCRIBED_FIELDS
-    || 'messages,messaging_postbacks,comments';
   let lastError = 'subscription_failed';
 
   for (const accountId of accountIds) {
     for (const origin of ['https://graph.instagram.com', 'https://graph.facebook.com']) {
+      const isFb = origin.includes('facebook.com');
+      const fields = isFb
+        ? (process.env.INBOX_FACEBOOK_SUBSCRIBED_FIELDS || 'messages,messaging_postbacks,message_echoes,feed')
+        : (process.env.INBOX_INSTAGRAM_SUBSCRIBED_FIELDS || 'messages,messaging_postbacks,message_echoes,comments');
+
       const url = new URL(`${origin}/${GRAPH_VERSION}/${accountId}/subscribed_apps`);
       url.searchParams.set('access_token', accessToken);
       url.searchParams.set('subscribed_fields', fields);
@@ -31,7 +68,7 @@ export async function ensureInstagramWebhookSubscription(tokenRow) {
         const response = await fetch(url, { method: 'POST' });
         const body = await response.json().catch(() => ({}));
         if (response.ok && body?.success !== false && !body?.error) {
-          return { ok: true, accountId, fields };
+          return { ok: true, accountId, fields, origin };
         }
         lastError = body?.error?.message || `Meta subscription failed (${response.status})`;
       } catch (error) {
@@ -85,43 +122,121 @@ export async function persistInstagramWebhookToUnifiedInbox(payload) {
     const entryId = cleanId(entry?.id);
     for (const messaging of entry?.messaging || []) {
       const message = messaging?.message;
-      if (!message || message.is_echo) continue;
+      if (!message) continue;
 
-      const senderId = cleanId(messaging?.sender?.id);
-      const recipientId = cleanId(messaging?.recipient?.id) || entryId;
-      const text = String(message.text || message.quick_reply?.payload || '').trim();
-      if (!senderId || !recipientId || !text || senderId === recipientId) continue;
+      const isEcho = Boolean(message.is_echo);
+      const rawSenderId = cleanId(messaging?.sender?.id);
+      const rawRecipientId = cleanId(messaging?.recipient?.id) || entryId;
+      if (!rawSenderId || !rawRecipientId || rawSenderId === rawRecipientId) continue;
 
-      const account = await findSocialInboxAccount(recipientId);
+      // In an echo event, sender is the business account, recipient is the customer/contact.
+      // In an inbound event, sender is the customer/contact, recipient is the business account.
+      const businessTargetId = isEcho ? rawSenderId : rawRecipientId;
+      const contactTargetId = isEcho ? rawRecipientId : rawSenderId;
+
+      const attachments = message.attachments || [];
+      const firstAttachment = attachments[0] || {};
+      let imageUrl = null;
+      let videoUrl = null;
+      let shareUrl = null;
+
+      if (firstAttachment.type === 'image' || firstAttachment.type === 'sticker') {
+        imageUrl = firstAttachment.payload?.url || firstAttachment.image_data?.url || firstAttachment.file_url || null;
+      } else if (firstAttachment.type === 'video' || firstAttachment.type === 'audio') {
+        videoUrl = firstAttachment.payload?.url || firstAttachment.video_data?.url || firstAttachment.file_url || null;
+      } else if (firstAttachment.type === 'share' || firstAttachment.type === 'story_mention' || firstAttachment.type === 'ig_reel') {
+        shareUrl = firstAttachment.payload?.url || firstAttachment.link || null;
+      }
+
+      let text = String(message.text || '').trim();
+      if (!text && (imageUrl || videoUrl || shareUrl)) {
+        text = imageUrl ? '📸 Photo' : videoUrl ? '🎥 Video' : shareUrl ? '🎬 Shared Media' : '📎 Attachment';
+      } else if (!text && message.quick_reply?.payload) {
+        text = String(message.quick_reply.payload).trim();
+      }
+
+      if (!text && !imageUrl && !videoUrl && !shareUrl) continue;
+
+      const account = await findSocialInboxAccount(businessTargetId);
       if (!account?.user_id) {
-        results.push({ persisted: false, reason: 'account_not_found', recipientId });
+        results.push({ persisted: false, reason: 'account_not_found', businessTargetId });
         continue;
       }
 
-      const accountId = account.instagram_business_id || account.account_id || account.page_id || recipientId;
+      const accountId = account.instagram_business_id || account.account_id || account.page_id || businessTargetId;
       const createdAt = Number.isFinite(Number(messaging.timestamp))
         ? new Date(Number(messaging.timestamp)).toISOString()
         : new Date().toISOString();
-      const messageId = String(message.mid || `${recipientId}-${senderId}-${messaging.timestamp || Date.now()}`);
+      const messageId = String(message.mid || `${businessTargetId}-${contactTargetId}-${messaging.timestamp || Date.now()}`);
+
+      let authorName = `Instagram user ${contactTargetId}`;
+      let authorHandle = null;
+      let authorAvatar = null;
+
+      try {
+        const { data: contact } = await supabase
+          .from('contacts')
+          .select('username, full_name, profile_picture_url')
+          .eq('user_id', account.user_id)
+          .eq('instagram_user_id', String(contactTargetId))
+          .maybeSingle();
+
+        if (contact) {
+          if (contact.username) {
+            authorHandle = `@${contact.username.replace(/^@/, '')}`;
+            authorName = contact.username;
+          }
+          if (contact.full_name) {
+            authorName = contact.full_name;
+          }
+          if (contact.profile_picture_url) {
+            authorAvatar = contact.profile_picture_url;
+          }
+        } else {
+          const { data: existingConv } = await supabase
+            .from('inbox_conversations')
+            .select('contact_name, contact_handle, contact_avatar_url')
+            .eq('user_id', account.user_id)
+            .eq('platform', 'instagram')
+            .eq('external_conversation_id', String(contactTargetId))
+            .maybeSingle();
+
+          if (existingConv) {
+            if (existingConv.contact_name && !existingConv.contact_name.startsWith('Instagram user')) {
+              authorName = existingConv.contact_name;
+            }
+            if (existingConv.contact_handle) {
+              authorHandle = existingConv.contact_handle;
+            }
+            if (existingConv.contact_avatar_url) {
+              authorAvatar = existingConv.contact_avatar_url;
+            }
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
 
       await persistInboxItems(account.user_id, [{
-        id: `ig:${senderId}`,
+        id: `ig:${contactTargetId}`,
         platform: 'instagram',
         accountId,
         accountName: account.account_name || account.username || 'Instagram Account',
-        externalConversationId: senderId,
-        commentId: senderId,
-        replyRecipientId: senderId,
-        authorName: `Instagram user ${senderId}`,
+        externalConversationId: contactTargetId,
+        commentId: contactTargetId,
+        replyRecipientId: contactTargetId,
+        authorName,
+        authorHandle,
+        authorAvatar,
         text,
-        createdAt,
-        unread: true,
-        replied: false,
-        ingestionSource: 'instagram_webhook',
-        replies: [{ id: messageId, text, createdAt, isSelf: false }],
+        imageUrl,
+        videoUrl,
+        shareUrl,
+        replied: isEcho,
+        replies: [{ id: messageId, text, imageUrl, videoUrl, shareUrl, createdAt, isSelf: isEcho }],
       }]);
 
-      results.push({ persisted: true, userId: account.user_id, accountId, senderId });
+      results.push({ persisted: true, userId: account.user_id, accountId, contactTargetId, isEcho });
     }
   }
 
