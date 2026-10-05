@@ -15,20 +15,27 @@ const HUB_PLAN_MAPPING = {
   'social_pilot_pro': 'sgrowth',
   'social_pilot_quarterly': 'slite',
   'social_pilot_half_yearly': 'slite',
-  'all_in_one_bundle': 'sgrowth',
-  'all_in_one_bundle_monthly': 'sgrowth',
-  'all_in_one_bundle_quarterly': 'sgrowth',
-  'all_in_one_bundle_half_yearly': 'sgrowth',
-  'all_in_one_bundle_yearly': 'sgrowth',
-  'custom_bundle': 'sgrowth',
-  'custom_bundle_monthly': 'sgrowth',
-  'custom_bundle_quarterly': 'sgrowth',
-  'custom_bundle_half_yearly': 'sgrowth',
-  'custom_bundle_yearly': 'sgrowth',
-  'custom': 'sgrowth',
-  'gap_core': 'sgrowth',
-  'gap_max': 'sgrowth',
-  'gap_ultimate_ecosystem': 'sgrowth',
+  'all_in_one_bundle': 'slite',
+  'all_in_one_bundle_monthly': 'slite',
+  'all_in_one_bundle_quarterly': 'slite',
+  'all_in_one_bundle_half_yearly': 'slite',
+  'all_in_one_bundle_yearly': 'slite',
+  'custom_bundle': 'slite',
+  'custom_bundle_monthly': 'slite',
+  'custom_bundle_quarterly': 'slite',
+  'custom_bundle_half_yearly': 'slite',
+  'custom_bundle_yearly': 'slite',
+  'custom': 'slite',
+  'gap_core': 'slite',
+  'gap_max': 'slite',
+  'gap_pro': 'slite',
+  'gap_scale': 'sgrowth',
+  'gap_scale_monthly': 'sgrowth',
+  'gap_scale_quarterly': 'sgrowth',
+  'gap_scale_half_yearly': 'sgrowth',
+  'gap_scale_yearly': 'sgrowth',
+  'gap_enterprise': 'sgrowth',
+  'gap_ultimate_ecosystem': 'slite',
   'spstarter': 'slite',
   'spgrowth': 'sgrowth',
   'enterprise': 'sgrowth'
@@ -54,6 +61,12 @@ const HUB_PLAN_DURATION = {
   'custom': 'monthly',
   'gap_core': 'monthly',
   'gap_max': 'six_months',
+  'gap_scale': 'monthly',
+  'gap_scale_monthly': 'monthly',
+  'gap_scale_quarterly': 'quarterly',
+  'gap_scale_half_yearly': 'six_months',
+  'gap_scale_yearly': 'year',
+  'gap_enterprise': 'monthly',
   'gap_ultimate_ecosystem': 'monthly',
   'spstarter': 'monthly',
   'spgrowth': 'monthly',
@@ -181,6 +194,7 @@ export async function getEntitlements(userId, email = null, token = null) {
               current_period_end: expiresAt || null,
               cancel_at_period_end: false,
               grace_period_ends_at: null,
+              hub_plan_name: hubSubscription.plan || null,
             });
           }
         }
@@ -218,10 +232,17 @@ export async function getEntitlements(userId, email = null, token = null) {
     throw new Error(`Failed to load usage: ${usageError.message}`);
   }
 
+  const hubPlanName = subscription?.hub_plan_name;
   const computed = {
-    plan: { id: plan.id, name: plan.name },
+    plan: {
+      id: plan.id,
+      name: hubPlanName || plan.name,
+      base_name: plan.name,
+      hub_plan_name: hubPlanName || null,
+    },
     subscription: subscription ? {
       ...subscription,
+      hub_plan_name: hubPlanName || null,
       interval_months: latestActivation?.interval_months
         || (subscription.billing_interval === 'year' ? 12 : 1),
     } : {

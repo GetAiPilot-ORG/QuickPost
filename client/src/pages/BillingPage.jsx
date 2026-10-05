@@ -15,8 +15,8 @@ function hasPaidPlan(plan) {
 
 function normalizePlanId(plan) {
   const p = String(plan || '').toLowerCase().trim();
-  if (['growth', 'sgrowth', 'enterprise', '1999', '2999'].includes(p)) return 'sgrowth';
-  if (['starter', 'slite', 'pro', '999'].includes(p)) return 'slite';
+  if (['growth', 'sgrowth', 'enterprise', '1999', '2999', 'gap enterprise', 'gap_scale', 'gap_enterprise'].includes(p)) return 'sgrowth';
+  if (['starter', 'slite', 'pro', '999', 'gap core', 'gap_core', 'all_in_one_bundle', 'all_in_one_bundle_monthly', 'gap pro'].includes(p)) return 'slite';
   return p || 'free';
 }
 
@@ -73,11 +73,26 @@ function BillingPlanSkeletonCard() {
   );
 }
 
+const HUB_PRICING_URL = 'https://uklxlappjcuvdqjvecfh.supabase.co/functions/v1/get-pricing?category=social&currency=INR';
+
+const calculateIntervalPrices = (baseMonthly) => ({
+  1: baseMonthly,
+  3: Math.round(baseMonthly * 3 * 0.90) / 3,
+  6: Math.round(baseMonthly * 6 * 0.80) / 6,
+  12: Math.round(baseMonthly * 12 * 0.70) / 12,
+});
+
+const DEFAULT_PRICES = {
+  free: { 1: 0, 3: 0, 6: 0, 12: 0 },
+  slite: calculateIntervalPrices(999),
+  sgrowth: calculateIntervalPrices(1999),
+};
+
 const PLANS_TEMPLATE = [
   {
     name: 'Free',
     id: 'free',
-    price: { 1: 0, 3: 0, 6: 0, 12: 0 },
+    price: DEFAULT_PRICES.free,
     description: 'Perfect for getting started with basic scheduling.',
     creditsText: 'Basic access to core tools',
     includedFeatures: [
@@ -104,7 +119,7 @@ const PLANS_TEMPLATE = [
   {
     name: 'Starter',
     id: 'slite',
-    price: { 1: null, 3: null, 6: null, 12: null },
+    price: DEFAULT_PRICES.slite,
     description: 'For creators who broadcast seriously across every platform.',
     creditsText: 'Includes priority features + unlimited posts',
     badge: 'Most popular',
@@ -136,7 +151,7 @@ const PLANS_TEMPLATE = [
   {
     name: 'Growth',
     id: 'sgrowth',
-    price: { 1: null, 3: null, 6: null, 12: null },
+    price: DEFAULT_PRICES.sgrowth,
     description: 'For teams, agencies, and heavy automation users.',
     creditsText: 'Full access for scaling content production',
     badge: 'Expert choice',
@@ -169,7 +184,7 @@ export default function BillingPage({ embedded = false }) {
   const [upgrading, setUpgrading] = useState(null);
   const [invoices, setInvoices] = useState([]);
   const [invoiceError, setInvoiceError] = useState('');
-  const [plans, setPlans] = useState([]);
+  const [plans, setPlans] = useState(PLANS_TEMPLATE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -205,40 +220,63 @@ export default function BillingPage({ embedded = false }) {
 
   React.useEffect(() => {
     let alive = true;
-    apiClient.get('/api/billing/plans')
-      .then(({ data }) => {
-        if (!alive) return;
-        if (data.success && data.plans) {
-          const merged = data.plans.map(dp => {
-            const staticPlan = PLANS_TEMPLATE.find(sp => sp.id === dp.id);
-            if (!staticPlan) return null;
-            const priceMap = {
-              1: dp.prices && dp.prices.hasOwnProperty('month') ? dp.prices.month : staticPlan.price?.[1],
-              3: dp.prices && dp.prices.hasOwnProperty('quarterly') ? dp.prices.quarterly : staticPlan.price?.[3],
-              6: dp.prices && dp.prices.hasOwnProperty('six_months') ? dp.prices.six_months : staticPlan.price?.[6],
-              12: dp.prices && dp.prices.hasOwnProperty('year') ? dp.prices.year : staticPlan.price?.[12]
-            };
-            return {
-              ...staticPlan,
-              ...dp,
-              price: priceMap
-            };
-          }).filter(Boolean);
-          setPlans(merged);
+    async function loadPlans() {
+      let rawPlans = null;
+
+      // 1. Try backend API route
+      try {
+        const { data } = await apiClient.get('/api/billing/plans', { timeout: 3500 });
+        if (data?.success && Array.isArray(data.plans)) {
+          rawPlans = data.plans;
         }
-      })
-      .catch((err) => {
-        if (!alive) return;
-        console.error('Failed to load pricing:', err);
-        setError('Pricing temporarily unavailable');
-        setPlans(PLANS_TEMPLATE.map(sp => ({
+      } catch (err) {
+        console.warn('Backend /api/billing/plans unreachable, checking Hub pricing directly...', err.message);
+      }
+
+      // 2. Fallback to direct Hub Supabase Edge Function
+      if (!rawPlans) {
+        try {
+          const res = await fetch(HUB_PRICING_URL, { headers: { 'Content-Type': 'application/json' } });
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.currency === 'INR' && Array.isArray(data.plans)) {
+              const starter = data.plans.find(p => p.plan_name === 'social_pilot_starter');
+              const growth = data.plans.find(p => p.plan_name === 'social_pilot_growth');
+              rawPlans = [
+                { id: 'free', prices: { month: 0, quarterly: 0, six_months: 0, year: 0 } },
+                { id: 'slite', prices: starter ? calculateIntervalPrices(starter.amount / 100) : DEFAULT_PRICES.slite },
+                { id: 'sgrowth', prices: growth ? calculateIntervalPrices(growth.amount / 100) : DEFAULT_PRICES.sgrowth },
+              ];
+            }
+          }
+        } catch (hubErr) {
+          console.warn('Hub edge function fetch failed, using fallback defaults:', hubErr.message);
+        }
+      }
+
+      if (!alive) return;
+
+      const merged = PLANS_TEMPLATE.map(sp => {
+        const dp = rawPlans?.find(p => p.id === sp.id);
+        const priceMap = {
+          1: dp?.prices?.month ?? dp?.prices?.[1] ?? sp.price[1],
+          3: dp?.prices?.quarterly ?? dp?.prices?.[3] ?? sp.price[3],
+          6: dp?.prices?.six_months ?? dp?.prices?.[6] ?? sp.price[6],
+          12: dp?.prices?.year ?? dp?.prices?.[12] ?? sp.price[12]
+        };
+        return {
           ...sp,
-          price: { 1: sp.id === 'free' ? 0 : null, 3: sp.id === 'free' ? 0 : null, 6: sp.id === 'free' ? 0 : null, 12: sp.id === 'free' ? 0 : null }
-        })));
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
+          ...(dp || {}),
+          price: priceMap
+        };
       });
+
+      setPlans(merged);
+      setError(null);
+      setLoading(false);
+    }
+
+    loadPlans();
     return () => { alive = false; };
   }, []);
 
