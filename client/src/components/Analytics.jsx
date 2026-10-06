@@ -35,6 +35,7 @@ import apiClient from "../utils/apiClient";
 import ComposerModal from "./ComposerModal";
 import InfoHelp from "./InfoHelp";
 import PostPreviewModal from "./PostPreviewModal";
+import MediaBadge from "./MediaBadges";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -210,14 +211,32 @@ function getPostPreviewRatio(post) {
     return savedRatio.replace(":", " / ");
   }
   if (Array.isArray(post.media_urls) && post.media_urls.length > 1) return "1 / 1";
-  if (post.media_type === "video") {
-    const isShort =
-      post.platform_data?.youtube?.type === "short" ||
-      String(post.platform_data?.selected_post_size_preset || "").includes("short");
-    return isShort ? "9 / 16" : "16 / 9";
+
+  const rawPostType = String(
+    post.platform_data?.postType ||
+    post.postType ||
+    post.post_type ||
+    post.platform_data?.instagram?.type ||
+    ""
+  ).toLowerCase();
+
+  const isReel =
+    rawPostType === "reel" ||
+    post.platform_data?.selected_post_size_preset === "ig-reel" ||
+    post.platform_data?.youtube?.type === "short" ||
+    String(post.platform_data?.selected_post_size_preset || "").includes("short") ||
+    (post.media_type === "video" && (
+      post.platform_data?.selectedAspectRatio === "9:16" ||
+      post.platform_data?.selected_aspect_ratio === "9:16"
+    ));
+
+  if (isReel) return "9 / 16";
+
+  if (post.media_type === "video" || rawPostType === "video" || post.youtube_video_id) {
+    return "16 / 9";
   }
-  if (post.media_type === "image") return "4 / 5";
-  return "4 / 5";
+
+  return "1 / 1";
 }
 
 export function formatUserFriendlyError(rawError, platform = null) {
@@ -540,6 +559,7 @@ function PlatformBadge({ platform }) {
 function PinterestCard({ post, onOpen, formatDate }) {
   const [hovered, setHovered] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
+  const [naturalRatio, setNaturalRatio] = useState(null);
   const platforms = buildPlatforms(post);
   const isScheduled = post.status === "scheduled";
   const isImage =
@@ -547,7 +567,8 @@ function PinterestCard({ post, onOpen, formatDate }) {
     /\.(jpg|jpeg|png|gif|webp)$/i.test(post.video_filename || "");
   const displayUrl = post.thumbnail_url || (isImage ? post.media_url : null);
   const hasMedia = !!displayUrl;
-  const mediaRatio = getPostPreviewRatio(post);
+  const initialMediaRatio = getPostPreviewRatio(post);
+  const activeRatio = naturalRatio || initialMediaRatio;
   const allSuccess = platforms.length > 0 && platforms.every((p) => p.success);
 
   const ICON_MAP = {
@@ -562,6 +583,8 @@ function PinterestCard({ post, onOpen, formatDate }) {
     mastodon: "mastodon-round-icon.svg",
     bluesky: "bluesky-circle-color-icon.svg",
     reddit: "reddit-icon.svg",
+    "google-business": "google-icon.svg",
+    google: "google-icon.svg",
   };
 
   // Multi-media / carousel detection
@@ -593,14 +616,15 @@ function PinterestCard({ post, onOpen, formatDate }) {
       }}
     >
       {hasMedia ? (
-        /* ─── Image-first: no fixed height, aspect ratio preserved ─── */
+        /* ─── True Pinterest-style dynamic aspect ratio ─── */
         <div
           style={{
             position: "relative",
             lineHeight: 0,
-            aspectRatio: mediaRatio,
-            minHeight: 180,
+            aspectRatio: activeRatio,
+            width: "100%",
             background: "rgba(20,20,19,0.045)",
+            overflow: "hidden",
           }}
         >
           {/* Shimmer shown until image loads */}
@@ -626,10 +650,16 @@ function PinterestCard({ post, onOpen, formatDate }) {
               objectFit: "cover",
               opacity: imgLoaded ? 1 : 0,
               transition:
-                "opacity 0.5s ease, transform 0.55s cubic-bezier(0.2,0.8,0.2,1)",
-              transform: hovered ? "scale(1.05)" : "scale(1)",
+                "opacity 0.4s ease, transform 0.45s cubic-bezier(0.2,0.8,0.2,1)",
+              transform: hovered ? "scale(1.04)" : "scale(1)",
             }}
-            onLoad={() => setImgLoaded(true)}
+            onLoad={(e) => {
+              setImgLoaded(true);
+              const { naturalWidth, naturalHeight } = e.target;
+              if (naturalWidth && naturalHeight) {
+                setNaturalRatio(`${naturalWidth} / ${naturalHeight}`);
+              }
+            }}
             onError={(e) => {
               setImgLoaded(true);
               e.target.src =
@@ -682,38 +712,6 @@ function PinterestCard({ post, onOpen, formatDate }) {
                   }}
                 />
               </div>
-            </div>
-          )}
-
-          {/* ── Multi-media count badge (top-left) ── */}
-          {isCarousel && (
-            <div
-              style={{
-                position: "absolute",
-                top: 10,
-                left: 10,
-                display: "flex",
-                alignItems: "center",
-                gap: 4,
-                background: "rgba(10,8,6,0.72)",
-                backdropFilter: "blur(8px)",
-                borderRadius: 20,
-                padding: "3px 8px 3px 6px",
-                zIndex: 4,
-                pointerEvents: "none",
-              }}
-            >
-              <Layers size={11} style={{ color: "#fff" }} />
-              <span
-                style={{
-                  color: "#fff",
-                  fontSize: 10,
-                  fontWeight: 700,
-                  letterSpacing: "0.04em",
-                }}
-              >
-                {carouselCount}
-              </span>
             </div>
           )}
 
@@ -833,41 +831,70 @@ function PinterestCard({ post, onOpen, formatDate }) {
               }}
             >
               {/* Platform icons */}
-              <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                {platforms.slice(0, 5).map((p) => (
-                  <div
-                    key={p.id}
-                    title={`${p.name}: ${p.success ? "Success" : "Failed"}`}
-                    style={{
-                      width: 24,
-                      height: 24,
-                      borderRadius: "50%",
-                      background: "#ffffff",
-                      boxShadow: "0 1px 6px rgba(0,0,0,0.18)",
-                      border: `2px solid ${p.success ? "rgba(34,197,94,0.85)" : "rgba(239,68,68,0.85)"}`,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      overflow: "hidden",
-                    }}
-                  >
-                    {ICON_MAP[p.id.split(':')[0]] ? (
-                      <img
-                        src={`/icons/${ICON_MAP[p.id.split(':')[0]]}`}
-                        alt={p.name}
-                        style={{ width: 19, height: 19, objectFit: "contain", display: "block" }}
-                      />
-                    ) : (
-                      <Share2 size={9} style={{ color: "#fff" }} />
-                    )}
-                  </div>
-                ))}
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                {platforms.slice(0, 5).map((p) => {
+                  const iconFile = ICON_MAP[p.id.split(':')[0]];
+                  return (
+                    <div
+                      key={p.id}
+                      title={`${p.name}: ${p.success ? "Published" : (p.error || "Failed")}`}
+                      style={{
+                        position: "relative",
+                        width: 22,
+                        height: 22,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {iconFile ? (
+                        <img
+                          src={`/icons/${iconFile}`}
+                          alt={p.name}
+                          style={{
+                            width: 22,
+                            height: 22,
+                            objectFit: "contain",
+                            display: "block",
+                            filter: "drop-shadow(0 2px 5px rgba(0,0,0,0.5))",
+                          }}
+                        />
+                      ) : (
+                        <Share2
+                          size={15}
+                          style={{
+                            color: "#fff",
+                            filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.5))",
+                          }}
+                        />
+                      )}
+                      {!p.success && !isScheduled && (
+                        <span
+                          title="Failed"
+                          style={{
+                            position: "absolute",
+                            top: -2,
+                            right: -2,
+                            width: 6,
+                            height: 6,
+                            borderRadius: "50%",
+                            background: "#ef4444",
+                            border: "1.5px solid rgba(10,8,6,0.9)",
+                            boxShadow: "0 0 4px rgba(239,68,68,0.9)",
+                          }}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
                 {platforms.length > 5 && (
                   <span
                     style={{
-                      color: "rgba(255,255,255,0.6)",
-                      fontSize: 9,
+                      color: "rgba(255,255,255,0.75)",
+                      fontSize: 10,
                       fontWeight: 700,
+                      filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.5))",
                     }}
                   >
                     +{platforms.length - 5}
@@ -917,26 +944,17 @@ function PinterestCard({ post, onOpen, formatDate }) {
             </div>
           </div>
 
-          {/* Media type chip */}
+          {/* Professional Media Type Badge (Reel, Video, Carousel, Photo) */}
           <div
             style={{
               position: "absolute",
               top: 10,
               right: 10,
-              padding: "3px 8px",
-              borderRadius: 6,
-              background: "rgba(10,8,6,0.65)",
-              backdropFilter: "blur(12px)",
-              color: "rgba(255,255,255,0.9)",
-              fontSize: 8,
-              fontWeight: 800,
-              textTransform: "uppercase",
-              letterSpacing: "0.1em",
-              border: "1px solid rgba(255,255,255,0.12)",
+              zIndex: 5,
               pointerEvents: "none",
             }}
           >
-            {post.platform_data?.postType || post.postType || post.post_type || post.media_type || "media"}
+            <MediaBadge post={post} />
           </div>
         </div>
       ) : (
@@ -1619,29 +1637,42 @@ function Dashboard() {
 
   const selectedPlatform = searchParams.get("platform") || "all";
 
-  const filtered = useMemo(() => broadcasts.filter((b) => {
-    if (activeTab === "queue" && b.status === "sent") return false;
-    if (activeTab === "sent" && b.status !== "sent") return false;
-    const matchesSearch = (b.caption || "")
-      .toLowerCase()
-      .includes(searchTerm.toLowerCase());
-    if (selectedPlatform === "all") return matchesSearch;
+  const filtered = useMemo(() => {
+    const list = broadcasts.filter((b) => {
+      if (activeTab === "queue" && b.status === "sent") return false;
+      if (activeTab === "sent" && b.status !== "sent") return false;
+      const matchesSearch = (b.caption || "")
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase());
+      if (selectedPlatform === "all") return matchesSearch;
 
-    const isSpecificAccount = selectedPlatform.includes(":");
-    const baseSelected = selectedPlatform.split(":")[0];
+      const isSpecificAccount = selectedPlatform.includes(":");
+      const baseSelected = selectedPlatform.split(":")[0];
 
-    let matchesPlatform = buildPlatforms(b).some((p) => {
-      if (p.id === selectedPlatform) return true;
-      if (!isSpecificAccount && p.id.split(":")[0] === baseSelected) return true;
-      return false;
-    }) || (Array.isArray(b.selected_channels) && b.selected_channels.some(c => {
-      if (c === selectedPlatform) return true;
-      if (!isSpecificAccount && c.split(":")[0] === baseSelected) return true;
-      return false;
-    }));
+      let matchesPlatform = buildPlatforms(b).some((p) => {
+        if (p.id === selectedPlatform) return true;
+        if (!isSpecificAccount && p.id.split(":")[0] === baseSelected) return true;
+        return false;
+      }) || (Array.isArray(b.selected_channels) && b.selected_channels.some(c => {
+        if (c === selectedPlatform) return true;
+        if (!isSpecificAccount && c.split(":")[0] === baseSelected) return true;
+        return false;
+      }));
 
-    return matchesSearch && matchesPlatform;
-  }), [broadcasts, searchTerm, selectedPlatform, activeTab]);
+      return matchesSearch && matchesPlatform;
+    });
+
+    // ── Strictly sort newest-first so recently published content appears at the top ──
+    return list.sort((a, b) => {
+      // In-flight processing jobs stay at the very top
+      if (a.status === "processing" && b.status !== "processing") return -1;
+      if (b.status === "processing" && a.status !== "processing") return 1;
+
+      const timeA = new Date(a.posted_at || a.created_at || a.scheduled_for || 0).getTime();
+      const timeB = new Date(b.posted_at || b.created_at || b.scheduled_for || 0).getTime();
+      return timeB - timeA;
+    });
+  }, [broadcasts, searchTerm, selectedPlatform, activeTab]);
 
   const tabs = [
     {
@@ -1778,7 +1809,15 @@ function Dashboard() {
       const existingJobIds = new Set(bcastData.map(b => b.platform_data?.sourceJobId || b.platform_data?.source_job_id).filter(Boolean));
       const filteredPseudo = displayPseudo.filter(p => !existingJobIds.has(p.id));
 
-      setBroadcasts([...filteredPseudo, ...bcastData]);
+      const merged = [...filteredPseudo, ...bcastData].sort((a, b) => {
+        if (a.status === "processing" && b.status !== "processing") return -1;
+        if (b.status === "processing" && a.status !== "processing") return 1;
+        const timeA = new Date(a.posted_at || a.created_at || a.scheduled_for || 0).getTime();
+        const timeB = new Date(b.posted_at || b.created_at || b.scheduled_for || 0).getTime();
+        return timeB - timeA;
+      });
+
+      setBroadcasts(merged);
     } catch (err) {
       setBroadcasts([]);
     } finally {

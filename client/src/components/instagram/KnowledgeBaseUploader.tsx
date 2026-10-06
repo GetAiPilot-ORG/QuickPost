@@ -108,7 +108,7 @@ export default function KnowledgeBaseUploader({ botId }: { botId?: string }) {
             <Database className="h-5 w-5" />
           </span>
           <div>
-            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[var(--arc)]">Knowledge Base</p>
+            <p className="text-xs font-semibold text-[var(--arc)]">Knowledge Base</p>
             <h2 className="text-xl font-semibold text-[var(--ink)]">Business answers</h2>
           </div>
         </div>
@@ -203,7 +203,7 @@ export default function KnowledgeBaseUploader({ botId }: { botId?: string }) {
               <p className="font-semibold text-[var(--ink)]">{source.title}</p>
               <span className="rounded bg-white px-2 py-1 text-xs font-bold text-[var(--slate)]">{source.status}</span>
             </div>
-            <p className="mt-2 text-xs uppercase tracking-[0.14em] text-[var(--slate)]">{source.source_type}</p>
+            <p className="mt-2 text-xs font-medium text-[var(--slate)] capitalize">{source.source_type}</p>
             <p className="mt-2 text-sm text-[var(--slate)]">{source.knowledge_chunks?.length || 0} chunks indexed</p>
             <div className="mt-4 flex gap-2">
               <button

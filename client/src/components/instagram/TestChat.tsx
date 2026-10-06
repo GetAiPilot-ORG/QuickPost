@@ -58,7 +58,7 @@ export default function TestChat({
     <section className="rounded-xl border border-black/10 bg-white shadow-sm">
       {showHeader ? (
         <div className="border-b border-black/10 bg-[#fffaf7] p-4">
-          <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[var(--arc)]">Preview Chat</p>
+          <p className="text-xs font-semibold text-[var(--arc)]">Preview Chat</p>
           <h2 className="mt-1 text-lg font-semibold text-[var(--ink)]">Test replies</h2>
         </div>
       ) : null}

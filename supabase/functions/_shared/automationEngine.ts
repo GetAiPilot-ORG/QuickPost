@@ -5,6 +5,7 @@ import {
   sendInstagramGenericTemplate,
   sendInstagramImage,
   sendInstagramCommentReply,
+  likeInstagramComment,
   sendInstagramPrivateReplyImage,
   sendInstagramPrivateReplyGenericTemplate,
   sendInstagramPrivateReplyPayload,
@@ -272,19 +273,32 @@ const renderMessageTemplate = (
   text: string,
   profile: SenderProfile,
 ): string => {
+  const cleanUsername = (profile.username || "").trim().replace(/^@+/, "");
+  const formattedUsername = cleanUsername
+    ? `@${cleanUsername}`
+    : (profile.firstName && profile.firstName !== "there" ? `@${profile.firstName}` : "@user");
+
+  const firstName =
+    profile.firstName && profile.firstName !== "there"
+      ? profile.firstName.replace(/^@+/, "")
+      : (cleanUsername || "there");
+
   const variables: Record<string, string> = {
-    first_name: profile.firstName,
-    firstname: profile.firstName,
-    name: profile.fullName,
-    full_name: profile.fullName,
-    username: profile.username,
+    first_name: firstName,
+    firstname: firstName,
+    name: profile.fullName || firstName,
+    full_name: profile.fullName || firstName,
+    username: formattedUsername,
   };
 
-  return text.replace(
+  // If text already has @{{username}}, collapse to {{username}} to prevent double @@
+  const sanitizedText = (text || "").replace(/@+\{\{\s*username\s*\}\}/gi, "{{username}}");
+
+  return sanitizedText.replace(
     /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g,
     (match, key: string) => {
       const value = variables[key.toLowerCase()];
-      return value || "";
+      return typeof value === "string" ? value : "";
     },
   );
 };
@@ -938,6 +952,8 @@ interface InstagramAccountRecord {
 interface AutomationInput {
   igId: string;
   senderId: string;
+  senderUsername?: string;
+  parentId?: string;
   messageText: string;
   triggerType: string;
   dedupeKey: string;
@@ -960,7 +976,7 @@ interface PendingAutomationSession {
 const automationSelectFields =
   "id,name,user_id,keywords,response_flow,trigger_type,media_id,instagram_account_id,comment_reply_enabled,comment_reply_text,schedule_type,starts_at,ends_at,expired_at,require_follow,fallback_comment_reply";
 const instagramAccountSelectFields =
-  "id,user_id,page_id,ig_id:instagram_user_id,webhook_ig_id:webhook_instagram_user_id,access_token_encrypted,token_expires_at,is_connected";
+  "id,user_id,page_id,ig_id:instagram_user_id,webhook_ig_id:webhook_instagram_user_id,instagram_username,access_token_encrypted,token_expires_at,is_connected";
 
 const isAutomationRunnableNow = (
   automation: Partial<AutomationRecord>,
@@ -1015,13 +1031,18 @@ const getAllMatchingAutomations = (
   messageText: string,
 ): AutomationRecord[] => {
   const normalizedText = (messageText || "").toLowerCase().trim();
+  const rawText = (messageText || "").trim();
 
   return automations.filter((automation) => {
     const keywords = automation.keywords || [];
+    const isCaseSensitive = Boolean((automation as any).is_case_sensitive);
+    const textToCheck = isCaseSensitive ? rawText : normalizedText;
+
     return keywords.some((k) => {
-      const normalizedK = k.trim().toLowerCase();
-      if (normalizedK === '*') return true;
-      return normalizedK.length > 0 && normalizedText.includes(normalizedK);
+      const cleanK = (k || "").trim();
+      if (cleanK === '*') return true;
+      const keyToCheck = isCaseSensitive ? cleanK : cleanK.toLowerCase();
+      return keyToCheck.length > 0 && textToCheck.includes(keyToCheck);
     });
   });
 };
@@ -1319,12 +1340,25 @@ const refreshAccountTokenIfNeeded = async (
 };
 
 export const processAutomationEvent = async (payload: AutomationInput) => {
+  // Prevent self-action loop: bot replying to its own comment or DM
+  if (payload.senderId && payload.igId && payload.senderId === payload.igId) {
+    logInfo("Skipping automation: senderId matches account igId (self-action)", {
+      requestId: payload.requestId,
+      senderId: payload.senderId,
+      igId: payload.igId,
+    });
+    return {
+      status: "ignored_self_action",
+      sentCount: 0,
+    };
+  }
+
   const supabase = getSupabaseAdmin();
 
   let { data: accounts, error: accountError } = await supabase
     .from("instagram_accounts")
     .select(
-      "id,user_id,page_id,ig_id:instagram_user_id,webhook_ig_id:webhook_instagram_user_id,access_token_encrypted,token_expires_at,is_connected",
+      "id,user_id,page_id,ig_id:instagram_user_id,webhook_ig_id:webhook_instagram_user_id,instagram_username,access_token_encrypted,token_expires_at,is_connected",
     )
     .or(
       `instagram_user_id.eq.${payload.igId},webhook_instagram_user_id.eq.${payload.igId}`,
@@ -1333,6 +1367,49 @@ export const processAutomationEvent = async (payload: AutomationInput) => {
 
   if (accountError) {
     throw new Error(`Failed loading account: ${accountError.message}`);
+  }
+
+  const normalizedSenderUsername = (
+    payload.senderUsername ||
+    payload.externalPayload?.value?.from?.username ||
+    payload.externalPayload?.from?.username ||
+    payload.externalPayload?.sender?.username ||
+    ""
+  )
+    .toLowerCase()
+    .trim()
+    .replace(/^@/, "");
+
+  if (
+    accounts &&
+    accounts.some((a: any) => {
+      const accUsername = (a.instagram_username || (a as any).username || "")
+        .toLowerCase()
+        .trim()
+        .replace(/^@/, "");
+
+      const matchesId =
+        a.ig_id === payload.senderId ||
+        a.webhook_ig_id === payload.senderId ||
+        a.page_id === payload.senderId;
+
+      const matchesUsername =
+        Boolean(normalizedSenderUsername) &&
+        Boolean(accUsername) &&
+        accUsername === normalizedSenderUsername;
+
+      return matchesId || matchesUsername;
+    })
+  ) {
+    logInfo("Skipping automation: sender matches owned account (self-action)", {
+      requestId: payload.requestId,
+      senderId: payload.senderId,
+      senderUsername: normalizedSenderUsername,
+    });
+    return {
+      status: "ignored_self_action",
+      sentCount: 0,
+    };
   }
 
   let webhookIgIdForSend = payload.igId;
@@ -1379,7 +1456,7 @@ export const processAutomationEvent = async (payload: AutomationInput) => {
           await supabase
             .from("instagram_accounts")
             .select(
-              "id,user_id,page_id,ig_id:instagram_user_id,webhook_ig_id:webhook_instagram_user_id,access_token_encrypted,token_expires_at,is_connected",
+              "id,user_id,page_id,ig_id:instagram_user_id,webhook_ig_id:webhook_instagram_user_id,instagram_username,username,access_token_encrypted,token_expires_at,is_connected",
             )
             .eq("id", mappedAccountIds[0])
             .limit(1);
@@ -1424,7 +1501,7 @@ export const processAutomationEvent = async (payload: AutomationInput) => {
         await supabase
           .from("instagram_accounts")
           .select(
-            "id,user_id,page_id,ig_id:instagram_user_id,webhook_ig_id:webhook_instagram_user_id,access_token_encrypted,token_expires_at,is_connected",
+            "id,user_id,page_id,ig_id:instagram_user_id,webhook_ig_id:webhook_instagram_user_id,instagram_username,username,access_token_encrypted,token_expires_at,is_connected",
           )
           .eq("is_connected", true)
           .order("updated_at", { ascending: false });
@@ -1561,6 +1638,37 @@ export const processAutomationEvent = async (payload: AutomationInput) => {
   let connectedAccounts = (accounts ?? []).filter(
     (a: any) => a.is_connected !== false && isAccountTokenUsable(a),
   );
+
+  if (
+    connectedAccounts.some((a: any) => {
+      const accUsername = (a.instagram_username || a.username || "")
+        .toLowerCase()
+        .trim()
+        .replace(/^@/, "");
+
+      const matchesId =
+        a.ig_id === payload.senderId ||
+        a.webhook_ig_id === payload.senderId ||
+        a.page_id === payload.senderId;
+
+      const matchesUsername =
+        Boolean(normalizedSenderUsername) &&
+        Boolean(accUsername) &&
+        accUsername === normalizedSenderUsername;
+
+      return matchesId || matchesUsername;
+    })
+  ) {
+    logInfo("Skipping automation: sender matches connected account (self-action)", {
+      requestId: payload.requestId,
+      senderId: payload.senderId,
+      senderUsername: normalizedSenderUsername,
+    });
+    return {
+      status: "ignored_self_action",
+      sentCount: 0,
+    };
+  }
 
   if (payload.mediaId) {
     const { data: mediaAutomations, error: mediaAutomationError } =
@@ -1884,6 +1992,63 @@ export const processAutomationEvent = async (payload: AutomationInput) => {
       payload.requestId,
     ),
   );
+
+  // Self-action loop prevention: check resolved sender username against account username
+  const resolvedSenderUsername = (
+    senderProfile?.username ||
+    payload.senderUsername ||
+    ""
+  )
+    .toLowerCase()
+    .trim()
+    .replace(/^@/, "");
+  const accountUsername = (
+    selectedAccount.instagram_username ||
+    (selectedAccount as any).username ||
+    ""
+  )
+    .toLowerCase()
+    .trim()
+    .replace(/^@/, "");
+
+  const isSelfAction =
+    Boolean(payload.externalPayload?.value?.from?.self_ig_scoped_id) ||
+    Boolean(
+      payload.senderId &&
+        (payload.senderId === selectedAccount.ig_id ||
+          payload.senderId === selectedAccount.webhook_ig_id ||
+          payload.senderId === selectedAccount.page_id)
+    ) ||
+    Boolean(
+      resolvedSenderUsername &&
+        accountUsername &&
+        resolvedSenderUsername === accountUsername
+    );
+
+  if (isSelfAction) {
+    logInfo("Aborting automation: resolved sender matches account (self-action)", {
+      requestId: payload.requestId,
+      senderUsername: resolvedSenderUsername,
+      accountUsername,
+      automationId: matched.id,
+    });
+    return {
+      status: "ignored_self_action",
+      sentCount: 0,
+    };
+  }
+
+  if (payload.parentId && payload.triggerType === "comment") {
+    logInfo("Aborting automation: comment has parent_id (child reply)", {
+      requestId: payload.requestId,
+      parentId: payload.parentId,
+      automationId: matched.id,
+    });
+    return {
+      status: "ignored_nested_reply",
+      sentCount: 0,
+    };
+  }
 
   if (
     matched.require_follow === true &&
@@ -2409,8 +2574,18 @@ export const processAutomationEvent = async (payload: AutomationInput) => {
     matched.comment_reply_text?.trim()
   ) {
     commentReplyAttempted = true;
+    let chosenReply = matched.comment_reply_text.trim();
+    const flowVariations = (matched.response_flow as any)?.comment_reply_variations;
+    if (Array.isArray(flowVariations) && flowVariations.length > 0) {
+      chosenReply = String(flowVariations[Math.floor(Math.random() * flowVariations.length)] || chosenReply).trim();
+    } else if (chosenReply.includes("|||")) {
+      const variations = chosenReply.split("|||").map((v) => v.trim()).filter(Boolean);
+      if (variations.length > 0) {
+        chosenReply = variations[Math.floor(Math.random() * variations.length)];
+      }
+    }
     const commentReplyText = renderMessageTemplate(
-      stripBrandingWatermark(matched.comment_reply_text.trim()),
+      stripBrandingWatermark(chosenReply),
       senderProfile,
     ).trim();
     const commentReplyResult = await sendInstagramCommentReply(
@@ -2427,6 +2602,32 @@ export const processAutomationEvent = async (payload: AutomationInput) => {
         commentId: payload.eventId,
         error: commentReplyResult.error,
       });
+    }
+  }
+
+  // Auto-like triggering comment if enabled
+  const autoLikeEnabled = Boolean(
+    (matched.response_flow as any)?.auto_like_comment ||
+    (matched as any).auto_like_comment
+  );
+
+  if (
+    autoLikeEnabled &&
+    payload.triggerType === "comment" &&
+    payload.eventId
+  ) {
+    const igUserId =
+      selectedAccount.ig_id ||
+      selectedAccount.webhook_ig_id ||
+      payload.igId;
+
+    if (igUserId) {
+      await likeInstagramComment(
+        payload.eventId,
+        igUserId,
+        tokenBundle.pageAccessToken,
+        payload.requestId,
+      );
     }
   }
 
@@ -2794,8 +2995,18 @@ export const processAutomationEvent = async (payload: AutomationInput) => {
           secondaryAutomation.comment_reply_enabled &&
           secondaryAutomation.comment_reply_text?.trim()
         ) {
+          let secChosenReply = secondaryAutomation.comment_reply_text.trim();
+          const secFlowVariations = (secondaryAutomation.response_flow as any)?.comment_reply_variations;
+          if (Array.isArray(secFlowVariations) && secFlowVariations.length > 0) {
+            secChosenReply = String(secFlowVariations[Math.floor(Math.random() * secFlowVariations.length)] || secChosenReply).trim();
+          } else if (secChosenReply.includes("|||")) {
+            const secVariations = secChosenReply.split("|||").map((v) => v.trim()).filter(Boolean);
+            if (secVariations.length > 0) {
+              secChosenReply = secVariations[Math.floor(Math.random() * secVariations.length)];
+            }
+          }
           const secReplyText = renderMessageTemplate(
-            stripBrandingWatermark(secondaryAutomation.comment_reply_text.trim()),
+            stripBrandingWatermark(secChosenReply),
             senderProfile,
           ).trim();
           await sendInstagramCommentReply(

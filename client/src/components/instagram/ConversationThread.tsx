@@ -94,7 +94,7 @@ export default function ConversationThread({ conversationId, refreshKey, onChang
     <section className={`rounded-lg border bg-white shadow-sm ${needsHuman ? "border-amber-300" : "border-black/10"}`}>
       <div className={`flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center sm:justify-between ${needsHuman ? "border-amber-200 bg-amber-50" : "border-black/10"}`}>
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.2em] text-[var(--arc)]">
+          <p className="text-xs font-semibold text-[var(--arc)]">
             {needsHuman ? "Action needed" : "Conversation"}
           </p>
           <div className="mt-1 flex items-center gap-3">

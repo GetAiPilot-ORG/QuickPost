@@ -99,17 +99,17 @@ const IntelligenceCard = memo(React.forwardRef(function IntelligenceCard({ item,
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
             <span style={{
-              fontSize: 8, fontWeight: 800, letterSpacing: "0.08em",
-              color: labelColor, textTransform: "uppercase",
-              padding: "1px 5px", borderRadius: 3,
+              fontSize: 9, fontWeight: 700,
+              color: labelColor, textTransform: "capitalize",
+              padding: "1px 6px", borderRadius: 4,
               background: `${labelColor}15`,
             }}>
               {label}
             </span>
             {item.platform && (
               <span style={{
-                fontSize: 8, fontWeight: 700, letterSpacing: "0.06em",
-                color: "var(--slate)", textTransform: "uppercase", opacity: 0.6,
+                fontSize: 9, fontWeight: 600,
+                color: "var(--slate)", textTransform: "capitalize", opacity: 0.7,
               }}>
                 {item.platform}
               </span>
@@ -156,8 +156,8 @@ const IntelligencePanel = memo(function IntelligencePanel({
       >
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{
-            fontSize: 10, fontWeight: 800, letterSpacing: "0.08em",
-            color: "var(--slate)", textTransform: "uppercase",
+            fontSize: 11, fontWeight: 700,
+            color: "var(--slate)",
           }}>
             What will happen?
           </span>
