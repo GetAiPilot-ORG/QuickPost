@@ -15,8 +15,10 @@ function hasPaidPlan(plan) {
 
 function normalizePlanId(plan) {
   const p = String(plan || '').toLowerCase().trim();
-  if (['growth', 'sgrowth', 'enterprise', '1999', '2999', 'gap enterprise', 'gap_scale', 'gap_enterprise'].includes(p)) return 'sgrowth';
-  if (['starter', 'slite', 'pro', '999', 'gap core', 'gap_core', 'all_in_one_bundle', 'all_in_one_bundle_monthly', 'gap pro'].includes(p)) return 'slite';
+  if (['gap_core', 'gap core', 'all_in_one_bundle_monthly', 'all_in_one_bundle', 'all_in_one_bundle_quarterly', 'all_in_one_bundle_half_yearly', 'all_in_one_bundle_yearly', 'custom_bundle'].includes(p)) return 'gap_core';
+  if (['gap_scale', 'gap enterprise', 'enterprise', 'gap_scale_quarterly', 'gap_scale_half_yearly', 'gap_scale_yearly'].includes(p)) return 'gap_scale';
+  if (['growth', 'sgrowth', '1999', '2999', 'spgrowth'].includes(p)) return 'sgrowth';
+  if (['starter', 'slite', 'pro', '999', 'spstarter'].includes(p)) return 'slite';
   return p || 'free';
 }
 
@@ -73,7 +75,7 @@ function BillingPlanSkeletonCard() {
   );
 }
 
-const HUB_PRICING_URL = 'https://uklxlappjcuvdqjvecfh.supabase.co/functions/v1/get-pricing?category=social&currency=INR';
+const HUB_PRICING_URL = 'https://uklxlappjcuvdqjvecfh.supabase.co/functions/v1/get-pricing?currency=INR';
 
 const calculateIntervalPrices = (baseMonthly) => ({
   1: baseMonthly,
@@ -86,6 +88,8 @@ const DEFAULT_PRICES = {
   free: { 1: 0, 3: 0, 6: 0, 12: 0 },
   slite: calculateIntervalPrices(999),
   sgrowth: calculateIntervalPrices(1999),
+  gap_core: calculateIntervalPrices(4999),
+  gap_scale: calculateIntervalPrices(8999),
 };
 
 const PLANS_TEMPLATE = [
@@ -175,6 +179,63 @@ const PLANS_TEMPLATE = [
     btnBg: '#1a1a1a',
     btnBorder: 'none',
     btnText: '#ffffff',
+  },
+  {
+    name: 'GAP Core',
+    id: 'gap_core',
+    price: DEFAULT_PRICES.gap_core,
+    description: 'The complete all-in-one automation suite for your business.',
+    creditsText: 'Full access to Social Pilot, WhatsApp, AI Calling & Telegram',
+    badge: 'All-in-One Bundle',
+    includedFeatures: [
+      '30 connected social accounts',
+      'Up to 30 Instagram Auto-DM accounts',
+      'Unlimited monthly posts & scheduling',
+      'WhatsApp Growth Plan Included',
+      'Telegram Lite Plan Included',
+      'AI Calling Agent + 300 Minutes Included',
+      'GAP CRM Plan - 15 Users Included',
+      '24/7 Priority Support',
+    ],
+    excludedFeatures: [],
+    unlimitedFeatures: [
+      { label: 'Social accounts & Auto-DM', badge: '∞ ALL YEAR' },
+      { label: 'All-in-one ecosystem sync', badge: '∞ ALL YEAR' },
+      { label: 'Team members', badge: '∞ ALL YEAR' },
+    ],
+    cta: 'Managed via GetAiPilot',
+    cardBg: '#fcfbfa',
+    btnBg: '#6d28d9',
+    btnBorder: 'none',
+    btnText: '#ffffff',
+  },
+  {
+    name: 'GAP Enterprise',
+    id: 'gap_scale',
+    price: DEFAULT_PRICES.gap_scale,
+    description: 'For large-scale operations and high-volume business automation.',
+    creditsText: 'Dedicated account manager & high-volume engine',
+    badge: 'Enterprise',
+    includedFeatures: [
+      '50 connected social accounts',
+      'Up to 50 Instagram Auto-DM accounts',
+      'High-Volume WhatsApp Engine (Up to 3 Numbers)',
+      'CRM Pro Unlimited (25+ Seats Included)',
+      'Telegram Suite - Unlimited Automated Forwards',
+      'Social Pilot Agency (30 Accounts & Auto-DM)',
+      'Custom API & Webhook Suite',
+      'Advanced Security, Roles & SLA',
+    ],
+    excludedFeatures: [],
+    unlimitedFeatures: [
+      { label: 'Unlimited workflows', badge: '∞ ALL YEAR' },
+      { label: 'Priority SLA', badge: '∞ ALL YEAR' },
+    ],
+    cta: 'Managed via GetAiPilot',
+    cardBg: '#ffffff',
+    btnBg: '#1e1b4b',
+    btnBorder: 'none',
+    btnText: '#ffffff',
   }
 ];
 
@@ -188,7 +249,7 @@ export default function BillingPage({ embedded = false }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const currentPlanName = user?.entitlements?.plan?.name || 'Free';
+  const currentPlanName = user?.entitlements?.plan?.name || user?.plan || 'Free';
   const currentPlanId = normalizePlanId(user?.entitlements?.plan?.id || currentPlanName);
   const currentBillingMonths = normalizeBillingMonths(user?.entitlements?.subscription);
   const isPaid = hasPaidPlan(currentPlanName);
@@ -234,7 +295,7 @@ export default function BillingPage({ embedded = false }) {
       }
 
       // 2. Fallback to direct Hub Supabase Edge Function
-      if (!rawPlans) {
+      if (!rawPlans || rawPlans.length <= 3) {
         try {
           const res = await fetch(HUB_PRICING_URL, { headers: { 'Content-Type': 'application/json' } });
           if (res.ok) {
@@ -242,10 +303,14 @@ export default function BillingPage({ embedded = false }) {
             if (data?.currency === 'INR' && Array.isArray(data.plans)) {
               const starter = data.plans.find(p => p.plan_name === 'social_pilot_starter');
               const growth = data.plans.find(p => p.plan_name === 'social_pilot_growth');
+              const core = data.plans.find(p => p.plan_name === 'all_in_one_bundle_monthly');
+              const enterprise = data.plans.find(p => p.plan_name === 'gap_scale');
               rawPlans = [
                 { id: 'free', prices: { month: 0, quarterly: 0, six_months: 0, year: 0 } },
                 { id: 'slite', prices: starter ? calculateIntervalPrices(starter.amount / 100) : DEFAULT_PRICES.slite },
                 { id: 'sgrowth', prices: growth ? calculateIntervalPrices(growth.amount / 100) : DEFAULT_PRICES.sgrowth },
+                { id: 'gap_core', prices: core ? calculateIntervalPrices(core.amount / 100) : DEFAULT_PRICES.gap_core },
+                { id: 'gap_scale', prices: enterprise ? calculateIntervalPrices(enterprise.amount / 100) : DEFAULT_PRICES.gap_scale },
               ];
             }
           }
@@ -305,6 +370,11 @@ export default function BillingPage({ embedded = false }) {
 
   const handleUpgrade = async (plan) => {
     if ((currentPlanId === plan.id && currentBillingMonths === billing) || plan.id === 'free') {
+      return;
+    }
+
+    if (plan.id === 'gap_core' || plan.id === 'gap_scale') {
+      window.location.href = 'https://getaipilot.in/pricing';
       return;
     }
 

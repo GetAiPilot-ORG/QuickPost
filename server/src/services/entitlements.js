@@ -15,30 +15,27 @@ const HUB_PLAN_MAPPING = {
   'social_pilot_pro': 'sgrowth',
   'social_pilot_quarterly': 'slite',
   'social_pilot_half_yearly': 'slite',
-  'all_in_one_bundle': 'slite',
-  'all_in_one_bundle_monthly': 'slite',
-  'all_in_one_bundle_quarterly': 'slite',
-  'all_in_one_bundle_half_yearly': 'slite',
-  'all_in_one_bundle_yearly': 'slite',
-  'custom_bundle': 'slite',
-  'custom_bundle_monthly': 'slite',
-  'custom_bundle_quarterly': 'slite',
-  'custom_bundle_half_yearly': 'slite',
-  'custom_bundle_yearly': 'slite',
-  'custom': 'slite',
-  'gap_core': 'slite',
-  'gap_max': 'slite',
-  'gap_pro': 'slite',
-  'gap_scale': 'sgrowth',
-  'gap_scale_monthly': 'sgrowth',
-  'gap_scale_quarterly': 'sgrowth',
-  'gap_scale_half_yearly': 'sgrowth',
-  'gap_scale_yearly': 'sgrowth',
-  'gap_enterprise': 'sgrowth',
-  'gap_ultimate_ecosystem': 'slite',
+  'all_in_one_bundle': 'gap_core',
+  'all_in_one_bundle_monthly': 'gap_core',
+  'all_in_one_bundle_quarterly': 'gap_core',
+  'all_in_one_bundle_half_yearly': 'gap_core',
+  'all_in_one_bundle_yearly': 'gap_core',
+  'custom_bundle': 'gap_core',
+  'custom_bundle_monthly': 'gap_core',
+  'custom_bundle_quarterly': 'gap_core',
+  'custom_bundle_half_yearly': 'gap_core',
+  'custom_bundle_yearly': 'gap_core',
+  'custom': 'gap_core',
+  'gap_core': 'gap_core',
+  'gap_max': 'gap_core',
+  'gap_ultimate_ecosystem': 'gap_core',
+  'gap_scale': 'gap_scale',
+  'gap_scale_quarterly': 'gap_scale',
+  'gap_scale_half_yearly': 'gap_scale',
+  'gap_scale_yearly': 'gap_scale',
   'spstarter': 'slite',
   'spgrowth': 'sgrowth',
-  'enterprise': 'sgrowth'
+  'enterprise': 'gap_scale'
 };
 
 const HUB_PLAN_DURATION = {
@@ -61,13 +58,8 @@ const HUB_PLAN_DURATION = {
   'custom': 'monthly',
   'gap_core': 'monthly',
   'gap_max': 'six_months',
-  'gap_scale': 'monthly',
-  'gap_scale_monthly': 'monthly',
-  'gap_scale_quarterly': 'quarterly',
-  'gap_scale_half_yearly': 'six_months',
-  'gap_scale_yearly': 'year',
-  'gap_enterprise': 'monthly',
   'gap_ultimate_ecosystem': 'monthly',
+  'gap_scale': 'monthly',
   'spstarter': 'monthly',
   'spgrowth': 'monthly',
   'enterprise': 'monthly'
@@ -158,19 +150,18 @@ export async function getEntitlements(userId, email = null, token = null) {
 
           let mappedPlanId = 'free';
           let matchedHubPlan = 'free';
+          const tierPriority = { 'gap_scale': 4, 'gap_core': 3, 'sgrowth': 2, 'slite': 1, 'free': 0 };
 
           for (const item of planList) {
             const p = String(item || '').toLowerCase().trim();
             const pNorm = p.replace(/\s+/g, '_');
             const matchKey = HUB_PLAN_MAPPING[p] ? p : (HUB_PLAN_MAPPING[pNorm] ? pNorm : null);
             if (matchKey) {
-              if (HUB_PLAN_MAPPING[matchKey] === 'sgrowth') {
-                mappedPlanId = 'sgrowth';
+              const candidate = HUB_PLAN_MAPPING[matchKey];
+              if ((tierPriority[candidate] || 0) > (tierPriority[mappedPlanId] || 0)) {
+                mappedPlanId = candidate;
                 matchedHubPlan = matchKey;
-                break; // Highest tier, stop searching
               }
-              mappedPlanId = HUB_PLAN_MAPPING[matchKey];
-              matchedHubPlan = matchKey;
             }
           }
 
@@ -188,13 +179,13 @@ export async function getEntitlements(userId, email = null, token = null) {
           if (mappedPlanId !== 'free') {
             subscriptions.push({
               plan_id: mappedPlanId,
+              plan_name: hubSubscription.plan || null,
               source: 'hub',
               status: 'active',
               billing_interval: HUB_PLAN_DURATION[matchedHubPlan] || 'monthly',
               current_period_end: expiresAt || null,
               cancel_at_period_end: false,
               grace_period_ends_at: null,
-              hub_plan_name: hubSubscription.plan || null,
             });
           }
         }
@@ -232,17 +223,12 @@ export async function getEntitlements(userId, email = null, token = null) {
     throw new Error(`Failed to load usage: ${usageError.message}`);
   }
 
-  const hubPlanName = subscription?.hub_plan_name;
+  const finalPlanName = subscription?.plan_name || plan.name;
+
   const computed = {
-    plan: {
-      id: plan.id,
-      name: hubPlanName || plan.name,
-      base_name: plan.name,
-      hub_plan_name: hubPlanName || null,
-    },
+    plan: { id: plan.id, name: finalPlanName },
     subscription: subscription ? {
       ...subscription,
-      hub_plan_name: hubPlanName || null,
       interval_months: latestActivation?.interval_months
         || (subscription.billing_interval === 'year' ? 12 : 1),
     } : {
