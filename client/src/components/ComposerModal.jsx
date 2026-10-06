@@ -21,6 +21,7 @@ import {
   Clock,
   AlertCircle,
   Zap,
+  Workflow,
   CheckCircle2,
   Monitor,
   Smartphone,
@@ -58,6 +59,7 @@ import {
   AutoDMComposerPanel,
   defaultComposerAutoDMConfig,
 } from "../features/autodm/AutoDMComposerPanel";
+import MobilePreview from "../pages/auto-dm/MobilePreview";
 
 const QUICK_SUGGESTIONS = [
   "Building something special...",
@@ -398,13 +400,11 @@ const ClockView = memo(function ClockView({ value, onChange, minTime, onClose })
       {isCurrentSelectionPast && (
         <p
           style={{
-            fontSize: 10,
+            fontSize: 11,
             color: "#ef4444",
-            fontWeight: 700,
-            marginTop: -10,
+            fontWeight: 600,
+            marginTop: -8,
             marginBottom: 10,
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
           }}
         >
           Past time selected
@@ -561,12 +561,10 @@ const ClockView = memo(function ClockView({ value, onChange, minTime, onClose })
 
       <p
         style={{
-          fontSize: 9,
+          fontSize: 10,
           color: isCurrentSelectionPast ? "#ef4444" : "var(--slate)",
-          fontWeight: 700,
-          textTransform: "uppercase",
-          letterSpacing: "0.1em",
-          opacity: 0.6,
+          fontWeight: 600,
+          opacity: 0.7,
           marginBottom: 12,
         }}
       >
@@ -1129,109 +1127,26 @@ const SmartWarnings = memo(function SmartWarnings({
   );
 });
 
-const SizeButton = memo(function SizeButton({ size, isSelected, onClick }) {
-  const isSquare = size.id === "1:1";
-  const isVertical =
-    size.id === "9:16" || size.id === "4:5" || size.id === "2:3";
-  const isLandscape = size.id === "16:9" || size.id === "1.91:1";
-
-  // Visual aspect ratio preview
-  const getRatioStyles = () => {
-    if (isSquare) return { width: 14, height: 14 };
-    if (size.id === "4:5") return { width: 12, height: 15 };
-    if (size.id === "9:16") return { width: 9, height: 16 };
-    if (size.id === "16:9") return { width: 18, height: 10 };
-    if (size.id === "1.91:1") return { width: 19, height: 10 };
-    if (size.id === "2:3") return { width: 10, height: 15 };
-    return { width: 14, height: 14 };
-  };
-
-  const ratioStyle = getRatioStyles();
-
-  return (
-    <motion.button
-      whileHover={{ y: -2, scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
-      onClick={onClick}
-      style={{
-        padding: "12px",
-        borderRadius: "14px",
-        border: "1.5px solid",
-        borderColor: isSelected ? "var(--ink)" : "rgba(20,20,19,0.06)",
-        background: isSelected ? "var(--ink)" : "var(--white)",
-        color: isSelected ? "var(--white)" : "var(--ink)",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 8,
-        minWidth: 84,
-        flex: 1,
-        cursor: "pointer",
-        transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-        boxShadow: isSelected
-          ? "0 8px 20px rgba(20,20,19,0.15)"
-          : "0 2px 4px rgba(0,0,0,0.02)",
-      }}
-    >
-      <div
-        style={{
-          ...ratioStyle,
-          border: `2px solid ${isSelected ? "var(--white)" : "var(--slate)"}`,
-          borderRadius: "3px",
-          opacity: isSelected ? 1 : 0.4,
-          transition: "all 0.2s",
-        }}
-      />
-
-      <div style={{ textAlign: "center" }}>
-        <p
-          style={{
-            fontSize: 11,
-            fontWeight: 800,
-            margin: 0,
-            letterSpacing: "-0.01em",
-          }}
-        >
-          {size.label}
-        </p>
-        <p
-          style={{
-            fontSize: 8,
-            margin: 0,
-            opacity: isSelected ? 0.7 : 0.4,
-            fontWeight: 700,
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
-          }}
-        >
-          {size.id}
-        </p>
-      </div>
-
-      {size.badge && size.badge !== "none" && !isSelected && (
-        <div
-          style={{
-            position: "absolute",
-            top: -6,
-            right: -6,
-            fontSize: 7,
-            fontWeight: 900,
-            background: size.badge === "best" ? "var(--arc)" : "var(--white)",
-            color: size.badge === "best" ? "var(--white)" : "var(--arc)",
-            padding: "2px 6px",
-            borderRadius: "6px",
-            textTransform: "uppercase",
-            boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
-            border: size.badge === "best" ? "none" : "1px solid var(--arc)",
-          }}
-        >
-          {size.badge}
-        </div>
-      )}
-    </motion.button>
-  );
-});
+const getMiniRatioBox = (ratio) => {
+  switch (ratio) {
+    case "1:1":
+      return { width: 14, height: 14 };
+    case "4:5":
+      return { width: 12, height: 15 };
+    case "9:16":
+      return { width: 10, height: 18 };
+    case "16:9":
+      return { width: 18, height: 10 };
+    case "2:3":
+      return { width: 11, height: 16 };
+    case "1.91:1":
+      return { width: 19, height: 10 };
+    case "1:1.41":
+      return { width: 11, height: 16 };
+    default:
+      return { width: 14, height: 14 };
+  }
+};
 
 function ComposerModal({
   isOpen,
@@ -1251,6 +1166,9 @@ function ComposerModal({
   /* ── State ── */
   const [selectedChannels, setSelectedChannels] = useState([]);
   const hasInstagram = selectedChannels.some(c => c === "instagram" || c.startsWith("instagram:"));
+  const isOnlyInstagram =
+    selectedChannels.length > 0 &&
+    selectedChannels.every(c => c === "instagram" || c.startsWith("instagram:"));
   const getBasePlatform = (c) => c?.split(':')[0] || c;
   const normalizeSelectedChannels = (channels) => {
     const specificProviders = new Set(
@@ -1324,6 +1242,101 @@ function ComposerModal({
     },
   }));
   const [youtubeThumbnail, setYoutubeThumbnail] = useState(null);
+  const [instagramCover, setInstagramCover] = useState(null);
+  const [previewMode, setPreviewMode] = useState("standard"); // "standard" | "autodm"
+  const [autoDMPreviewTab, setAutoDMPreviewTab] = useState("Comments"); // "Post" | "Comments" | "DM"
+
+  // Automatically switch preview mode when user toggles Auto DM Setup
+  const prevAutoDMEnabledRef = useRef(autoDMConfig.enabled);
+  useEffect(() => {
+    if (autoDMConfig.enabled && !prevAutoDMEnabledRef.current) {
+      setPreviewMode("autodm");
+      setAutoDMPreviewTab("Comments");
+    } else if (!autoDMConfig.enabled && prevAutoDMEnabledRef.current) {
+      setPreviewMode("standard");
+    }
+    prevAutoDMEnabledRef.current = autoDMConfig.enabled;
+  }, [autoDMConfig.enabled]);
+
+  // Generate live media preview for Auto DM mobile frame
+  const [mediaBlobUrl, setMediaBlobUrl] = useState("");
+  const [mediaIsVideo, setMediaIsVideo] = useState(false);
+
+  useEffect(() => {
+    let url = "";
+    let isVid = false;
+    if (instagramCover) {
+      try {
+        url = URL.createObjectURL(instagramCover);
+      } catch {
+        url = "";
+      }
+    } else if (mediaFiles?.[0]?.file) {
+      try {
+        url = URL.createObjectURL(mediaFiles[0].file);
+        isVid = Boolean(mediaFiles[0].file.type?.startsWith("video/"));
+      } catch {
+        url = "";
+      }
+    }
+    setMediaBlobUrl(url);
+    setMediaIsVideo(isVid);
+    return () => {
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [mediaFiles, instagramCover]);
+
+  // Extract Instagram account avatar & username for mobile preview
+  const instagramAccount = useMemo(() => {
+    const igAcc =
+      connectedAccounts?.instagramAccounts?.[0] ||
+      connectedAccounts?.instagram;
+    return {
+      username: igAcc?.username || user?.user_metadata?.username || "cricboss121",
+      profile_picture_url:
+        igAcc?.profilePicture ||
+        igAcc?.profile_picture_url ||
+        user?.picture ||
+        "",
+    };
+  }, [connectedAccounts, user]);
+
+  const cropInstagramCover = (file, position = "center") => {
+    if (!file?.type?.startsWith("image/")) return Promise.resolve(file);
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const targetRatio = 9 / 16;
+        const sourceRatio = img.width / img.height;
+        let sx = 0;
+        let sy = 0;
+        let sw = img.width;
+        let sh = img.height;
+
+        if (sourceRatio > targetRatio) {
+          sw = img.height * targetRatio;
+          sx = (img.width - sw) / 2;
+        } else if (sourceRatio < targetRatio) {
+          sh = img.width / targetRatio;
+          sy = position === "top" ? 0 : position === "bottom" ? img.height - sh : (img.height - sh) / 2;
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = 1080;
+        canvas.height = 1920;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, 1080, 1920);
+        canvas.toBlob((blob) => {
+          URL.revokeObjectURL(img.src);
+          const rawName = typeof file?.name === "string" ? file.name : "instagram-cover.jpg";
+          const safeName = rawName.replace(/\.\w+$/, ".jpg");
+          resolve(blob ? new File([blob], safeName, { type: "image/jpeg" }) : file);
+        }, "image/jpeg", 0.95);
+      };
+      img.onerror = () => resolve(file);
+      img.src = URL.createObjectURL(file);
+    });
+  };
 
   useEffect(() => {
     const ytType = platformData.youtube?.type || "video";
@@ -1522,10 +1535,11 @@ function ComposerModal({
   }, [JSON.stringify(selectedChannels), activePreviewPlatform]);
 
   useEffect(() => {
-    if ((!hasInstagram || effectivePostType === "story") && autoDMConfig.enabled) {
+    if ((!isOnlyInstagram || effectivePostType === "story") && autoDMConfig.enabled) {
       setAutoDMConfig((current) => ({ ...current, enabled: false }));
+      setPreviewMode("standard");
     }
-  }, [JSON.stringify(selectedChannels), autoDMConfig.enabled, hasInstagram, effectivePostType]);
+  }, [JSON.stringify(selectedChannels), autoDMConfig.enabled, isOnlyInstagram, effectivePostType]);
 
   /* ── Auto-select connected channels on open ── */
   useEffect(() => {
@@ -1777,14 +1791,16 @@ function ComposerModal({
         return false;
       }
     }
-    if (hasInstagram && effectivePostType !== "story" && autoDMConfig.enabled) {
-      const isAnyComment = autoDMConfig.keywordMatchType === "any" || (autoDMConfig.keywords?.length === 1 && autoDMConfig.keywords[0] === "*");
-      if (!isAnyComment && !autoDMConfig.keywords?.length) {
-        setError("Add at least one Auto DM keyword, select 'Any comment', or turn Auto DM off.");
+    if (isOnlyInstagram && effectivePostType !== "story" && autoDMConfig.enabled) {
+      const isAnyComment = autoDMConfig.triggerFilter === "all" || autoDMConfig.keywords?.includes("*");
+      if (!isAnyComment && (!autoDMConfig.keywords || !autoDMConfig.keywords.filter((k) => k && k !== "*").length)) {
+        setError("Add at least one Auto DM trigger keyword, or select 'Any comment', or turn Auto DM off.");
         return false;
       }
-      if (!autoDMConfig.responseFlow?.nodes?.length) {
-        setError("Add at least one Auto DM response or turn Auto DM off.");
+      const hasOpeningMsg = Boolean(autoDMConfig.responseFlow?.opening_message_enabled && autoDMConfig.responseFlow?.opening_message?.trim());
+      const hasFlowNodes = Boolean(autoDMConfig.responseFlow?.nodes && autoDMConfig.responseFlow.nodes.length > 0);
+      if (!hasOpeningMsg && !hasFlowNodes) {
+        setError("Add at least one Auto DM response (Opening Message or Response Card) or turn Auto DM off.");
         return false;
       }
     }
@@ -1798,6 +1814,7 @@ function ComposerModal({
     scheduledAt,
     autoDMConfig,
     hasInstagram,
+    isOnlyInstagram,
     effectivePostType,
     isInstagramStoryOnly,
   ]);
@@ -1822,10 +1839,27 @@ function ComposerModal({
             },
           }
         : platformData;
+      if (youtubeThumbnail) {
+        formData.append(
+          "youtubeThumbnail",
+          await cropYouTubeThumbnail(youtubeThumbnail, publishPlatformData.youtube?.thumbnailCrop),
+        );
+      }
+
+      if (instagramCover) {
+        formData.append(
+          "instagramCover",
+          await cropInstagramCover(instagramCover),
+        );
+        publishPlatformData.instagram = {
+          ...publishPlatformData.instagram,
+          hasCustomCover: true,
+        };
+      }
+
       formData.append("selectedChannels", JSON.stringify(publishChannels));
       formData.append("postType", publishPostType);
       formData.append("platformData", JSON.stringify(publishPlatformData));
-      
       formData.append("platformPresets", JSON.stringify(
         hasInstagram && publishPostType !== 'post'
           ? {
@@ -1836,14 +1870,12 @@ function ComposerModal({
       ));
       formData.append("userTimezone", userTimezone);
       formData.append("isScheduled", isScheduled ? "true" : "false");
-      if (hasInstagram && publishPostType !== "story" && autoDMConfig.enabled) {
-        const payloadAutoDMConfig = {
+      if (isOnlyInstagram && publishPostType !== "story" && autoDMConfig.enabled) {
+        const payloadConfig = {
           ...autoDMConfig,
-          keywords: (autoDMConfig.keywordMatchType === "any" || !autoDMConfig.keywords?.length)
-            ? ["*"]
-            : autoDMConfig.keywords,
+          keywords: autoDMConfig.triggerFilter === "all" ? ["*"] : (autoDMConfig.keywords || []),
         };
-        formData.append("autoDMConfig", JSON.stringify(payloadAutoDMConfig));
+        formData.append("autoDMConfig", JSON.stringify(payloadConfig));
       }
 
       if (isScheduled) {
@@ -1855,13 +1887,6 @@ function ComposerModal({
           formData.append("media", m.file);
         }
       });
-
-      if (youtubeThumbnail) {
-        formData.append(
-          "youtubeThumbnail",
-          await cropYouTubeThumbnail(youtubeThumbnail, publishPlatformData.youtube?.thumbnailCrop),
-        );
-      }
 
       formData.append("selectedAspectRatio", selectedRatio || "1:1");
       formData.append(
@@ -2026,7 +2051,9 @@ function ComposerModal({
 
   const publishDisabled = loading || hasBlockingError;
   const shellFullscreen = isFullscreen || isMobile;
-  const previewWidth = isFullscreen ? 360 : 300;
+  const previewWidth = isFullscreen
+    ? (previewMode === "autodm" && autoDMConfig.enabled && isOnlyInstagram ? 400 : 360)
+    : (previewMode === "autodm" && autoDMConfig.enabled && isOnlyInstagram ? 340 : 300);
 
   const MOBILE_TABS = [
     { id: "compose", label: "Compose" },
@@ -2326,35 +2353,137 @@ function ComposerModal({
               >
                 <div
                   style={{
-                    padding: isFullscreen ? "14px 18px" : "11px 14px",
-                    borderBottom: "1px solid rgba(20,20,19,0.08)",
+                    padding: isFullscreen ? "10px 16px" : "8px 14px",
+                    borderBottom: "1px solid rgba(20, 20, 19, 0.08)",
                     flexShrink: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    background: "#ffffff",
+                    minHeight: 44,
                   }}
                 >
                   <span
                     style={{
-                      fontSize: 9.5,
-                      fontWeight: 800,
-                      letterSpacing: "0.08em",
-                      color: "var(--slate,#8a8a82)",
-                      textTransform: "uppercase",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: "var(--ink, #141413)",
+                      letterSpacing: "-0.01em",
+                      whiteSpace: "nowrap",
+                      flexShrink: 0,
                     }}
                   >
                     Live Preview
                   </span>
+
+                  {autoDMConfig.enabled && isOnlyInstagram && (
+                    <div
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        background: "rgba(20, 20, 19, 0.05)",
+                        borderRadius: 8,
+                        padding: 2,
+                        border: "1px solid rgba(20, 20, 19, 0.06)",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setPreviewMode("autodm")}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
+                          height: 24,
+                          padding: "0 9px",
+                          borderRadius: 6,
+                          fontSize: 11,
+                          fontWeight: previewMode === "autodm" ? 600 : 500,
+                          whiteSpace: "nowrap",
+                          border: "none",
+                          cursor: "pointer",
+                          transition: "all 0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+                          background: previewMode === "autodm" ? "#ffffff" : "transparent",
+                          color: previewMode === "autodm" ? "var(--arc, #ea580c)" : "var(--slate, #8a8a82)",
+                          boxShadow: previewMode === "autodm" ? "0 1px 3px rgba(0, 0, 0, 0.08), 0 0 1px rgba(0, 0, 0, 0.06)" : "none",
+                        }}
+                      >
+                        <Workflow size={12} strokeWidth={2.2} />
+                        <span>Auto DM</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPreviewMode("standard")}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
+                          height: 24,
+                          padding: "0 9px",
+                          borderRadius: 6,
+                          fontSize: 11,
+                          fontWeight: previewMode === "standard" ? 600 : 500,
+                          whiteSpace: "nowrap",
+                          border: "none",
+                          cursor: "pointer",
+                          transition: "all 0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+                          background: previewMode === "standard" ? "#ffffff" : "transparent",
+                          color: previewMode === "standard" ? "var(--ink, #141413)" : "var(--slate, #8a8a82)",
+                          boxShadow: previewMode === "standard" ? "0 1px 3px rgba(0, 0, 0, 0.08), 0 0 1px rgba(0, 0, 0, 0.06)" : "none",
+                        }}
+                      >
+                        <Smartphone size={12} strokeWidth={2.2} />
+                        <span>Post Preview</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <PreviewPanel
-                  user={user}
-                  selectedChannels={selectedChannels}
-                  caption={caption}
-                  mediaFiles={mediaFiles}
-                  selectedRatio={selectedRatio}
-                  selectedSizePreset={platformPresets[activePreviewBasePlatform]}
-                  youtubeThumbnail={youtubeThumbnail}
-                  activePlatform={activePreviewPlatform}
-                  onActivePlatformChange={setActivePreviewPlatform}
-                  connectedAccounts={connectedAccounts}
-                />
+
+                {previewMode === "autodm" && autoDMConfig.enabled && isOnlyInstagram ? (
+                  <div
+                    className="autodm-preview-canvas flex-1 relative overflow-y-auto flex justify-center items-start pt-5 pb-10 bg-[#faf9f6]/90"
+                    style={{ scrollbarWidth: "none" }}
+                  >
+                    <MobilePreview
+                      selectedMedia={{
+                        media_url: mediaBlobUrl,
+                        thumbnail_url: mediaBlobUrl,
+                        isVideo: mediaIsVideo,
+                        caption: caption || "This is a preview of your Instagram post...",
+                      }}
+                      keywords={autoDMConfig.keywords}
+                      responseFlow={autoDMConfig.responseFlow}
+                      commentReplyText={
+                        Array.isArray(autoDMConfig.commentReplyTexts) && autoDMConfig.commentReplyTexts.length > 0
+                          ? autoDMConfig.commentReplyTexts[0]
+                          : (autoDMConfig.commentReplyText || "")
+                      }
+                      commentReplyEnabled={autoDMConfig.commentReplyEnabled}
+                      requireFollow={autoDMConfig.requireFollow}
+                      fallbackCommentReply={autoDMConfig.fallbackCommentReply}
+                      activeTab={autoDMPreviewTab}
+                      onTabChange={setAutoDMPreviewTab}
+                      account={instagramAccount}
+                      scale={isFullscreen ? 1.05 : 0.95}
+                    />
+                  </div>
+                ) : (
+                  <PreviewPanel
+                    user={user}
+                    selectedChannels={selectedChannels}
+                    caption={caption}
+                    mediaFiles={mediaFiles}
+                    selectedRatio={selectedRatio}
+                    selectedSizePreset={platformPresets[activePreviewBasePlatform]}
+                    youtubeThumbnail={youtubeThumbnail}
+                    instagramCover={instagramCover}
+                    activePlatform={activePreviewPlatform}
+                    onActivePlatformChange={setActivePreviewPlatform}
+                    connectedAccounts={connectedAccounts}
+                  />
+                )}
               </div>
             )}
 
@@ -2396,16 +2525,14 @@ function ComposerModal({
                               alignItems: "center",
                               gap: 6,
                               padding: "4px 10px",
-                              fontSize: 10,
-                              fontWeight: 700,
+                              fontSize: 11,
+                              fontWeight: 600,
                               color: isAiLoading ? "var(--slate,#8a8a82)" : "#4f46e5",
                               background: isAiLoading ? "transparent" : "rgba(79,70,229,0.06)",
                               border: "1px solid rgba(20,20,19,0.1)",
                               borderRadius: "var(--r-btn,10px)",
                               cursor: isAiLoading ? "wait" : "pointer",
                               fontFamily: "inherit",
-                              textTransform: "uppercase",
-                              letterSpacing: "0.04em"
                             }}
                           >
                             {isAiLoading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
@@ -2423,6 +2550,11 @@ function ComposerModal({
                         <div style={{ position: "relative", marginBottom: 16 }}>
                           <textarea
                             value={caption}
+                            onFocus={() => {
+                              if (autoDMConfig.enabled && isOnlyInstagram && previewMode === "autodm") {
+                                setAutoDMPreviewTab("Post");
+                              }
+                            }}
                             onChange={(e) => {
                               setCaption(e.target.value);
                               setError(null);
@@ -2470,8 +2602,8 @@ function ComposerModal({
                                   )
                                 }
                                 style={{
-                                  fontSize: 10,
-                                  fontWeight: 700,
+                                  fontSize: 11,
+                                  fontWeight: 600,
                                   color: "#4f46e5",
                                   background: "none",
                                   border: "none",
@@ -2479,23 +2611,19 @@ function ComposerModal({
                                   display: "flex",
                                   alignItems: "center",
                                   gap: 3,
-                                  letterSpacing: "0.05em",
-                                  textTransform: "uppercase",
                                 }}
                               >
-                                <AtSign size={9} /> Mention
+                                <AtSign size={10} /> Mention
                               </button>
                               <button
                                 onClick={() => setCaption("")}
                                 style={{
-                                  fontSize: 10,
-                                  fontWeight: 700,
+                                  fontSize: 11,
+                                  fontWeight: 600,
                                   color: "var(--slate,#8a8a82)",
                                   background: "none",
                                   border: "none",
                                   cursor: "pointer",
-                                  letterSpacing: "0.05em",
-                                  textTransform: "uppercase",
                                 }}
                               >
                                 Clear
@@ -2680,112 +2808,116 @@ function ComposerModal({
                   <div
                     style={{
                       display: "flex",
-                      gap: 10,
-                      flexWrap: "nowrap",
-                      overflowX: "auto",
-                      paddingTop: 8,
-                      paddingBottom: 10,
-                      paddingLeft: 4,
-                      paddingRight: 4,
-                      scrollbarWidth: "none",
-                      msOverflowStyle: "none",
+                      flexWrap: "wrap",
+                      gap: 8,
+                      width: "100%",
+                      paddingTop: 2,
+                      paddingBottom: 2,
                     }}
                   >
                     {(PLATFORM_LAYOUT_PRESETS[activePreviewBasePlatform] || []).map(
                       (preset) => {
-                        const sizeInfo = smartSizes.find(
-                          (s) => s.id === preset.ratio,
-                        );
                         const isSelected =
                           platformPresets[activePreviewBasePlatform] === preset.id;
                         return (
                           <motion.button
                             key={preset.id}
-                            whileHover={{ scale: 1.02, y: -2 }}
+                            whileHover={{ y: -2 }}
                             whileTap={{ scale: 0.98 }}
-                            onClick={() =>
+                            onClick={() => {
                               setPlatformPresets((prev) => ({
                                 ...prev,
                                 [activePreviewBasePlatform]: preset.id,
-                              }))
-                            }
+                              }));
+                              if (activePreviewBasePlatform === "instagram") {
+                                if (preset.id === "ig-reel") {
+                                  updateInstagramData("type", "reel");
+                                } else if (preset.id === "ig-story") {
+                                  updateInstagramData("type", "story");
+                                } else {
+                                  updateInstagramData("type", "post");
+                                }
+                              }
+                            }}
                             style={{
-                              flexShrink: 0,
-                              minWidth: 130,
-                              padding: "12px 14px",
+                              flex: isMobile ? "1 1 calc(50% - 8px)" : "1 1 92px",
+                              maxWidth: isMobile ? "100%" : "150px",
+                              minWidth: isMobile ? "120px" : "90px",
+                              minHeight: 76,
+                              padding: "10px 8px 9px",
                               background: isSelected
-                                ? "rgba(20,20,19,0.03)"
-                                : "var(--white)",
+                                ? "rgba(234, 88, 12, 0.05)"
+                                : "var(--white, #ffffff)",
                               border: isSelected
-                                ? "2px solid var(--arc)"
-                                : "1px solid rgba(20,20,19,0.08)",
-                              borderRadius: "14px",
+                                ? "1.5px solid var(--arc, #ea580c)"
+                                : "1px solid rgba(20, 20, 19, 0.08)",
+                              borderRadius: "12px",
                               cursor: "pointer",
                               display: "flex",
                               flexDirection: "column",
+                              alignItems: "center",
+                              justifyContent: "center",
                               gap: 4,
-                              textAlign: "left",
+                              textAlign: "center",
                               transition:
                                 "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
                               boxShadow: isSelected
-                                ? "0 4px 12px rgba(243,115,56,0.12)"
-                                : "0 2px 4px rgba(0,0,0,0.02)",
+                                ? "0 2px 10px rgba(234, 88, 12, 0.14)"
+                                : "0 1px 3px rgba(0, 0, 0, 0.02)",
                             }}
                           >
+                            {/* Miniature visual ratio frame icon */}
                             <div
                               style={{
+                                height: 22,
                                 display: "flex",
                                 alignItems: "center",
-                                justifyContent: "space-between",
-                                width: "100%",
+                                justifyContent: "center",
                               }}
                             >
-                              <span
+                              <div
                                 style={{
-                                  fontSize: 11,
-                                  fontWeight: 800,
-                                  color: isSelected
-                                    ? "var(--arc)"
-                                    : "var(--ink)",
+                                  ...getMiniRatioBox(preset.ratio),
+                                  borderRadius: 2.5,
+                                  border: `1.5px solid ${isSelected ? "var(--arc, #ea580c)" : "rgba(20, 20, 19, 0.3)"}`,
+                                  background: isSelected ? "rgba(234, 88, 12, 0.14)" : "rgba(20, 20, 19, 0.03)",
+                                  transition: "all 0.15s ease",
                                 }}
-                              >
-                                {preset.title}
-                              </span>
-                              {sizeInfo?.badge && (
-                                <div
-                                  style={{
-                                    fontSize: 8,
-                                    fontWeight: 900,
-                                    background:
-                                      sizeInfo.badge === "best"
-                                        ? "var(--arc)"
-                                        : "transparent",
-                                    color:
-                                      sizeInfo.badge === "best"
-                                        ? "white"
-                                        : "var(--arc)",
-                                    border:
-                                      sizeInfo.badge === "best"
-                                        ? "none"
-                                        : "1px solid var(--arc)",
-                                    padding: "1px 5px",
-                                    borderRadius: 4,
-                                    textTransform: "uppercase",
-                                  }}
-                                >
-                                  {sizeInfo.badge}
-                                </div>
-                              )}
+                              />
                             </div>
+
+                            {/* Format Title */}
                             <span
                               style={{
-                                fontSize: 9,
-                                color: "var(--slate)",
-                                fontWeight: 500,
-                                opacity: 0.7,
+                                fontSize: 12,
+                                fontWeight: isSelected ? 700 : 600,
+                                color: isSelected
+                                  ? "var(--arc, #ea580c)"
+                                  : "var(--ink, #141413)",
+                                lineHeight: 1.25,
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                maxWidth: "100%",
                               }}
                             >
-                              {preset.subtitle} ({preset.ratio})
+                              {preset.title}
+                            </span>
+
+                            {/* Aspect Ratio only (NO resolution, NO badges) */}
+                            <span
+                              style={{
+                                fontSize: 11,
+                                fontWeight: 500,
+                                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                                color: isSelected
+                                  ? "var(--arc, #ea580c)"
+                                  : "var(--slate, #8a8a82)",
+                                opacity: isSelected ? 0.95 : 0.65,
+                                letterSpacing: "0.02em",
+                              }}
+                            >
+                              {preset.ratio}
                             </span>
                           </motion.button>
                         );
@@ -3024,16 +3156,22 @@ function ComposerModal({
                   }
                   youtubeThumbnail={youtubeThumbnail}
                   onYoutubeThumbnailChange={setYoutubeThumbnail}
+                  instagramCover={instagramCover}
+                  onInstagramCoverChange={setInstagramCover}
                   postType={effectivePostType}
                 />
 
-                {/* ✨ Smart Warnings ✨ */}
-                {hasInstagram && effectivePostType !== "story" && (
+                {/* ✨ Instagram Auto DM ✨ */}
+                {isOnlyInstagram && effectivePostType !== "story" && (
                   <Section label="Instagram Auto DM" mb={20}>
                     <AutoDMComposerPanel
                       config={autoDMConfig}
                       onChange={setAutoDMConfig}
                       postType={effectivePostType}
+                      onSectionFocus={(tab) => {
+                        setPreviewMode("autodm");
+                        setAutoDMPreviewTab(tab);
+                      }}
                     />
                   </Section>
                 )}
@@ -3356,11 +3494,9 @@ const Section = memo(function Section({ label, hint, mb = 16, children }) {
         >
           <span
             style={{
-              fontSize: 9.5,
-              fontWeight: 800,
-              letterSpacing: "0.08em",
+              fontSize: 11,
+              fontWeight: 700,
               color: "var(--slate,#8a8a82)",
-              textTransform: "uppercase",
             }}
           >
             {label}
@@ -3368,9 +3504,9 @@ const Section = memo(function Section({ label, hint, mb = 16, children }) {
           {hint && (
             <span
               style={{
-                fontSize: 9,
+                fontSize: 10,
                 color: "var(--slate,#8a8a82)",
-                opacity: 0.45,
+                opacity: 0.6,
                 fontWeight: 500,
               }}
             >
@@ -3388,11 +3524,9 @@ const RowLabel = memo(function RowLabel({ children }) {
   return (
     <p
       style={{
-        fontSize: 9,
-        fontWeight: 800,
-        letterSpacing: "0.08em",
+        fontSize: 11,
+        fontWeight: 700,
         color: "var(--slate,#8a8a82)",
-        textTransform: "uppercase",
         margin: "0 0 5px",
       }}
     >

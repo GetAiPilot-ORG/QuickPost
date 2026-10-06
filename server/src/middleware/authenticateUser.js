@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import jwt from 'jsonwebtoken';
 import { createOrUpdateUser } from '../services/supabase.js';
 
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -13,6 +14,8 @@ const supabaseAdmin = createClient(
   supabaseKey,
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
+
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
 const userSyncCache = new Map();
 
@@ -54,16 +57,19 @@ export async function authenticateUser(req, res, next) {
 
     // 1. Verify token via Supabase
     let user = null;
+    let authError = null;
     try {
       const { data, error } = await supabaseAdmin.auth.getUser(token);
       if (!error && data?.user) {
         user = data.user;
+      } else if (error) {
+        authError = error;
       }
     } catch (sbErr) {
-      // Ignore and try fallback
+      authError = sbErr;
     }
 
-    // 2. Fallback to local JWT verification if Supabase getUser did not resolve user
+    // 2. Fallback to local JWT verification with JWT_SECRET (which is the Supabase JWT secret)
     if (!user) {
       try {
         const decoded = jwt.verify(token, JWT_SECRET);
@@ -72,22 +78,25 @@ export async function authenticateUser(req, res, next) {
             id: decoded.userId || decoded.id || decoded.sub,
             email: decoded.email,
             user_metadata: {
-              full_name: decoded.name || decoded.full_name,
-              avatar_url: decoded.picture || decoded.avatar_url,
+              full_name: decoded.name || decoded.full_name || decoded.user_metadata?.full_name,
+              avatar_url: decoded.picture || decoded.avatar_url || decoded.user_metadata?.avatar_url,
             }
           };
         }
       } catch (jwtErr) {
-        // Both failed
+        if (jwtErr.name === 'TokenExpiredError') {
+          authError = jwtErr;
+        }
       }
     }
 
     if (!user) {
-      console.error('❌ [AUTH] Token verification failed: neither Supabase nor JWT secret matched token');
+      const isExpired = authError?.name === 'TokenExpiredError' || /expired/i.test(authError?.message || '');
+      console.warn(`❌ [AUTH] Token verification failed: ${authError?.message || 'invalid token'}`);
       return res.status(401).json({
         success: false,
-        error: 'Invalid token',
-        message: 'Authentication token is invalid or expired'
+        error: isExpired ? 'TOKEN_EXPIRED' : 'Invalid token',
+        message: isExpired ? 'Authentication token is expired' : 'Authentication token is invalid or expired'
       });
     }
 
@@ -148,8 +157,6 @@ export async function authenticateUser(req, res, next) {
 /**
  * Generate JWT token (Legacy support)
  */
-import jwt from 'jsonwebtoken';
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 export function generateToken(payload, expiresIn = '7d') {
   return jwt.sign(payload, JWT_SECRET, { expiresIn });
 }

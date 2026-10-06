@@ -167,14 +167,19 @@ const extractEvents = (payload: any): WebhookEvent[] => {
       const eventId = String(change?.value?.id ?? `${entryId}-${Date.now()}-comment`);
       const mediaId = String(change?.value?.media?.id ?? '');
 
-      // if (senderId === entryId || senderId === String(change?.value?.instagram_business_account_id ?? '')) {
-      //   logInfo('Skipping own comment webhook event', {
-      //     entryId,
-      //     senderId,
-      //     eventId,
-      //   });
-      //   continue;
-      // }
+      if (
+        senderId &&
+        (senderId === entryId ||
+          senderId === String(change?.value?.instagram_business_account_id ?? '') ||
+          senderId === igId)
+      ) {
+        logInfo('Skipping own comment webhook event', {
+          entryId,
+          senderId,
+          eventId,
+        });
+        continue;
+      }
 
       logInfo('Extracted comment event details', {
         entryId,
