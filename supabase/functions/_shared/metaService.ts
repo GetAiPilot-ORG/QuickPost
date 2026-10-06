@@ -407,6 +407,52 @@ export const sendInstagramCommentReply = async (
   };
 };
 
+export const likeInstagramComment = async (
+  commentId: string,
+  igUserId: string,
+  accessToken: string,
+  requestId?: string
+) => {
+  const isIgToken = accessToken.startsWith('IG');
+  const baseUrl = isIgToken ? `${IG_GRAPH_BASE_URL}/v21.0` : GRAPH_BASE_URL;
+  const url = `${baseUrl}/${igUserId}/likes?comment_id=${encodeURIComponent(commentId)}`;
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ comment_id: commentId }),
+    });
+
+    const result = await parseGraphResponse<{ success?: boolean }>(response);
+
+    logInfo('Instagram comment liked successfully', {
+      requestId,
+      commentId,
+      igUserId,
+      success: result.success ?? true,
+    });
+
+    return { ok: true as const, result };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logError('Failed liking Instagram comment', {
+      requestId,
+      commentId,
+      igUserId,
+      error: message,
+    });
+
+    return {
+      ok: false as const,
+      error: message,
+    };
+  }
+};
+
 export const sendInstagramMessage = async (
   igId: string,
   recipientId: string,
