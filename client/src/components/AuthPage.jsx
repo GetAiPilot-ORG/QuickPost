@@ -200,6 +200,21 @@ export default function AuthPage() {
           </AnimatePresence>
 
           <div className="space-y-3">
+            {/* GetAiPilot Hub SSO Button */}
+            <Button
+              type="button"
+              size="lg"
+              className="w-full h-12 bg-gradient-to-r from-[#031b4e] to-[#0d3880] text-white hover:opacity-95 hover:shadow-md transition-all duration-300 font-bold shadow-sm flex items-center justify-center gap-2.5 border border-[#031b4e]/20 cursor-pointer"
+              onClick={() => {
+                const hubUrl = "https://getaipilot.in";
+                window.location.href = `${hubUrl}/login?sso=social`;
+              }}
+              disabled={loading}
+            >
+              <img src="https://getaipilot.in/logo.png" alt="GetAiPilot Logo" className="size-5 rounded object-contain" />
+              <span>Continue with GetAiPilot</span>
+            </Button>
+
             <Button
               type="button"
               variant="outline"
