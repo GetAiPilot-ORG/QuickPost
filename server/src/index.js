@@ -18,7 +18,10 @@ import autodmRouter from './routes/autodm.js';
 import billingRouter from './routes/billing.js';
 import youtubeRouter from './routes/youtube.js';
 import inboxRouter from './routes/inbox.js';
+import smmRouter from './routes/smm.js';
 import { initScheduler } from './services/scheduler.js';
+import { startSmmQueueWorker } from './services/smmQueueWorker.js';
+import { startSmmAutoPilotWorker } from './services/smmAutoPilotWorker.js';
 import supabase from './services/supabase.js';
 import { processInstagramWebhook } from './services/instapilot.js';
 import { persistInstagramWebhookToUnifiedInbox } from './services/unifiedInboxWebhook.js';
@@ -90,6 +93,7 @@ app.use('/api/autodm', autodmRouter);
 app.use('/api/billing', billingRouter);
 app.use('/api/youtube', youtubeRouter);
 app.use('/api', inboxRouter);
+app.use('/api/smm', smmRouter);
 
 // SSE Endpoint for InstaPilot Realtime
 app.get('/api/instapilot/stream', (req, res) => {
@@ -400,6 +404,12 @@ const server = app.listen(PORT, () => {
 
   // Initialize Post Scheduler
   initScheduler();
+
+  // Initialize Social Growth SMM Queue Worker
+  startSmmQueueWorker();
+
+  // Initialize Smart Auto-Pilot Instagram Poller & Detection Worker
+  startSmmAutoPilotWorker();
 
   console.log(`\n✨ Ready to broadcast!\n`);
 });
