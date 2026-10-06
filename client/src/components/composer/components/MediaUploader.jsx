@@ -77,14 +77,12 @@ const MediaThumb = memo(function MediaThumb({ item, index, onRemove, onCrop }) {
             top: 4,
             left: 4,
             zIndex: 3,
-            fontSize: 7,
-            fontWeight: 900,
-            letterSpacing: "0.06em",
+            fontSize: 9,
+            fontWeight: 700,
             padding: "2px 6px",
             borderRadius: 4,
             background: "var(--ink, #111111)",
             color: "white",
-            textTransform: "uppercase",
           }}
         >
           Cover
@@ -435,13 +433,11 @@ const MediaUploader = memo(function MediaUploader({
           </p>
           <p
             style={{
-              fontSize: 9.5,
+              fontSize: 10.5,
               color: "var(--slate, #8a8a82)",
-              opacity: 0.5,
-              marginTop: 5,
-              textTransform: "uppercase",
-              letterSpacing: "0.07em",
-              fontWeight: 700,
+              opacity: 0.6,
+              marginTop: 4,
+              fontWeight: 500,
             }}
           >
             Images · Videos · {remaining} file{remaining !== 1 ? "s" : ""}{" "}

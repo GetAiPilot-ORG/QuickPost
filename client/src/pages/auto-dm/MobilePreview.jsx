@@ -94,12 +94,38 @@ function Avatar({ src, username, className = 'h-7 w-7' }) {
   );
 }
 
-export default function MobilePreview({ selectedMedia, keywords, responseFlow, commentReplyText, commentReplyEnabled, requireFollow, fallbackCommentReply, activeTab = 'Post', onTabChange }) {
-  const { activeAccount } = useAutoDM();
-  const [previewAsFollower, setPreviewAsFollower] = useState(true);
+function formatPreviewTemplate(text) {
+  if (!text) return '';
+  return String(text)
+    .replace(/\{\{\s*(first_name|firstname)\s*\}\}/gi, 'Alex')
+    .replace(/\{\{\s*username\s*\}\}/gi, '@alex_dev')
+    .replace(/\{\{\s*(name|full_name)\s*\}\}/gi, 'Alex');
+}
 
+export default function MobilePreview({
+  selectedMedia,
+  keywords,
+  responseFlow,
+  commentReplyText,
+  commentReplyEnabled,
+  requireFollow,
+  fallbackCommentReply,
+  activeTab = 'Post',
+  onTabChange,
+  account,
+  scale = 1.1,
+}) {
+  let contextAccount = null;
+  try {
+    const ctx = useAutoDM();
+    contextAccount = ctx?.activeAccount;
+  } catch {
+    // Safe when rendered outside AutoDMProvider
+  }
+
+  const activeAccount = account || contextAccount;
   const username = activeAccount?.username || 'cricboss121';
-  const avatar = activeAccount?.profile_picture_url || '';
+  const avatar = activeAccount?.profile_picture_url || activeAccount?.profilePicture || '';
   const triggerKeyword = keywords?.[0] || 'link';
   const openingMessage =
     responseFlow?.opening_message ||
@@ -292,9 +318,11 @@ export default function MobilePreview({ selectedMedia, keywords, responseFlow, c
                   <span className="font-semibold">{username}</span> <span className="text-gray-500 text-[10px]">Now</span>
                 </p>
                 <p className="text-[11px] leading-[1.3] mt-0.5 text-black">
-                  {requireFollow && !previewAsFollower 
-                    ? fallbackCommentReply || 'Please follow our account to receive the link!' 
-                    : commentReplyText || 'Check your DM'}
+                  {formatPreviewTemplate(
+                    requireFollow && !previewAsFollower 
+                      ? fallbackCommentReply || 'Please follow our account to receive the link!' 
+                      : commentReplyText || 'Check your DM'
+                  )}
                 </p>
                 <p className="mt-1 text-[10px] font-semibold text-gray-500 flex gap-4">
                   <span>Reply</span>
@@ -341,7 +369,7 @@ export default function MobilePreview({ selectedMedia, keywords, responseFlow, c
         <div className="flex max-w-[240px] items-end gap-2">
           <Avatar src={avatar} username={username} className="h-5 w-5 shrink-0" />
           <div className="rounded-[18px] rounded-tl-sm bg-[#f0f0f0] p-3">
-            <p className="whitespace-pre-line text-[11px] font-normal leading-[1.35]">{openingMessage}</p>
+            <p className="whitespace-pre-line text-[11px] font-normal leading-[1.35]">{formatPreviewTemplate(openingMessage)}</p>
             <div className="mt-2 rounded-lg bg-white border border-gray-200 px-3 py-1.5 text-center text-[10px] font-semibold text-[#0095f6]">
               {openingButton}
             </div>
@@ -378,7 +406,10 @@ export default function MobilePreview({ selectedMedia, keywords, responseFlow, c
   );
 
   return (
-    <div className="flex flex-col items-center transform scale-[1.2] origin-top transition-all duration-300">
+    <div
+      className="flex flex-col items-center origin-top transition-all duration-300"
+      style={{ transform: `scale(${scale})` }}
+    >
       {requireFollow && activeTab === 'Comments' && (
         <div className="mb-6 flex items-center gap-2 rounded-full bg-white px-3 py-1.5 shadow-sm ring-1 ring-black/5 text-[11px]">
           <span className={previewAsFollower ? "font-semibold text-primary" : "text-gray-400"}>Following</span>

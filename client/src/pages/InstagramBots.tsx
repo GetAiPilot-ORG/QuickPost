@@ -484,7 +484,7 @@ export default function InstagramBots() {
                 </section>
 
                 <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
-                  <TestChat botId={selectedBot?.id} compact={false} showHeader={false} />
+                  <TestChat botId={selectedBot?.id} systemPrompt={selectedBot?.system_prompt} compact={false} showHeader={false} />
 
                   <div className="space-y-4">
                     <div className="rounded-xl border border-black/10 bg-white p-5 shadow-sm">
@@ -537,7 +537,7 @@ export default function InstagramBots() {
           </div>
         </div>
       </div>
-      <PreviewDrawer open={previewOpen} onClose={() => setPreviewOpen(false)} botId={selectedBot?.id} />
+      <PreviewDrawer open={previewOpen} onClose={() => setPreviewOpen(false)} botId={selectedBot?.id} systemPrompt={selectedBot?.system_prompt} />
     </div>
   );
 }
@@ -610,7 +610,7 @@ function StepCard({
   );
 }
 
-function PreviewDrawer({ open, onClose, botId }: { open: boolean; onClose: () => void; botId?: string }) {
+function PreviewDrawer({ open, onClose, botId, systemPrompt }: { open: boolean; onClose: () => void; botId?: string; systemPrompt?: string }) {
   return (
     <div className={`fixed inset-0 z-[90] ${open ? "" : "pointer-events-none"}`}>
       <button
@@ -639,7 +639,7 @@ function PreviewDrawer({ open, onClose, botId }: { open: boolean; onClose: () =>
           </button>
         </div>
         <div className="p-3">
-          <TestChat botId={botId} compact showHeader={false} />
+          <TestChat botId={botId} systemPrompt={systemPrompt} compact showHeader={false} />
         </div>
       </aside>
     </div>

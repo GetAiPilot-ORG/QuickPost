@@ -272,19 +272,29 @@ const renderMessageTemplate = (
   text: string,
   profile: SenderProfile,
 ): string => {
+  const rawUsername = (profile.username || "").trim();
+  const formattedUsername = rawUsername
+    ? (rawUsername.startsWith("@") ? rawUsername : `@${rawUsername}`)
+    : (profile.firstName && profile.firstName !== "there" ? `@${profile.firstName}` : "");
+
+  const firstName =
+    profile.firstName && profile.firstName !== "there"
+      ? profile.firstName
+      : (rawUsername ? rawUsername.replace(/^@/, "") : "there");
+
   const variables: Record<string, string> = {
-    first_name: profile.firstName,
-    firstname: profile.firstName,
-    name: profile.fullName,
-    full_name: profile.fullName,
-    username: profile.username,
+    first_name: firstName,
+    firstname: firstName,
+    name: profile.fullName || firstName,
+    full_name: profile.fullName || firstName,
+    username: formattedUsername || (firstName !== "there" ? `@${firstName}` : "@user"),
   };
 
   return text.replace(
     /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g,
     (match, key: string) => {
       const value = variables[key.toLowerCase()];
-      return value || "";
+      return typeof value === "string" ? value : "";
     },
   );
 };
@@ -1015,13 +1025,18 @@ const getAllMatchingAutomations = (
   messageText: string,
 ): AutomationRecord[] => {
   const normalizedText = (messageText || "").toLowerCase().trim();
+  const rawText = (messageText || "").trim();
 
   return automations.filter((automation) => {
     const keywords = automation.keywords || [];
+    const isCaseSensitive = Boolean((automation as any).is_case_sensitive);
+    const textToCheck = isCaseSensitive ? rawText : normalizedText;
+
     return keywords.some((k) => {
-      const normalizedK = k.trim().toLowerCase();
-      if (normalizedK === '*') return true;
-      return normalizedK.length > 0 && normalizedText.includes(normalizedK);
+      const cleanK = (k || "").trim();
+      if (cleanK === '*') return true;
+      const keyToCheck = isCaseSensitive ? cleanK : cleanK.toLowerCase();
+      return keyToCheck.length > 0 && textToCheck.includes(keyToCheck);
     });
   });
 };
@@ -1319,6 +1334,19 @@ const refreshAccountTokenIfNeeded = async (
 };
 
 export const processAutomationEvent = async (payload: AutomationInput) => {
+  // Prevent self-action loop: bot replying to its own comment or DM
+  if (payload.senderId && payload.igId && payload.senderId === payload.igId) {
+    logInfo("Skipping automation: senderId matches account igId (self-action)", {
+      requestId: payload.requestId,
+      senderId: payload.senderId,
+      igId: payload.igId,
+    });
+    return {
+      status: "ignored_self_action",
+      sentCount: 0,
+    };
+  }
+
   const supabase = getSupabaseAdmin();
 
   let { data: accounts, error: accountError } = await supabase
@@ -1333,6 +1361,25 @@ export const processAutomationEvent = async (payload: AutomationInput) => {
 
   if (accountError) {
     throw new Error(`Failed loading account: ${accountError.message}`);
+  }
+
+  if (
+    accounts &&
+    accounts.some(
+      (a: any) =>
+        a.ig_id === payload.senderId ||
+        a.webhook_ig_id === payload.senderId ||
+        a.page_id === payload.senderId,
+    )
+  ) {
+    logInfo("Skipping automation: senderId matches owned account ID (self-action)", {
+      requestId: payload.requestId,
+      senderId: payload.senderId,
+    });
+    return {
+      status: "ignored_self_action",
+      sentCount: 0,
+    };
   }
 
   let webhookIgIdForSend = payload.igId;
@@ -2409,8 +2456,18 @@ export const processAutomationEvent = async (payload: AutomationInput) => {
     matched.comment_reply_text?.trim()
   ) {
     commentReplyAttempted = true;
+    let chosenReply = matched.comment_reply_text.trim();
+    const flowVariations = (matched.response_flow as any)?.comment_reply_variations;
+    if (Array.isArray(flowVariations) && flowVariations.length > 0) {
+      chosenReply = String(flowVariations[Math.floor(Math.random() * flowVariations.length)] || chosenReply).trim();
+    } else if (chosenReply.includes("|||")) {
+      const variations = chosenReply.split("|||").map((v) => v.trim()).filter(Boolean);
+      if (variations.length > 0) {
+        chosenReply = variations[Math.floor(Math.random() * variations.length)];
+      }
+    }
     const commentReplyText = renderMessageTemplate(
-      stripBrandingWatermark(matched.comment_reply_text.trim()),
+      stripBrandingWatermark(chosenReply),
       senderProfile,
     ).trim();
     const commentReplyResult = await sendInstagramCommentReply(
@@ -2794,8 +2851,18 @@ export const processAutomationEvent = async (payload: AutomationInput) => {
           secondaryAutomation.comment_reply_enabled &&
           secondaryAutomation.comment_reply_text?.trim()
         ) {
+          let secChosenReply = secondaryAutomation.comment_reply_text.trim();
+          const secFlowVariations = (secondaryAutomation.response_flow as any)?.comment_reply_variations;
+          if (Array.isArray(secFlowVariations) && secFlowVariations.length > 0) {
+            secChosenReply = String(secFlowVariations[Math.floor(Math.random() * secFlowVariations.length)] || secChosenReply).trim();
+          } else if (secChosenReply.includes("|||")) {
+            const secVariations = secChosenReply.split("|||").map((v) => v.trim()).filter(Boolean);
+            if (secVariations.length > 0) {
+              secChosenReply = secVariations[Math.floor(Math.random() * secVariations.length)];
+            }
+          }
           const secReplyText = renderMessageTemplate(
-            stripBrandingWatermark(secondaryAutomation.comment_reply_text.trim()),
+            stripBrandingWatermark(secChosenReply),
             senderProfile,
           ).trim();
           await sendInstagramCommentReply(

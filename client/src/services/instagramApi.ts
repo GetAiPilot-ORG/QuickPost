@@ -57,8 +57,8 @@ export async function deleteKnowledgeSource(sourceId: string) {
   await apiClient.delete(`/api/instapilot/knowledge/${sourceId}`);
 }
 
-export async function testInstagramBotReply(botId: string, message: string) {
-  const { data } = await apiClient.post(`/api/instapilot/bots/${botId}/test-reply`, { message });
+export async function testInstagramBotReply(botId: string, message: string, system_prompt?: string, history: any[] = []) {
+  const { data } = await apiClient.post(`/api/instapilot/bots/${botId}/test-reply`, { message, system_prompt, history });
   return data.reply;
 }
 

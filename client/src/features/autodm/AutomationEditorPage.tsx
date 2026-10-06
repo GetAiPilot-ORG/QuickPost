@@ -105,7 +105,9 @@ export default function AutomationEditorPage() {
         setKeywords(automation.keywords || []);
         setIsCaseSensitive(Boolean(automation.is_case_sensitive));
         setCommentReplyEnabled(Boolean(automation.comment_reply_enabled));
-        setCommentReplyText(automation.comment_reply_text || "");
+        const rawReply = String(automation.comment_reply_text || "");
+        const cleanReply = rawReply.includes("|||") ? rawReply.split("|||")[0].trim() : rawReply.trim();
+        setCommentReplyText(cleanReply);
         setRequireFollow(Boolean(automation.require_follow));
         setFallbackCommentReply(automation.fallback_comment_reply || "");
         setResponseFlow(automation.response_flow || { nodes: [], opening_message_enabled: false, opening_message: "" });

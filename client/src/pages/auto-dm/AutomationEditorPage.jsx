@@ -433,8 +433,9 @@ export default function AutomationEditorPage() {
           setKeywords(savedKeywords);
         }
         setIsCaseSensitive(Boolean(data.is_case_sensitive));
-        setCommentReplyEnabled(data.comment_reply_enabled !== false);
-        setCommentReplyText(data.comment_reply_text || 'Sent it to your DM. Tap SETUP to continue.');
+        const rawReply = String(data.comment_reply_text || '');
+        const cleanReply = rawReply.includes('|||') ? rawReply.split('|||')[0].trim() : rawReply.trim();
+        setCommentReplyText(cleanReply || 'Sent it to your DM. Tap SETUP to continue.');
         setRequireFollow(Boolean(data.require_follow));
         setFallbackCommentReply(data.fallback_comment_reply || '');
         setScheduleType(data.schedule_type || 'manual');

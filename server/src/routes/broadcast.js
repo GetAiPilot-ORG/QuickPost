@@ -56,13 +56,15 @@ router.post(
     upload.fields([
       { name: "media", maxCount: 10 },
       { name: "youtubeThumbnail", maxCount: 1 },
+      { name: "instagramCover", maxCount: 1 },
+      { name: "coverImage", maxCount: 1 },
     ])(req, res, (err) => {
       if (err) return handleUploadError(err, req, res, next);
       next();
     });
   },
   (req, res, next) => {
-    if (!req.files || (!req.files.media && !req.files.youtubeThumbnail)) {
+    if (!req.files || (!req.files.media && !req.files.youtubeThumbnail && !req.files.instagramCover && !req.files.coverImage)) {
       return res.status(400).json({ success: false, error: "No media files uploaded" });
     }
     next();
@@ -126,7 +128,8 @@ router.post(
         typeof autoDMConfigField === "string"
           ? JSON.parse(autoDMConfigField)
           : autoDMConfigField;
-      const canUseAutoDM = selectedPostType !== "story";
+      const isOnlyInstagram = channels.length > 0 && channels.every(c => c === "instagram" || c.startsWith("instagram:"));
+      const canUseAutoDM = isOnlyInstagram && selectedPostType !== "story";
 
     // ── Validate scheduled time ───────────────────────────────────────────
     if (isScheduled && scheduledAt) {
@@ -142,6 +145,9 @@ router.post(
 
     const uploadedFiles = req.files['media'] || [];
     const thumbnailFile = req.files['youtubeThumbnail'] ? req.files['youtubeThumbnail'][0] : null;
+    const instagramCoverFile = req.files['instagramCover']
+      ? req.files['instagramCover'][0]
+      : (req.files['coverImage'] ? req.files['coverImage'][0] : null);
 
       const filePaths = uploadedFiles.map((f) => f.path);
       const filenames = uploadedFiles.map((f) => f.filename);
@@ -154,7 +160,7 @@ router.post(
             req.entitlements?.limits?.scheduled_queue,
           );
         } catch (queueError) {
-          cleanupFiles(filePaths, thumbnailFile);
+          cleanupFiles(filePaths, thumbnailFile, instagramCoverFile);
           return res.status(queueError.code === 'PLAN_LIMIT_REACHED' ? 403 : 500).json({
             success: false,
             error: queueError.message,
@@ -174,11 +180,11 @@ router.post(
       const primaryInputPath = uploadedFiles.length > 0 ? uploadedFiles[0].path : null;
 
       if (selectedPostType === "reel" && !isVideo) {
-        cleanupFiles(filePaths, thumbnailFile);
+        cleanupFiles(filePaths, thumbnailFile, instagramCoverFile);
         return res.status(400).json({ success: false, error: "Reels require a video file." });
       }
       if (selectedPostType === "story" && uploadedFiles.length > 1) {
-        cleanupFiles(filePaths, thumbnailFile);
+        cleanupFiles(filePaths, thumbnailFile, instagramCoverFile);
         return res.status(400).json({ success: false, error: "Stories support one image or video at a time." });
       }
 
@@ -186,7 +192,7 @@ router.post(
         (c) => c === "youtube" || String(c).startsWith("youtube:"),
       );
       if (hasYoutube && !isVideo) {
-        cleanupFiles(filePaths, thumbnailFile);
+        cleanupFiles(filePaths, thumbnailFile, instagramCoverFile);
         return res.status(400).json({
           success: false,
           error: "YouTube only supports video uploads (.mp4, .mov, .webm, .mkv). Images and GIFs cannot be posted to YouTube.",
@@ -229,6 +235,7 @@ router.post(
       filePaths,
       filenames,
       thumbnailFile,
+      instagramCoverFile,
       isVideo,
       mediaType,
       postType: selectedPostType,
@@ -268,7 +275,7 @@ router.post(
 async function processBroadcastJob({
   jobId, userId, user, caption, channels, platData,
   uploadedFiles, filePaths, filenames,
-  thumbnailFile, isVideo, mediaType, postType, primaryVideoPath,
+  thumbnailFile, instagramCoverFile, isVideo, mediaType, postType, primaryVideoPath,
   platformVariants, generatedVariantPaths,
   selectedAspectRatio, selectedPostSizePreset, parsedPresets,
   isScheduled, scheduledAt, userTimezone, autoDMConfig
@@ -276,7 +283,8 @@ async function processBroadcastJob({
   console.log(
     `\n🚀 [JOB:${jobId}] Starting background broadcast for user: ${userId}`,
   );
-  const canUseAutoDM = postType !== "story";
+  const isOnlyInstagram = (channels || []).length > 0 && (channels || []).every(c => c === "instagram" || c.startsWith("instagram:"));
+  const canUseAutoDM = isOnlyInstagram && postType !== "story";
   const nonYoutubeChannels = (channels || []).filter((c) => !String(c).startsWith("youtube"));
   const needsCloudinary = isScheduled || nonYoutubeChannels.length > 0;
 
@@ -364,8 +372,23 @@ async function processBroadcastJob({
         autoCoverImageUrl = mediaUrls[firstImageIdx];
       }
 
-      // Thumbnail logic
-      finalThumbnailUrl = autoCoverImageUrl;
+      // Thumbnail & Cover logic
+      let instagramCoverUrl = null;
+
+      if (instagramCoverFile && isCloudinaryConfigured()) {
+        updateJob(jobId, { step: "Uploading Reel cover…", progress: 28 });
+        const coverUpload = await uploadToCloudinary(
+          instagramCoverFile.path,
+          "image",
+        );
+        instagramCoverUrl = coverUpload.url;
+      } else if (instagramCoverFile) {
+        const serverPublicUrl =
+          process.env.SERVER_PUBLIC_URL || "http://localhost:5000";
+        instagramCoverUrl = `${serverPublicUrl}/uploads/${instagramCoverFile.filename}`;
+      }
+
+      finalThumbnailUrl = instagramCoverUrl || autoCoverImageUrl;
       if (thumbnailFile && isCloudinaryConfigured()) {
         updateJob(jobId, { step: "Uploading thumbnail…", progress: 28 });
         const thumbUpload = await uploadToCloudinary(
@@ -373,12 +396,22 @@ async function processBroadcastJob({
           "image",
         );
         finalThumbnailUrl = thumbUpload.url;
+      } else if (thumbnailFile) {
+        const serverPublicUrl =
+          process.env.SERVER_PUBLIC_URL || "http://localhost:5000";
+        finalThumbnailUrl = `${serverPublicUrl}/uploads/${thumbnailFile.filename}`;
       } else if (mediaType === "video" && !finalThumbnailUrl && mediaUrls[0]) {
         finalThumbnailUrl = mediaUrls[0].replace(/\.[^/.]+$/, ".jpg");
         console.log(
           `🎬 [JOB:${jobId}] Generated auto-thumbnail for video:`,
           finalThumbnailUrl,
         );
+      }
+
+      if (instagramCoverUrl) {
+        platData.instagramCoverUrl = instagramCoverUrl;
+        if (!platData.instagram) platData.instagram = {};
+        platData.instagram.coverUrl = instagramCoverUrl;
       }
 
       updateJob(jobId, {
@@ -397,6 +430,15 @@ async function processBroadcastJob({
       console.log(`⚡ [JOB:${jobId}] Direct YouTube route: Bypassing Cloudinary video upload for immediate publishing.`);
       const serverPublicUrl = process.env.SERVER_PUBLIC_URL || "http://localhost:5000";
       mediaUrls = filenames.map((name) => `${serverPublicUrl}/uploads/${name}`);
+
+      if (instagramCoverFile) {
+        const coverUpload = await uploadToCloudinary(instagramCoverFile.path, "image");
+        const instagramCoverUrl = coverUpload.url;
+        finalThumbnailUrl = instagramCoverUrl;
+        platData.instagramCoverUrl = instagramCoverUrl;
+        if (!platData.instagram) platData.instagram = {};
+        platData.instagram.coverUrl = instagramCoverUrl;
+      }
 
       if (thumbnailFile) {
         updateJob(jobId, { step: "Uploading custom thumbnail…", progress: 28 });
@@ -422,12 +464,21 @@ async function processBroadcastJob({
       );
       if (firstImageIdx !== -1) autoCoverImageUrl = mediaUrls[firstImageIdx];
       finalThumbnailUrl = autoCoverImageUrl;
+
+      if (instagramCoverFile) {
+        const instagramCoverUrl = `${serverPublicUrl}/uploads/${instagramCoverFile.filename}`;
+        finalThumbnailUrl = instagramCoverUrl;
+        platData.instagramCoverUrl = instagramCoverUrl;
+        if (!platData.instagram) platData.instagram = {};
+        platData.instagram.coverUrl = instagramCoverUrl;
+      }
+
       updateJob(jobId, { progress: 30, step: "Publishing to platforms…" });
     }
   } catch (uploadErr) {
     console.error(`❌ [JOB:${jobId}] Cloud upload failed:`, uploadErr.message);
     failJob(jobId, `Cloud upload failed: ${uploadErr.message}`);
-    cleanupFiles(filePaths, thumbnailFile);
+    cleanupFiles(filePaths, thumbnailFile, instagramCoverFile);
     return;
   }
 
@@ -464,12 +515,12 @@ async function processBroadcastJob({
       });
       console.log(`📅 [JOB:${jobId}] Broadcast successfully scheduled. Cleaning up local files to save space.`);
       if (isCloudinaryConfigured() && needsCloudinary) {
-        cleanupFiles(filePaths, thumbnailFile);
+        cleanupFiles(filePaths, thumbnailFile, instagramCoverFile);
       }
       return;
     } catch (dbErr) {
       failJob(jobId, `Scheduling failed: ${dbErr.message}`);
-      cleanupFiles(filePaths, thumbnailFile);
+      cleanupFiles(filePaths, thumbnailFile, instagramCoverFile);
       return;
     }
   }
@@ -508,7 +559,7 @@ async function processBroadcastJob({
       // NOTE: Do not delete local file here when queued; the BullMQ worker
       // cleans up the file in executeBroadcast once publishing finishes.
       if (isCloudinaryConfigured() && needsCloudinary) {
-        cleanupFiles(filePaths, thumbnailFile);
+        cleanupFiles(filePaths, thumbnailFile, instagramCoverFile);
       }
       updateJob(jobId, {
         status: "completed",
@@ -543,7 +594,7 @@ async function processBroadcastJob({
     tokens = await getTokensForUser(userId);
   } catch (tokenErr) {
     failJob(jobId, `Failed to fetch tokens: ${tokenErr.message}`);
-    cleanupFiles(filePaths, thumbnailFile, generatedVariantPaths);
+    cleanupFiles(filePaths, thumbnailFile, instagramCoverFile, generatedVariantPaths);
     return;
   }
 
@@ -651,20 +702,21 @@ async function processBroadcastJob({
                   const currentPct = base + Math.floor((pct / 100) * slice);
                   updateJob(jobId, {
                     progress: Math.min(currentPct, 85),
-                    step: `Processing story on Instagram (${pct}%).`,
+                    step: "Processing story on Instagram…",
                   });
                 } : null, platData.instagramAspectRatio);
               } else if (mediaUrls.length > 1) {
                 result = await postCarouselToInstagram(mediaUrls, resolvedCaption, instagramTokens, platData.instagramAspectRatio);
               } else if (isVideo) {
-                const igTokens = { ...instagramTokens, coverUrl: autoCoverImageUrl };
+                const igCover = platData?.instagram?.coverUrl || platData?.instagramCoverUrl || (postType === "reel" ? finalThumbnailUrl : autoCoverImageUrl);
+                const igTokens = { ...instagramTokens, coverUrl: igCover };
                 result = await postToInstagram(primaryMediaUrl, resolvedCaption, igTokens, (pct) => {
                   const base = 30 + Math.floor((completedChannels / selectedChannelCount) * 55);
                   const slice = Math.floor((1 / selectedChannelCount) * 55);
                   const currentPct = base + Math.floor((pct / 100) * slice);
                   updateJob(jobId, {
                     progress: Math.min(currentPct, 85),
-                    step: `Processing video on Instagram (${pct}%).`,
+                    step: "Processing video on Instagram…",
                   });
                 }, platData.instagramAspectRatio);
               } else {
@@ -843,7 +895,7 @@ async function processBroadcastJob({
             const currentPct = base + Math.floor((pct / 100) * slice);
             updateJob(jobId, {
               progress: Math.min(currentPct, 85),
-              step: `Uploading video to YouTube (${pct}%)…`,
+              step: "Uploading video to YouTube…",
             });
           }, visibility, isShort, description);
 
@@ -1044,7 +1096,7 @@ async function processBroadcastJob({
 
   // ── Phase 5: Cleanup (95 → 100%) ──────────────────────────────────────
   updateJob(jobId, { progress: 95, step: "Cleaning up…" });
-  setTimeout(() => cleanupFiles(filePaths, thumbnailFile), 10000);
+  setTimeout(() => cleanupFiles(filePaths, thumbnailFile, instagramCoverFile), 10000);
 
   const successCount = platformPromises.length - failedPlatforms.length;
   const anyFailed = hasPlatformFailures;
@@ -1098,13 +1150,20 @@ function getJob_internal(jobId) {
   return getJob(jobId);
 }
 
-function cleanupFiles(filePaths, thumbnailFile) {
+function cleanupFiles(filePaths, ...extraFiles) {
   try {
-    filePaths?.forEach((p) => {
-      if (p && fs.existsSync(p)) fs.unlinkSync(p);
-    });
-    if (thumbnailFile?.path && fs.existsSync(thumbnailFile.path))
-      fs.unlinkSync(thumbnailFile.path);
+    const removeOne = (item) => {
+      if (!item) return;
+      if (Array.isArray(item)) {
+        item.forEach(removeOne);
+      } else if (typeof item === "string" && fs.existsSync(item)) {
+        fs.unlinkSync(item);
+      } else if (item.path && fs.existsSync(item.path)) {
+        fs.unlinkSync(item.path);
+      }
+    };
+    filePaths?.forEach(removeOne);
+    extraFiles?.forEach(removeOne);
     console.log("✅ [CLEANUP] Temp files removed.");
   } catch (err) {
     console.error("❌ [CLEANUP] Error:", err);

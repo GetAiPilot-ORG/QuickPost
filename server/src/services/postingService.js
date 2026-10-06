@@ -47,12 +47,12 @@ export async function executeBroadcast(broadcastId, userId, caption, mediaUrls, 
     const videos = filePaths.filter(p => p.includes('video-'));
     const images = filePaths.filter(p => p.includes('image-'));
     
-    // Find cover image (first image in the set, if any)
-    let coverImageUrl = null;
+    // Find cover image (custom cover image if passed, or first image in the set)
+    let coverImageUrl = platData?.instagram?.coverUrl || platData?.instagramCoverUrl || platData?.thumbnailUrl || null;
     let coverImagePath = null;
     const firstImageIdx = filePaths.findIndex(p => p.includes('image-'));
     if (firstImageIdx !== -1) {
-      coverImageUrl = mediaUrls[firstImageIdx];
+      if (!coverImageUrl) coverImageUrl = mediaUrls[firstImageIdx];
       coverImagePath = filePaths[firstImageIdx];
     }
 
@@ -129,7 +129,8 @@ export async function executeBroadcast(broadcastId, userId, caption, mediaUrls, 
           } else if (mediaUrls.length > 1) {
             instagramAction = postCarouselToInstagram(mediaUrls, resolvedCaption, freshInstagramTokens, platData?.instagramAspectRatio);
           } else if (isVideo) {
-            const igTokens = { ...freshInstagramTokens, coverUrl: coverImageUrl };
+            const igCover = platData?.instagram?.coverUrl || platData?.instagramCoverUrl || coverImageUrl;
+            const igTokens = { ...freshInstagramTokens, coverUrl: igCover };
             const videoUrl = mediaUrls[filePaths.findIndex(p => p.includes('video-'))] || primaryMediaUrl;
             instagramAction = postToInstagram(videoUrl, resolvedCaption, igTokens, null, platData?.instagramAspectRatio);
           } else {

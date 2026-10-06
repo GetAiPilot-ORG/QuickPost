@@ -76,7 +76,7 @@ export const handleUploadError = (err, req, res, next) => {
     }
     return res.status(400).json({
       success: false,
-      error: `Upload error: ${err.message}`
+      error: `Upload error: ${err.message}${err.field ? ` (${err.field})` : ''}`
     });
   } else if (err) {
     return res.status(400).json({
