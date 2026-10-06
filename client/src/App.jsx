@@ -39,6 +39,7 @@ const PaymentSuccessPage = lazy(() => import('./pages/PaymentSuccessPage'));
 const InstagramBots = lazy(() => import('./pages/InstagramBots'));
 const InstagramConnect = lazy(() => import('./pages/InstagramConnect'));
 const InstagramInbox = lazy(() => import('./pages/InstagramInbox'));
+const InstaGrowthPage = lazy(() => import('./pages/InstaGrowthPage'));
 const YouTubeManagerPage = lazy(() => import('./pages/YouTubeManagerPage'));
 const TrendFeedPage = lazy(() => import('./pages/TrendFeedPage'));
 const SocialInboxPage = lazy(() => import('./pages/SocialInboxPage'));
@@ -111,7 +112,7 @@ function AppContent() {
       <Route path="/connect/success" element={isAuthenticated ? <ConnectSuccessPage /> : <Navigate to="/login" replace />} />
       <Route path="/connect/select" element={isAuthenticated ? <SelectAccountsPage /> : <Navigate to="/login" replace />} />
 
-      // Protected dashboard
+      {/* Protected dashboard */}
       <Route path="/dashboard" element={<DashboardLayout />}>
         <Route index element={<DashboardOverview />} />
         <Route path="analytics" element={<Analytics />} />
@@ -123,6 +124,9 @@ function AppContent() {
         <Route path="instapilot" element={<InstagramBots />} />
         <Route path="instapilot/connect" element={<InstagramConnect />} />
         <Route path="instapilot/inbox" element={<InstagramInbox />} />
+        <Route path="socialgrowth" element={<InstaGrowthPage />} />
+        <Route path="instagrowth" element={<InstaGrowthPage />} />
+        <Route path="growth" element={<InstaGrowthPage />} />
         <Route path="youtube" element={<YouTubeManagerPage />} />
         <Route path="trends" element={<TrendFeedPage />} />
         <Route path="inbox" element={<SocialInboxPage />} />

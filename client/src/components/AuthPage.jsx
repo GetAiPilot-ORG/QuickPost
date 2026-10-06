@@ -273,9 +273,19 @@ export default function AuthPage() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate ml-1">
-                Password
-              </label>
+              <div className="flex items-center justify-between ml-1">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate">
+                  Password
+                </label>
+                {mode === "login" && (
+                  <a
+                    href="https://getaipilot.in/login?forgot=true&returnTo=social"
+                    className="text-xs font-semibold text-[var(--arc)] hover:underline"
+                  >
+                    Forgot password?
+                  </a>
+                )}
+              </div>
               <div className="relative">
                 <Input
                   placeholder="••••••••"

@@ -15,8 +15,10 @@ function hasPaidPlan(plan) {
 
 function normalizePlanId(plan) {
   const p = String(plan || '').toLowerCase().trim();
-  if (['growth', 'sgrowth', 'enterprise', '1999', '2999'].includes(p)) return 'sgrowth';
-  if (['starter', 'slite', 'pro', '999'].includes(p)) return 'slite';
+  if (['gap_core', 'gap core', 'all_in_one_bundle_monthly', 'all_in_one_bundle', 'all_in_one_bundle_quarterly', 'all_in_one_bundle_half_yearly', 'all_in_one_bundle_yearly', 'custom_bundle'].includes(p)) return 'gap_core';
+  if (['gap_scale', 'gap enterprise', 'enterprise', 'gap_scale_quarterly', 'gap_scale_half_yearly', 'gap_scale_yearly'].includes(p)) return 'gap_scale';
+  if (['growth', 'sgrowth', '1999', '2999', 'spgrowth'].includes(p)) return 'sgrowth';
+  if (['starter', 'slite', 'pro', '999', 'spstarter'].includes(p)) return 'slite';
   return p || 'free';
 }
 
@@ -73,11 +75,28 @@ function BillingPlanSkeletonCard() {
   );
 }
 
+const HUB_PRICING_URL = 'https://uklxlappjcuvdqjvecfh.supabase.co/functions/v1/get-pricing?currency=INR';
+
+const calculateIntervalPrices = (baseMonthly) => ({
+  1: baseMonthly,
+  3: Math.round(baseMonthly * 3 * 0.90) / 3,
+  6: Math.round(baseMonthly * 6 * 0.80) / 6,
+  12: Math.round(baseMonthly * 12 * 0.70) / 12,
+});
+
+const DEFAULT_PRICES = {
+  free: { 1: 0, 3: 0, 6: 0, 12: 0 },
+  slite: calculateIntervalPrices(999),
+  sgrowth: calculateIntervalPrices(1999),
+  gap_core: calculateIntervalPrices(4999),
+  gap_scale: calculateIntervalPrices(8999),
+};
+
 const PLANS_TEMPLATE = [
   {
     name: 'Free',
     id: 'free',
-    price: { 1: 0, 3: 0, 6: 0, 12: 0 },
+    price: DEFAULT_PRICES.free,
     description: 'Perfect for getting started with basic scheduling.',
     creditsText: 'Basic access to core tools',
     includedFeatures: [
@@ -104,7 +123,7 @@ const PLANS_TEMPLATE = [
   {
     name: 'Starter',
     id: 'slite',
-    price: { 1: null, 3: null, 6: null, 12: null },
+    price: DEFAULT_PRICES.slite,
     description: 'For creators who broadcast seriously across every platform.',
     creditsText: 'Includes priority features + unlimited posts',
     badge: 'Most popular',
@@ -136,7 +155,7 @@ const PLANS_TEMPLATE = [
   {
     name: 'Growth',
     id: 'sgrowth',
-    price: { 1: null, 3: null, 6: null, 12: null },
+    price: DEFAULT_PRICES.sgrowth,
     description: 'For teams, agencies, and heavy automation users.',
     creditsText: 'Full access for scaling content production',
     badge: 'Expert choice',
@@ -160,6 +179,63 @@ const PLANS_TEMPLATE = [
     btnBg: '#1a1a1a',
     btnBorder: 'none',
     btnText: '#ffffff',
+  },
+  {
+    name: 'GAP Core',
+    id: 'gap_core',
+    price: DEFAULT_PRICES.gap_core,
+    description: 'The complete all-in-one automation suite for your business.',
+    creditsText: 'Full access to Social Pilot, WhatsApp, AI Calling & Telegram',
+    badge: 'All-in-One Bundle',
+    includedFeatures: [
+      '30 connected social accounts',
+      'Up to 30 Instagram Auto-DM accounts',
+      'Unlimited monthly posts & scheduling',
+      'WhatsApp Growth Plan Included',
+      'Telegram Lite Plan Included',
+      'AI Calling Agent + 300 Minutes Included',
+      'GAP CRM Plan - 15 Users Included',
+      '24/7 Priority Support',
+    ],
+    excludedFeatures: [],
+    unlimitedFeatures: [
+      { label: 'Social accounts & Auto-DM', badge: '∞ ALL YEAR' },
+      { label: 'All-in-one ecosystem sync', badge: '∞ ALL YEAR' },
+      { label: 'Team members', badge: '∞ ALL YEAR' },
+    ],
+    cta: 'Managed via GetAiPilot',
+    cardBg: '#fcfbfa',
+    btnBg: '#6d28d9',
+    btnBorder: 'none',
+    btnText: '#ffffff',
+  },
+  {
+    name: 'GAP Enterprise',
+    id: 'gap_scale',
+    price: DEFAULT_PRICES.gap_scale,
+    description: 'For large-scale operations and high-volume business automation.',
+    creditsText: 'Dedicated account manager & high-volume engine',
+    badge: 'Enterprise',
+    includedFeatures: [
+      '50 connected social accounts',
+      'Up to 50 Instagram Auto-DM accounts',
+      'High-Volume WhatsApp Engine (Up to 3 Numbers)',
+      'CRM Pro Unlimited (25+ Seats Included)',
+      'Telegram Suite - Unlimited Automated Forwards',
+      'Social Pilot Agency (30 Accounts & Auto-DM)',
+      'Custom API & Webhook Suite',
+      'Advanced Security, Roles & SLA',
+    ],
+    excludedFeatures: [],
+    unlimitedFeatures: [
+      { label: 'Unlimited workflows', badge: '∞ ALL YEAR' },
+      { label: 'Priority SLA', badge: '∞ ALL YEAR' },
+    ],
+    cta: 'Managed via GetAiPilot',
+    cardBg: '#ffffff',
+    btnBg: '#1e1b4b',
+    btnBorder: 'none',
+    btnText: '#ffffff',
   }
 ];
 
@@ -169,11 +245,11 @@ export default function BillingPage({ embedded = false }) {
   const [upgrading, setUpgrading] = useState(null);
   const [invoices, setInvoices] = useState([]);
   const [invoiceError, setInvoiceError] = useState('');
-  const [plans, setPlans] = useState([]);
+  const [plans, setPlans] = useState(PLANS_TEMPLATE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const currentPlanName = user?.entitlements?.plan?.name || 'Free';
+  const currentPlanName = user?.entitlements?.plan?.name || user?.plan || 'Free';
   const currentPlanId = normalizePlanId(user?.entitlements?.plan?.id || currentPlanName);
   const currentBillingMonths = normalizeBillingMonths(user?.entitlements?.subscription);
   const isPaid = hasPaidPlan(currentPlanName);
@@ -205,40 +281,67 @@ export default function BillingPage({ embedded = false }) {
 
   React.useEffect(() => {
     let alive = true;
-    apiClient.get('/api/billing/plans')
-      .then(({ data }) => {
-        if (!alive) return;
-        if (data.success && data.plans) {
-          const merged = data.plans.map(dp => {
-            const staticPlan = PLANS_TEMPLATE.find(sp => sp.id === dp.id);
-            if (!staticPlan) return null;
-            const priceMap = {
-              1: dp.prices && dp.prices.hasOwnProperty('month') ? dp.prices.month : staticPlan.price?.[1],
-              3: dp.prices && dp.prices.hasOwnProperty('quarterly') ? dp.prices.quarterly : staticPlan.price?.[3],
-              6: dp.prices && dp.prices.hasOwnProperty('six_months') ? dp.prices.six_months : staticPlan.price?.[6],
-              12: dp.prices && dp.prices.hasOwnProperty('year') ? dp.prices.year : staticPlan.price?.[12]
-            };
-            return {
-              ...staticPlan,
-              ...dp,
-              price: priceMap
-            };
-          }).filter(Boolean);
-          setPlans(merged);
+    async function loadPlans() {
+      let rawPlans = null;
+
+      // 1. Try backend API route
+      try {
+        const { data } = await apiClient.get('/api/billing/plans', { timeout: 3500 });
+        if (data?.success && Array.isArray(data.plans)) {
+          rawPlans = data.plans;
         }
-      })
-      .catch((err) => {
-        if (!alive) return;
-        console.error('Failed to load pricing:', err);
-        setError('Pricing temporarily unavailable');
-        setPlans(PLANS_TEMPLATE.map(sp => ({
+      } catch (err) {
+        console.warn('Backend /api/billing/plans unreachable, checking Hub pricing directly...', err.message);
+      }
+
+      // 2. Fallback to direct Hub Supabase Edge Function
+      if (!rawPlans || rawPlans.length <= 3) {
+        try {
+          const res = await fetch(HUB_PRICING_URL, { headers: { 'Content-Type': 'application/json' } });
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.currency === 'INR' && Array.isArray(data.plans)) {
+              const starter = data.plans.find(p => p.plan_name === 'social_pilot_starter');
+              const growth = data.plans.find(p => p.plan_name === 'social_pilot_growth');
+              const core = data.plans.find(p => p.plan_name === 'all_in_one_bundle_monthly');
+              const enterprise = data.plans.find(p => p.plan_name === 'gap_scale');
+              rawPlans = [
+                { id: 'free', prices: { month: 0, quarterly: 0, six_months: 0, year: 0 } },
+                { id: 'slite', prices: starter ? calculateIntervalPrices(starter.amount / 100) : DEFAULT_PRICES.slite },
+                { id: 'sgrowth', prices: growth ? calculateIntervalPrices(growth.amount / 100) : DEFAULT_PRICES.sgrowth },
+                { id: 'gap_core', prices: core ? calculateIntervalPrices(core.amount / 100) : DEFAULT_PRICES.gap_core },
+                { id: 'gap_scale', prices: enterprise ? calculateIntervalPrices(enterprise.amount / 100) : DEFAULT_PRICES.gap_scale },
+              ];
+            }
+          }
+        } catch (hubErr) {
+          console.warn('Hub edge function fetch failed, using fallback defaults:', hubErr.message);
+        }
+      }
+
+      if (!alive) return;
+
+      const merged = PLANS_TEMPLATE.map(sp => {
+        const dp = rawPlans?.find(p => p.id === sp.id);
+        const priceMap = {
+          1: dp?.prices?.month ?? dp?.prices?.[1] ?? sp.price[1],
+          3: dp?.prices?.quarterly ?? dp?.prices?.[3] ?? sp.price[3],
+          6: dp?.prices?.six_months ?? dp?.prices?.[6] ?? sp.price[6],
+          12: dp?.prices?.year ?? dp?.prices?.[12] ?? sp.price[12]
+        };
+        return {
           ...sp,
-          price: { 1: sp.id === 'free' ? 0 : null, 3: sp.id === 'free' ? 0 : null, 6: sp.id === 'free' ? 0 : null, 12: sp.id === 'free' ? 0 : null }
-        })));
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
+          ...(dp || {}),
+          price: priceMap
+        };
       });
+
+      setPlans(merged);
+      setError(null);
+      setLoading(false);
+    }
+
+    loadPlans();
     return () => { alive = false; };
   }, []);
 
@@ -267,6 +370,11 @@ export default function BillingPage({ embedded = false }) {
 
   const handleUpgrade = async (plan) => {
     if ((currentPlanId === plan.id && currentBillingMonths === billing) || plan.id === 'free') {
+      return;
+    }
+
+    if (plan.id === 'gap_core' || plan.id === 'gap_scale') {
+      window.location.href = 'https://getaipilot.in/pricing';
       return;
     }
 

@@ -116,7 +116,13 @@ router.delete('/knowledge/:id', authenticateUser, asyncHandler(async (req, res) 
 }));
 
 router.post('/bots/:id/test-reply', authenticateUser, asyncHandler(async (req, res) => {
-  const reply = await testReply(req.user.userId, req.params.id, req.body?.message || '');
+  const reply = await testReply(
+    req.user.userId,
+    req.params.id,
+    req.body?.message || '',
+    req.body?.system_prompt || null,
+    req.body?.history || []
+  );
   res.json({ success: true, reply });
 }));
 

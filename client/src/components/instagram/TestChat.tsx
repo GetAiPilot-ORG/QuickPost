@@ -1,14 +1,29 @@
 import { useMemo, useState } from "react";
-import { Bot, Send, UserRound } from "lucide-react";
+import { Bot, RotateCcw, Send, UserRound } from "lucide-react";
 import toast from "react-hot-toast";
 import { testInstagramBotReply } from "@/services/instagramApi";
 
-export default function TestChat({ botId, compact = false, showHeader = true }: { botId?: string; compact?: boolean; showHeader?: boolean }) {
+export default function TestChat({
+  botId,
+  systemPrompt,
+  compact = false,
+  showHeader = true,
+}: {
+  botId?: string;
+  systemPrompt?: string;
+  compact?: boolean;
+  showHeader?: boolean;
+}) {
   const [messages, setMessages] = useState<any[]>([
     { role: "bot", text: "Test your Instagram DM bot before activating it." },
   ]);
   const [draft, setDraft] = useState("What are your prices?");
   const [sending, setSending] = useState(false);
+
+  const clearChat = () => {
+    setMessages([{ role: "bot", text: "Test your Instagram DM bot before activating it." }]);
+    toast.success("Chat memory cleared");
+  };
 
   const send = async () => {
     if (!botId) {
@@ -18,10 +33,16 @@ export default function TestChat({ botId, compact = false, showHeader = true }: 
     const text = draft.trim();
     if (!text) return;
     setDraft("");
+    
+    // Prepare multi-turn history (skip initial greeting placeholder)
+    const historyPayload = messages
+      .filter((m, idx) => idx > 0 && m.text)
+      .map((m) => ({ role: m.role, text: m.text }));
+
     setMessages((current) => [...current, { role: "user", text }]);
     setSending(true);
     try {
-      const reply = await testInstagramBotReply(botId, text);
+      const reply = await testInstagramBotReply(botId, text, systemPrompt, historyPayload);
       setMessages((current) => [
         ...current,
         { role: "bot", text: reply.text, confidence: reply.confidence, handoff: reply.handoff },
@@ -53,7 +74,18 @@ export default function TestChat({ botId, compact = false, showHeader = true }: 
                 <div className="text-xs leading-4 text-[var(--slate)]">Preview replies</div>
               </div>
             </div>
-            <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700">Test mode</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={clearChat}
+                title="Clear chat and reset memory"
+                className="flex items-center gap-1.5 rounded-full border border-black/10 bg-white px-2.5 py-1 text-xs font-semibold text-[var(--slate)] transition hover:border-black/20 hover:text-[var(--ink)]"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                <span>Reset chat</span>
+              </button>
+              <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700">Test mode</span>
+            </div>
           </div>
 
           <div className={`${compact ? "h-[430px]" : "h-[470px]"} overflow-y-auto bg-[#f8f6f3] p-4`}>
@@ -178,11 +210,45 @@ function structureText(text: string) {
 }
 
 function renderInline(text: string) {
-  const tokens = text.split(/(\*\*[^*]+?\*\*)/g);
-  return tokens.map((token, index) => {
-    if (token.startsWith("**") && token.endsWith("**")) {
-      return <strong key={index}>{token.slice(2, -2)}</strong>;
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const boldTokens = text.split(/(\*\*[^*]+?\*\*)/g);
+
+  return boldTokens.map((boldToken, bIndex) => {
+    if (boldToken.startsWith("**") && boldToken.endsWith("**")) {
+      return <strong key={bIndex}>{boldToken.slice(2, -2)}</strong>;
     }
-    return <span key={index}>{token}</span>;
+
+    const subTokens = boldToken.split(urlRegex);
+    return (
+      <span key={bIndex}>
+        {subTokens.map((subToken, sIndex) => {
+          if (/^https?:\/\//i.test(subToken)) {
+            let cleanUrl = subToken;
+            let trailing = "";
+            const match = subToken.match(/[.,)!?]+$/);
+            if (match) {
+              trailing = match[0];
+              cleanUrl = subToken.slice(0, -trailing.length);
+            }
+
+            return (
+              <span key={sIndex}>
+                <a
+                  href={cleanUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[#0095f6] underline hover:text-[#1877f2] font-medium break-all"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {cleanUrl}
+                </a>
+                {trailing}
+              </span>
+            );
+          }
+          return <span key={sIndex}>{subToken}</span>;
+        })}
+      </span>
+    );
   });
 }
