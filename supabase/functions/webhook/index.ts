@@ -303,17 +303,16 @@ Deno.serve(async (request: Request) => {
             error: errorMessage,
             stack: automationError instanceof Error ? automationError.stack : undefined,
           });
-        }
-      }
 
-        // Ensure processed: true even on error to prevent stuck state, and log the ERROR to DB
-        await supabase
-          .from('webhook_logs')
-          .update({ 
-            processed: true, 
-            processing_error: errorMessage,
-          })
-          .eq('dedupe_key', dedupeKey);
+          // Ensure processed: true even on error to prevent stuck state, and log the ERROR to DB
+          await supabase
+            .from('webhook_logs')
+            .update({ 
+              processed: true, 
+              processing_error: errorMessage,
+            })
+            .eq('dedupe_key', dedupeKey);
+        }
       }
     }
 
