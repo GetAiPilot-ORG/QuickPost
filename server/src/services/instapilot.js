@@ -353,6 +353,7 @@ function cleanBotPayload(payload, userId) {
     tone: payload.tone || 'friendly',
     language: payload.language || 'auto-detect',
     bot_goal: payload.bot_goal || 'support',
+    system_prompt: typeof payload.system_prompt === 'string' ? payload.system_prompt.trim() : (payload.system_prompt || null),
     fallback_message: payload.fallback_message || DEFAULT_REPLY,
     welcome_message:
       payload.welcome_message || 'Hi! Welcome to {{business_name}}. How can I help you today?',
@@ -625,78 +626,149 @@ async function retrieveKnowledge(botId, question) {
   const words = String(question || '')
     .toLowerCase()
     .split(/\W+/)
-    .filter((w) => w.length > 3)
-    .slice(0, 12);
+    .filter((w) => w.length > 2)
+    .slice(0, 10);
+
   const { data, error } = await supabase
     .from('knowledge_chunks')
     .select('chunk_text, metadata')
     .eq('bot_id', botId)
-    .limit(80);
-  if (error) throw error;
-  return (data || [])
+    .limit(40);
+
+  if (error || !data || data.length === 0) return [];
+
+  // Score chunks by keyword matches
+  const scored = data
     .map((chunk) => ({
       ...chunk,
       score: words.reduce((sum, word) => sum + (chunk.chunk_text.toLowerCase().includes(word) ? 1 : 0), 0),
     }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 6);
+    .sort((a, b) => b.score - a.score);
+
+  // Return top 2-3 matching chunks, or in-memory top chunks if score is 0
+  const topMatches = scored.filter((c) => c.score > 0).slice(0, 3);
+  return topMatches.length > 0 ? topMatches : scored.slice(0, 2);
 }
 
-export async function generateReply({ bot, messageText, conversation = null }) {
-  const chunks = await retrieveKnowledge(bot.id, messageText);
-  // Fall back to top knowledge chunks if keyword score is 0
-  let effectiveChunks = chunks;
-  if (!effectiveChunks.length || !effectiveChunks.some((c) => c.score > 0)) {
-    const { data: allChunks } = await supabase
-      .from('knowledge_chunks')
-      .select('chunk_text, metadata')
-      .eq('bot_id', bot.id)
-      .limit(5);
-    if (allChunks?.length) effectiveChunks = allChunks;
+async function loadConversationHistory(conversationId, currentMessageText) {
+  if (!conversationId) return [];
+  try {
+    const { data: pastMessages } = await supabase
+      .from('instagram_messages')
+      .select('direction, message_text, created_at')
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: false })
+      .limit(8);
+
+    if (pastMessages && pastMessages.length > 0) {
+      const ordered = [...pastMessages].reverse();
+      const turns = ordered
+        .map((msg) => ({
+          role: msg.direction === 'inbound' ? 'user' : 'assistant',
+          content: String(msg.message_text || '').trim(),
+        }))
+        .filter((msg) => msg.content.length > 0);
+
+      if (
+        turns.length > 0 &&
+        turns[turns.length - 1].role === 'user' &&
+        turns[turns.length - 1].content === String(currentMessageText || '').trim()
+      ) {
+        turns.pop();
+      }
+
+      return turns.slice(-6);
+    }
+  } catch (err) {
+    console.warn('[INSTAPILOT] History retrieval fallback:', err.message);
   }
+  return [];
+}
+
+export async function generateReply({ bot, messageText, conversation = null, systemPromptOverride = null, history = [] }) {
+  // Execute Knowledge Retrieval and Conversation History in Parallel for max speed
+  const [effectiveChunks, loadedDbHistory] = await Promise.all([
+    retrieveKnowledge(bot.id, messageText),
+    !history || history.length === 0 ? loadConversationHistory(conversation?.id, messageText) : Promise.resolve([]),
+  ]);
 
   if (!process.env.OPENAI_API_KEY) {
     const defaultText = effectiveChunks[0]?.chunk_text || bot.fallback_message || DEFAULT_REPLY;
     return {
-      text: `${defaultText.slice(0, 420)}${defaultText.length > 420 ? '...' : ''}`,
+      text: defaultText,
       confidence: 0.55,
       handoff: false,
     };
   }
 
+  const customInstructions = (systemPromptOverride || bot.system_prompt || '')
+    .replace(/{{business_name}}/gi, bot.business_name || 'our business')
+    .replace(/{{bot_name}}/gi, bot.bot_name || 'InstaPilot Assistant')
+    .trim();
+
+  // Dynamic system prompt constructed from database configuration
   const prompt = [
-    `You are the official Instagram DM AI assistant for ${bot.business_name}.`,
-    `Tone: ${bot.tone || 'friendly and professional'}. Language: ${bot.language || 'English'}. Goal: ${bot.bot_goal || 'Assist customers, answer questions, and collect contact details'}.`,
-    'Rules:',
-    '1. For greetings (e.g. "hello", "hi", "hey"), reply warmly and ask how you can assist them with our services.',
-    '2. Use the Knowledge Base to answer business questions accurately.',
-    '3. When the customer asks about pricing, booking a demo, or getting started, politely ask for their name, phone number, or email address so our team can assist them.',
-    '4. Never invent prices, policies, discounts, or guarantees not listed in the Knowledge Base.',
-    '5. Keep Instagram DM replies concise, natural, friendly, and mobile-friendly.',
-  ].join('\n');
+    `You are ${bot.bot_name || 'InstaPilot Assistant'}, the official AI assistant for ${bot.business_name || 'our business'}.`,
+    bot.tone ? `Tone: ${bot.tone}.` : '',
+    bot.language ? `Language: ${bot.language}.` : '',
+    bot.bot_goal ? `Primary Goal: ${bot.bot_goal}.` : '',
+    customInstructions ? `\n--- Custom Persona & Instructions ---\n${customInstructions}\n------------------------------------` : '',
+    '\nCore Knowledge & Accuracy Rules:',
+    '1. Answer accurately based on the Knowledge Base and Custom Instructions. Do not fabricate facts, prices, or policies not provided.',
+    '2. Follow all length, formatting, and behavioral guidelines specified in your Custom Persona & Instructions above.',
+  ].filter(Boolean).join('\n');
+
+  // Multi-turn history turns
+  let conversationTurns = [];
+  if (Array.isArray(history) && history.length > 0) {
+    conversationTurns = history
+      .filter((h) => h && (h.text || h.content) && (h.role === 'user' || h.role === 'bot' || h.role === 'assistant'))
+      .map((h) => ({
+        role: h.role === 'bot' ? 'assistant' : h.role,
+        content: String(h.text || h.content || '').trim(),
+      }))
+      .filter((h) => h.content.length > 0)
+      .slice(-6);
+  } else {
+    conversationTurns = loadedDbHistory;
+  }
+
+  const knowledgeSnippet = effectiveChunks.map((c, i) => `[${i + 1}] ${c.chunk_text}`).join('\n\n');
+
+  const openAiMessages = [
+    { role: 'system', content: prompt },
+    ...(knowledgeSnippet ? [{ role: 'system', content: `Approved Knowledge Base Content for this business:\n${knowledgeSnippet}` }] : []),
+    ...conversationTurns,
+    { role: 'user', content: messageText },
+  ];
 
   const { data } = await axios.post(
     'https://api.openai.com/v1/chat/completions',
     {
       model: process.env.INSTAPILOT_OPENAI_MODEL || 'gpt-4o-mini',
-      temperature: 0.3,
-      messages: [
-        { role: 'system', content: prompt },
-        {
-          role: 'user',
-          content: `Knowledge Base:\n${effectiveChunks.map((c, i) => `[${i + 1}] ${c.chunk_text}`).join('\n\n')}\n\nCustomer Message: ${messageText}`,
-        },
-      ],
+      temperature: bot.temperature ?? 0.3,
+      max_tokens: bot.max_tokens ?? 250,
+      messages: openAiMessages,
     },
     { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` } }
   );
-  const text = data.choices?.[0]?.message?.content?.trim() || bot.fallback_message || DEFAULT_REPLY;
+  const rawText = data.choices?.[0]?.message?.content?.trim() || bot.fallback_message || DEFAULT_REPLY;
+  const text = sanitizeLinks(rawText);
   return { text, confidence: 0.85, handoff: false };
 }
 
-export async function testReply(userId, botId, messageText) {
+export function sanitizeLinks(text) {
+  if (!text || typeof text !== 'string') return text || '';
+  // Convert markdown links [Title](URL) -> Title: URL
+  let cleaned = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '$1: $2');
+  // Ensure spacing if emoji touches the end of a URL
+  cleaned = cleaned.replace(/(https?:\/\/[^\s\uD800-\uDBFF\uDC00-\uDFFF]+)([\uD800-\uDBFF\uDC00-\uDFFF\u2600-\u27BF])/gu, '$1 $2');
+  return cleaned.trim();
+}
+
+export async function testReply(userId, botId, messageText, systemPromptOverride = null, history = []) {
   const bot = await getOwnedBot(userId, botId);
-  return generateReply({ bot, messageText });
+  return generateReply({ bot, messageText, systemPromptOverride, history });
 }
 
 function needsHandoff(bot, text) {

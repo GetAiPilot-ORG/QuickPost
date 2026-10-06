@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bot, Check, ChevronDown, Info, Instagram, Languages, MessageCircle, Power, Save, SlidersHorizontal, Store } from "lucide-react";
+import { Bot, Check, ChevronDown, Info, Instagram, Languages, MessageCircle, Power, Save, SlidersHorizontal, Sparkles, Store, Wand2, Tag } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { createInstagramBot, updateInstagramBot } from "@/services/instagramApi";
@@ -8,12 +8,51 @@ const tones = ["friendly", "professional", "casual", "luxury", "sales-focused"];
 const languages = ["auto-detect", "English", "Hindi", "Hinglish"];
 const goals = ["support", "sales", "course info", "booking", "product FAQ"];
 
+const promptPresets = [
+  {
+    id: "closer",
+    label: "🎯 Lead Closer",
+    desc: "Direct answers + asks for phone/email before pricing",
+    prompt:
+      "Act as an energetic sales & lead qualification specialist for {{business_name}}. Do not repeat greetings; jump straight into the answer. Answer product/service questions concisely, but whenever the user asks about pricing or booking, politely ask for their name and phone/WhatsApp number so our team can send the complete catalog.",
+  },
+  {
+    id: "support",
+    label: "🤝 Friendly Support",
+    desc: "Direct, patient, helpful answers without repetitive greetings",
+    prompt:
+      "Act as a patient, warm, and helpful customer support specialist for {{business_name}}. Do not repeat greetings on every reply; answer customer questions directly and politely using the Knowledge Base. Never push for aggressive sales unless requested.",
+  },
+  {
+    id: "booking",
+    label: "📅 Demo & Call Booker",
+    desc: "Drives prospective clients to schedule calls directly",
+    prompt:
+      "Your primary objective is to get prospective customers to book a 1-on-1 discovery call or demo. Jump straight to the point, highlight key benefits briefly, and ask if they would like to schedule a quick 15-minute walkthrough.",
+  },
+  {
+    id: "hinglish",
+    label: "🇮🇳 Hinglish Creator",
+    desc: "Conversational Hinglish with natural emojis",
+    prompt:
+      "Talk naturally in conversational, friendly Hinglish (Hindi + English blend) with emojis (🔥, 🙌, 🚀). Keep it casual and authentic. Do not say hello/hi on every message; jump directly into answering.",
+  },
+  {
+    id: "offers",
+    label: "🎁 Promo & Deals",
+    desc: "Direct answers + discount code when asked",
+    prompt:
+      "You are an assistant for {{business_name}}. Answer product and shipping questions directly without robotic greetings. If the customer expresses price hesitation or asks about ongoing offers, share the special 10% first-time discount code: WELCOME10.",
+  },
+];
+
 const defaultForm = {
   bot_name: "InstaPilot Assistant",
   business_name: "",
   tone: "friendly",
   language: "auto-detect",
   bot_goal: "support",
+  system_prompt: "",
   fallback_message: "I am not fully sure about that. Our team will help you shortly.",
   welcome_message: "Hi! Welcome to {{business_name}}. How can I help you today?",
   quick_replies: ["Pricing", "Services", "Book a Call", "Talk to Human"],
@@ -182,6 +221,82 @@ export default function BotBuilderForm({
               </Field>
               <Field label="Bot purpose">
                 <Segmented options={goals} value={form.bot_goal} onChange={(value) => setField("bot_goal", value)} />
+              </Field>
+            </div>
+          </div>
+
+          <div>
+            <SectionTitle icon={<Wand2 className="h-4 w-4" />} title="Custom AI Instructions & Persona (System Prompt)" />
+            <div className="mt-4 space-y-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <span className="text-xs text-[var(--slate)]">
+                  Pick a 1-click preset or write your own custom rules for persona, lead collection, and behavior:
+                </span>
+                <div className="flex items-center gap-1.5 text-xs text-[var(--slate)]">
+                  <span>Dynamic tags:</span>
+                  <button
+                    type="button"
+                    onClick={() => setField("system_prompt", (form.system_prompt || "") + " {{business_name}}")}
+                    className="rounded bg-orange-100/70 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-[var(--arc)] hover:bg-orange-200"
+                    title="Click to insert {{business_name}}"
+                  >
+                    {"{{business_name}}"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setField("system_prompt", (form.system_prompt || "") + " {{bot_name}}")}
+                    className="rounded bg-orange-100/70 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-[var(--arc)] hover:bg-orange-200"
+                    title="Click to insert {{bot_name}}"
+                  >
+                    {"{{bot_name}}"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Presets Bar */}
+              <div className="flex flex-wrap gap-2">
+                {promptPresets.map((preset) => {
+                  const isActive = form.system_prompt === preset.prompt;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => setField("system_prompt", preset.prompt)}
+                      className={`group flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                        isActive
+                          ? "border-orange-400 bg-orange-50 text-[var(--ink)] shadow-sm"
+                          : "border-black/10 bg-white text-[var(--slate)] hover:border-black/20 hover:text-[var(--ink)]"
+                      }`}
+                      title={preset.desc}
+                    >
+                      <span>{preset.label}</span>
+                    </button>
+                  );
+                })}
+                {form.system_prompt ? (
+                  <button
+                    type="button"
+                    onClick={() => setField("system_prompt", "")}
+                    className="rounded-lg border border-dashed border-black/20 px-2.5 py-2 text-xs text-[var(--slate)] hover:border-red-300 hover:text-red-600"
+                    title="Clear prompt"
+                  >
+                    Clear
+                  </button>
+                ) : null}
+              </div>
+
+              <Field label="System Prompt & Behavior Rules">
+                <textarea
+                  value={form.system_prompt || ""}
+                  onChange={(e) => setField("system_prompt", e.target.value)}
+                  rows={4}
+                  className="instapilot-input font-mono text-xs leading-5"
+                  placeholder="e.g. Act as a senior consultant named Priya for {{business_name}}. Speak in energetic Hinglish. Whenever someone asks for pricing, ask for their WhatsApp number so our team can send the catalog. Never provide medical advice."
+                />
+                <div className="mt-1 flex items-center justify-between text-[11px] text-[var(--slate)]">
+                  <span>Injected directly into OpenAI LLM system instructions before each reply.</span>
+                  <span>{(form.system_prompt || "").length} characters</span>
+                </div>
               </Field>
             </div>
           </div>

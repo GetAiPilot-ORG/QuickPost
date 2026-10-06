@@ -94,6 +94,7 @@ export async function authenticateUser(req, res, next) {
 
     // Build user info from Supabase user object
     const userInfo = {
+      id: user.id,
       userId: user.id,
       authUserId: user.id,
       email: user.email,
@@ -127,6 +128,8 @@ export async function authenticateUser(req, res, next) {
     if (dbUser && dbUser.id) {
       userInfo.userId = dbUser.id;
     }
+
+    userInfo.id = userInfo.authUserId || userInfo.userId || user.id;
 
     req.user = userInfo;
     req.token = token;
