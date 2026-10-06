@@ -22,6 +22,7 @@ export const defaultComposerAutoDMConfig = {
   enabled: false,
   name: "Auto DM for new Instagram post",
   triggerType: "comment_on_post",
+  keywordMatchType: "specific",
   keywords: [],
   isCaseSensitive: false,
   commentReplyEnabled: true,
@@ -188,13 +189,46 @@ export function AutoDMComposerPanel({ config, onChange, postType }: any) {
                   </div>
 
                   <div className="grid gap-2">
-                    <Label className="text-xs text-[var(--slate)]">Trigger Keywords</Label>
-                    <KeywordInput
-                      keywords={config.keywords}
-                      onChange={(keywords) => update({ keywords })}
-                      caseSensitive={config.isCaseSensitive}
-                      onCaseSensitiveChange={(isCaseSensitive) => update({ isCaseSensitive })}
-                    />
+                    <Label className="text-xs text-[var(--slate)]">Comment Matching</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => update({ keywordMatchType: "specific" })}
+                        className={`rounded-lg border px-3 py-2 text-xs font-medium text-left transition-all ${
+                          config.keywordMatchType !== "any"
+                            ? "border-[var(--arc)] bg-[var(--canvas-subtle)] text-[var(--ink)] ring-1 ring-[var(--arc)]"
+                            : "border-black/10 bg-white text-[var(--slate)] hover:bg-gray-50"
+                        }`}
+                      >
+                        Specific keywords
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => update({ keywordMatchType: "any", keywords: [] })}
+                        className={`rounded-lg border px-3 py-2 text-xs font-medium text-left transition-all ${
+                          config.keywordMatchType === "any"
+                            ? "border-[var(--arc)] bg-[var(--canvas-subtle)] text-[var(--ink)] ring-1 ring-[var(--arc)]"
+                            : "border-black/10 bg-white text-[var(--slate)] hover:bg-gray-50"
+                        }`}
+                      >
+                        Any comment (All)
+                      </button>
+                    </div>
+
+                    {config.keywordMatchType !== "any" ? (
+                      <div className="mt-1">
+                        <KeywordInput
+                          keywords={config.keywords}
+                          onChange={(keywords) => update({ keywords })}
+                          caseSensitive={config.isCaseSensitive}
+                          onCaseSensitiveChange={(isCaseSensitive) => update({ isCaseSensitive })}
+                        />
+                      </div>
+                    ) : (
+                      <div className="mt-1 rounded-lg border border-black/5 bg-black/[0.02] p-2.5 text-xs text-[var(--slate)]">
+                        ⚡ Will automatically trigger and send DM for <strong>every comment</strong> on this post.
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

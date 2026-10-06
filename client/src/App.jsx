@@ -132,6 +132,8 @@ function AppContent() {
         <Route path="inbox" element={<SocialInboxPage />} />
         <Route path="docs" element={<DocsGuidePage />} />
         <Route path="guide" element={<DocsGuidePage />} />
+        <Route path="connect" element={<Navigate to="/connect" replace />} />
+        <Route path="channels" element={<Navigate to="/connect" replace />} />
         <Route path="profile" element={<AutoDMProvider><ProfilePage /></AutoDMProvider>} />
 
         {/* AutoDM workspace — has its own full-screen layout */}

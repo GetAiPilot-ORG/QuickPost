@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { Link } from "react-router-dom";
 import { AlertTriangle, Bot, Pause, Play, Send, UserRound } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
@@ -175,20 +176,35 @@ export default function ConversationThread({ conversationId, refreshKey, onChang
         </div>
       </div>
 
-      <div className="flex gap-2 border-t border-black/10 p-4">
-        <input
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") send();
-          }}
-          className="instapilot-input"
-          placeholder="Reply manually through official Meta send API"
-        />
-        <Button type="button" onClick={send} size="icon" aria-label="Send reply" className="bg-[#3797f0] text-white hover:bg-[#1877f2]">
-          <Send className="h-4 w-4" />
-        </Button>
-      </div>
+      {conversation?.instagram_accounts?.is_connected === false || conversation?.instagram_accounts?.token_status === "disconnected" ? (
+        <div className="flex items-center justify-between gap-3 border-t border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-700 shrink-0" />
+            <div>
+              <p className="text-xs font-bold text-amber-900">Instagram Account Disconnected</p>
+              <p className="text-xs text-amber-700">This thread is in read-only mode. Reconnect your account to send replies.</p>
+            </div>
+          </div>
+          <Button asChild size="sm" className="bg-amber-600 hover:bg-amber-700 text-white shrink-0">
+            <Link to="/connect">Reconnect</Link>
+          </Button>
+        </div>
+      ) : (
+        <div className="flex gap-2 border-t border-black/10 p-4">
+          <input
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") send();
+            }}
+            className="instapilot-input"
+            placeholder="Reply manually through official Meta send API"
+          />
+          <Button type="button" onClick={send} size="icon" aria-label="Send reply" className="bg-[#3797f0] text-white hover:bg-[#1877f2]">
+            <Send className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
     </section>
   );
 }

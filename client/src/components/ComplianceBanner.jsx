@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { useLocation } from 'react-router-dom';
 
 const STORAGE_KEY = 'gap_privacy_pref';
 
@@ -8,6 +9,7 @@ export default function ComplianceBanner() {
   const [showDetails, setShowDetails] = useState(false);
   const [prefs, setPrefs] = useState({ analytics: true, marketing: false });
   const reduceMotion = useReducedMotion();
+  const location = useLocation();
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -22,13 +24,17 @@ export default function ComplianceBanner() {
       STORAGE_KEY,
       JSON.stringify({
         decision: choice,
-        analytics: choice === 'all' ? true : prefs.analytics,
+        analytics: choice === 'all' ? true : choice === 'decline' ? false : prefs.analytics,
         marketing: choice === 'all' ? true : choice === 'decline' ? false : prefs.marketing,
         timestamp: Date.now(),
       }),
     );
     setVisible(false);
   };
+
+  if (location.pathname === '/privacy') {
+    return null;
+  }
 
   return (
     <AnimatePresence>

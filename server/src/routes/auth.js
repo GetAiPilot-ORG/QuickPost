@@ -19,7 +19,9 @@ import { supermailbox } from "../services/supermailbox.js";
 import supabase, {
   createOrUpdateUser,
   getConnectedAccounts,
+  clearTokensCache,
 } from "../services/supabase.js";
+import { invalidateInboxCache } from "./inbox.js";
 import { getEntitlements } from "../services/entitlements.js";
 import {
   authenticateUser,
@@ -696,20 +698,22 @@ router.post("/mastodon/init", authenticateUser, async (req, res) => {
         .json({ success: false, error: "Instance URL is required" });
     }
 
+    const cleanUrl = mastodonOAuth.cleanInstanceUrl(instanceUrl);
+
     // 1. Register app on the instance
-    const registration = await mastodonOAuth.registerApp(instanceUrl);
+    const registration = await mastodonOAuth.registerApp(cleanUrl);
 
     // 2. Create state with all needed info
     const state = mastodonOAuth.makeState(
       userId,
-      instanceUrl,
+      cleanUrl,
       registration.clientId,
       registration.clientSecret,
     );
 
     // 3. Return the auth URL
     const authUrl = mastodonOAuth.getAuthorizationUrl(
-      instanceUrl,
+      cleanUrl,
       registration.clientId,
       state,
     );
@@ -724,9 +728,14 @@ router.post("/mastodon/init", authenticateUser, async (req, res) => {
 router.get("/mastodon/callback", async (req, res) => {
   const { code, error, state } = req.query;
 
-  if (error) return res.redirect(`${CLIENT_URL}/dashboard?error=access_denied`);
-  if (!code || !state)
+  if (error) {
+    console.warn("⚠️ Mastodon callback returned error from instance:", error);
+    return res.redirect(`${CLIENT_URL}/dashboard?error=access_denied`);
+  }
+  if (!code || !state) {
+    console.warn("⚠️ Mastodon callback missing code or state:", { hasCode: !!code, hasState: !!state });
     return res.redirect(`${CLIENT_URL}/dashboard?error=invalid_callback`);
+  }
 
   const parsed = decodeState(state);
   if (
@@ -735,6 +744,7 @@ router.get("/mastodon/callback", async (req, res) => {
     !parsed?.clientId ||
     !parsed?.clientSecret
   ) {
+    console.warn("⚠️ Mastodon callback state invalid:", parsed);
     return res.redirect(`${CLIENT_URL}/dashboard?error=invalid_state`);
   }
 
@@ -753,6 +763,7 @@ router.get("/mastodon/callback", async (req, res) => {
     );
     notifyAccountConnected(parsed.userId, "Mastodon", tokenData.username);
 
+    console.log(`✅ [MASTODON-OAUTH] Successfully connected Mastodon account: @${tokenData.username} (${parsed.instanceUrl})`);
     res.redirect(`${CLIENT_URL}/dashboard?success=mastodon_connected`);
   } catch (err) {
     console.error("❌ Mastodon callback error:", err.message);
@@ -1393,6 +1404,10 @@ router.delete("/disconnect/:provider", authenticateUser, async (req, res) => {
         }
       }
 
+      // Invalidate memory & Redis caches immediately upon disconnect
+      clearTokensCache(req.user.userId);
+      await invalidateInboxCache([req.user.userId, req.user.authUserId, req.user.id].filter(Boolean));
+
       if (accountId) {
         return res.json({
           success: true,
@@ -1414,6 +1429,10 @@ router.delete("/disconnect/:provider", authenticateUser, async (req, res) => {
     const { error } = await query;
 
     if (error) throw error;
+
+    // Invalidate memory & Redis caches immediately upon disconnect
+    clearTokensCache(req.user.userId);
+    await invalidateInboxCache([req.user.userId, req.user.authUserId, req.user.id].filter(Boolean));
 
     res.json({
       success: true,

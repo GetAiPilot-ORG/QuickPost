@@ -121,21 +121,15 @@ const extractEvents = (payload: any): WebhookEvent[] => {
     const entryId = String(entry?.id ?? '');
 
     for (const messaging of entry?.messaging ?? []) {
-      const senderId = String(messaging?.sender?.id ?? '');
-      const igId = String(messaging?.recipient?.id ?? entryId);
+      const isEcho = Boolean(messaging?.message?.is_echo);
+      const rawSenderId = String(messaging?.sender?.id ?? '');
+      const rawRecipientId = String(messaging?.recipient?.id ?? entryId);
+      const senderId = isEcho ? rawRecipientId : rawSenderId;
+      const igId = isEcho ? rawSenderId : rawRecipientId;
 
-      if (messaging?.message?.is_echo || senderId === entryId) {
-        logInfo('Skipping outbound echo message', {
-          entryId,
-          senderId,
-          messageId: messaging?.message?.mid,
-        });
-        continue;
-      }
-
-      if (messaging?.message?.text || messaging?.message?.quick_reply?.payload) {
+      if (messaging?.message?.text || messaging?.message?.quick_reply?.payload || messaging?.message?.attachments) {
         const quickReplyPayload = String(messaging?.message?.quick_reply?.payload ?? '').trim();
-        const messageText = quickReplyPayload || String(messaging.message.text ?? '');
+        const messageText = quickReplyPayload || String(messaging?.message?.text ?? (messaging?.message?.attachments ? '📎 Attachment' : ''));
         events.push({
           triggerType: 'dm',
           igId,
@@ -285,38 +279,40 @@ Deno.serve(async (request: Request) => {
         throw new Error(`Failed storing webhook event: ${insertError.message}`);
       }
 
-      try {
-        await processAutomationEvent({
-          igId: event.igId,
-          senderId: event.senderId,
-          messageText: event.messageText,
-          triggerType: event.triggerType,
-          mediaId: event.mediaId,
-          eventId: event.eventId, // FIX: comment reply ke liye zaruri hai
-          dedupeKey,
-          requestId,
-          externalPayload: event.payload,
-        });
-      } catch (automationError) {
-        const errorMessage = automationError instanceof Error ? automationError.message : String(automationError);
-        logError('Automation processing failed', {
-          requestId,
-          dedupeKey,
-          igId: event.igId,
-          senderId: event.senderId,
-          triggerType: event.triggerType,
-          error: errorMessage,
-          stack: automationError instanceof Error ? automationError.stack : undefined,
-        });
+      if (!(event.payload as any)?.message?.is_echo) {
+        try {
+          await processAutomationEvent({
+            igId: event.igId,
+            senderId: event.senderId,
+            messageText: event.messageText,
+            triggerType: event.triggerType,
+            mediaId: event.mediaId,
+            eventId: event.eventId, // FIX: comment reply ke liye zaruri hai
+            dedupeKey,
+            requestId,
+            externalPayload: event.payload,
+          });
+        } catch (automationError) {
+          const errorMessage = automationError instanceof Error ? automationError.message : String(automationError);
+          logError('Automation processing failed', {
+            requestId,
+            dedupeKey,
+            igId: event.igId,
+            senderId: event.senderId,
+            triggerType: event.triggerType,
+            error: errorMessage,
+            stack: automationError instanceof Error ? automationError.stack : undefined,
+          });
 
-        // Ensure processed: true even on error to prevent stuck state, and log the ERROR to DB
-        await supabase
-          .from('webhook_logs')
-          .update({ 
-            processed: true, 
-            processing_error: errorMessage,
-          })
-          .eq('dedupe_key', dedupeKey);
+          // Ensure processed: true even on error to prevent stuck state, and log the ERROR to DB
+          await supabase
+            .from('webhook_logs')
+            .update({ 
+              processed: true, 
+              processing_error: errorMessage,
+            })
+            .eq('dedupe_key', dedupeKey);
+        }
       }
     }
 

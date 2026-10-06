@@ -253,7 +253,7 @@ export default function BillingPage({ embedded = false }) {
   const currentPlanId = normalizePlanId(user?.entitlements?.plan?.id || currentPlanName);
   const currentBillingMonths = normalizeBillingMonths(user?.entitlements?.subscription);
   const isPaid = hasPaidPlan(currentPlanName);
-  
+
   React.useEffect(() => {
     console.log('🔍 [BILLING] Current user info:', user);
     console.log('🔍 [BILLING] Current entitlements:', user?.entitlements);
@@ -387,7 +387,7 @@ export default function BillingPage({ embedded = false }) {
     try {
       setUpgrading(plan.id);
       console.log(`💳 [PAYMENT INITIATED] Plan: ${plan.name} | Interval: ${billing} month(s) | Amount to be charged: ₹${currentPrice * billing}`);
-      
+
       const { data, error } = await supabase.functions.invoke('create-payment-link', {
         body: {
           planId: plan.id,
@@ -442,8 +442,8 @@ export default function BillingPage({ embedded = false }) {
       </div>}
 
       {/* Current Plan Banner */}
-      <div style={{ 
-        background: 'var(--canvas-lifted)', 
+      <div style={{
+        background: 'var(--canvas-lifted)',
         border: '1px solid rgba(20,20,19,0.08)',
         borderRadius: 'var(--r-hero)',
         padding: '24px',
@@ -489,51 +489,49 @@ export default function BillingPage({ embedded = false }) {
 
         {invoiceError ? (
           <p style={{ margin: 0, color: 'var(--danger)', fontSize: 13 }}>{invoiceError}</p>
+        ) : isPaid ? (
+          <div style={{
+            border: '1px dashed var(--dust)',
+            borderRadius: 8,
+            padding: 24,
+            color: 'var(--slate)',
+            fontSize: 14,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 12,
+            alignItems: 'flex-start'
+          }}>
+            <div>
+              Your subscription is active and managed via <strong>getaipilot.in</strong>.
+              All transaction receipts, billing history, and invoices are located in your GetAiPilot Account Center.
+            </div>
+            <a
+              href="https://getaipilot.in/profile?tab=billing"
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                background: 'var(--ink)',
+                color: 'var(--canvas)',
+                padding: '8px 16px',
+                borderRadius: 'var(--r-btn)',
+                fontSize: 13,
+                fontWeight: 600,
+                textDecoration: 'none',
+                transition: 'opacity 0.2s'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.opacity = 0.9}
+              onMouseLeave={(e) => e.currentTarget.style.opacity = 1}
+            >
+              Go to GetAiPilot
+            </a>
+          </div>
         ) : invoices.length === 0 ? (
-          isPaid ? (
-            <div style={{ 
-              border: '1px dashed var(--dust)', 
-              borderRadius: 8, 
-              padding: 24, 
-              color: 'var(--slate)', 
-              fontSize: 14, 
-              display: 'flex', 
-              flexDirection: 'column', 
-              gap: 12, 
-              alignItems: 'flex-start' 
-            }}>
-              <div>
-                Your subscription is active and managed via <strong>getaipilot.in</strong>. 
-                All transaction receipts, billing history, and invoices are located in your GetAiPilot Account Center.
-              </div>
-              <a 
-                href="https://getaipilot.in" 
-                target="_blank" 
-                rel="noreferrer" 
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  background: 'var(--ink)',
-                  color: 'var(--canvas)',
-                  padding: '8px 16px',
-                  borderRadius: 'var(--r-btn)',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  textDecoration: 'none',
-                  transition: 'opacity 0.2s'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.opacity = 0.9}
-                onMouseLeave={(e) => e.currentTarget.style.opacity = 1}
-              >
-                Go to GetAiPilot
-              </a>
-            </div>
-          ) : (
-            <div style={{ border: '1px dashed var(--dust)', borderRadius: 8, padding: 24, color: 'var(--slate)', fontSize: 14 }}>
-              No invoices found yet. Paid invoices will appear here after Razorpay confirms payment.
-            </div>
-          )
+          <div style={{ border: '1px dashed var(--dust)', borderRadius: 8, padding: 24, color: 'var(--slate)', fontSize: 14 }}>
+            No invoices found yet. Paid invoices will appear here after Razorpay confirms payment.
+          </div>
         ) : (
           <div style={{ display: 'grid', gap: 10 }}>
             {invoices.map((invoice) => (
@@ -659,214 +657,226 @@ export default function BillingPage({ embedded = false }) {
         {loading ? (
           visiblePlans.map((plan) => <BillingPlanSkeletonCard key={plan.id} />)
         ) : visiblePlans.map((plan, i) => {
-            const isCurrentPlan = currentPlanId === plan.id && currentBillingMonths === billing;
-            const currentPrice = plan.price?.[billing];
-            const basePrice = plan.price?.[1];
-            const isCheckoutDisabled = plan.id !== 'free' && (currentPrice === null || currentPrice === undefined);
-            const hasDiscount = billing > 1 && basePrice > currentPrice && currentPrice > 0;
-            
-            return (
-              <motion.div
-                key={plan.name}
-                initial={{ opacity: 0, y: 28 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: i * 0.1 }}
+          const isCurrentPlan = currentPlanId === plan.id && currentBillingMonths === billing;
+          const currentPrice = plan.price?.[billing];
+          const basePrice = plan.price?.[1];
+          const isCheckoutDisabled = plan.id !== 'free' && (currentPrice === null || currentPrice === undefined);
+          const hasDiscount = billing > 1 && basePrice > currentPrice && currentPrice > 0;
+
+          const userLevel = { 'free': 0, 'slite': 1, 'sgrowth': 2 }[currentPlanId] || 0;
+          const cardLevel = { 'free': 0, 'slite': 1, 'sgrowth': 2 }[plan.id] || 0;
+          
+          let computedCta = plan.cta;
+          if (isCurrentPlan) {
+            computedCta = 'Current Plan';
+          } else if (userLevel > cardLevel) {
+            computedCta = 'Already on higher plan';
+          } else if (userLevel === cardLevel && !isCurrentPlan) {
+            computedCta = `Switch to ${plan.name}`;
+          }
+
+          return (
+            <motion.div
+              key={plan.name}
+              initial={{ opacity: 0, y: 28 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: i * 0.1 }}
+              style={{
+                borderRadius: 16,
+                border: isCurrentPlan ? '2px solid #059669' : "1px solid #4a3a3a",
+                background: plan.cardBg,
+                padding: "32px 24px",
+                position: "relative",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              {/* Header */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                <h3 style={{ fontSize: 24, fontWeight: 500, color: "#1a1a1a", margin: 0, letterSpacing: "-0.02em" }}>
+                  {plan.name}
+                </h3>
+                {isCurrentPlan ? (
+                  <div style={{
+                    background: "#059669",
+                    borderRadius: 16,
+                    padding: "4px 12px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "#ffffff",
+                    whiteSpace: "nowrap"
+                  }}>
+                    Current Plan
+                  </div>
+                ) : plan.badge && (
+                  <div style={{
+                    border: "1px solid #1a1a1a",
+                    borderRadius: 16,
+                    padding: "4px 12px",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: "#1a1a1a",
+                    whiteSpace: "nowrap"
+                  }}>
+                    {plan.badge}
+                  </div>
+                )}
+              </div>
+
+              <p style={{ fontSize: 13, color: "#4a4a4a", margin: "0 0 24px", minHeight: 40, lineHeight: 1.5 }}>
+                {plan.description}
+              </p>
+
+              {/* Pricing */}
+              <div style={{ marginBottom: 16, display: "flex", alignItems: "flex-end", gap: 8 }}>
+                {currentPrice !== null && currentPrice !== undefined ? (
+                  <>
+                    {hasDiscount && (
+                      <span style={{ fontSize: 24, color: "#999", textDecoration: "line-through", fontWeight: 500, paddingBottom: 4 }}>
+                        ₹{Math.round(basePrice)}
+                      </span>
+                    )}
+                    <span style={{ fontSize: 42, fontWeight: 600, color: "#1a1a1a", letterSpacing: "-0.04em", lineHeight: 1 }}>
+                      ₹{Math.round(currentPrice)}
+                    </span>
+                    {currentPrice > 0 && (
+                      <div style={{ display: "flex", flexDirection: "column", marginLeft: 4, paddingBottom: 2 }}>
+                        <span style={{ fontSize: 12, color: "#1a1a1a", fontWeight: 600 }}>/month</span>
+                        <span style={{ fontSize: 11, color: "#666" }}>{getBillingText(billing)}</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <span style={{ fontSize: 24, fontWeight: 600, color: '#1a1a1a' }}>
+                    Unavailable
+                  </span>
+                )}
+              </div>
+
+              <div style={{ fontSize: 13, color: "#4a4a4a", marginBottom: 24, fontWeight: 500 }}>
+                {plan.creditsText}
+              </div>
+
+              {/* CTA */}
+              <button
+                onClick={() => handleUpgrade(plan)}
+                disabled={upgrading === plan.id || isCurrentPlan || isCheckoutDisabled || userLevel > cardLevel}
                 style={{
-                  borderRadius: 16,
-                  border: isCurrentPlan ? '2px solid #059669' : "1px solid #4a3a3a",
-                  background: plan.cardBg,
-                  padding: "32px 24px",
-                  position: "relative",
-                  display: "flex",
-                  flexDirection: "column",
+                  width: "100%",
+                  padding: "14px 20px",
+                  borderRadius: 12,
+                  border: isCurrentPlan ? '1px solid #059669' : (userLevel > cardLevel ? '1px solid #e5e5e5' : plan.btnBorder),
+                  background: isCurrentPlan ? 'transparent' : (userLevel > cardLevel ? '#f5f5f5' : plan.btnBg),
+                  color: isCurrentPlan ? '#059669' : (userLevel > cardLevel ? '#999999' : plan.btnText),
+                  fontSize: 14,
+                  fontWeight: 500,
+                  cursor: (isCurrentPlan || isCheckoutDisabled || userLevel > cardLevel) ? "not-allowed" : "pointer",
+                  transition: "opacity 0.2s",
+                  marginBottom: 32,
+                  opacity: upgrading === plan.id || isCurrentPlan || isCheckoutDisabled || userLevel > cardLevel ? 0.7 : 1,
+                }}
+                onMouseEnter={(e) => {
+                  if (!isCheckoutDisabled && !isCurrentPlan && !(userLevel > cardLevel)) e.currentTarget.style.opacity = 0.9;
+                }}
+                onMouseLeave={(e) => {
+                  if (!isCheckoutDisabled && !isCurrentPlan && !(userLevel > cardLevel)) e.currentTarget.style.opacity = 1;
                 }}
               >
-                {/* Header */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-                  <h3 style={{ fontSize: 24, fontWeight: 500, color: "#1a1a1a", margin: 0, letterSpacing: "-0.02em" }}>
-                    {plan.name}
-                  </h3>
-                  {isCurrentPlan ? (
-                    <div style={{
-                      background: "#059669",
-                      borderRadius: 16,
-                      padding: "4px 12px",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: "#ffffff",
-                      whiteSpace: "nowrap"
-                    }}>
-                      Current Plan
-                    </div>
-                  ) : plan.badge && (
-                    <div style={{
-                      border: "1px solid #1a1a1a",
-                      borderRadius: 16,
-                      padding: "4px 12px",
-                      fontSize: 11,
-                      fontWeight: 600,
-                      color: "#1a1a1a",
-                      whiteSpace: "nowrap"
-                    }}>
-                      {plan.badge}
-                    </div>
-                  )}
-                </div>
+                {isCheckoutDisabled ? 'Unavailable' : (upgrading === plan.id ? "Processing..." : computedCta)}
+              </button>
 
-                <p style={{ fontSize: 13, color: "#4a4a4a", margin: "0 0 24px", minHeight: 40, lineHeight: 1.5 }}>
-                  {plan.description}
-                </p>
-
-                {/* Pricing */}
-                <div style={{ marginBottom: 16, display: "flex", alignItems: "flex-end", gap: 8 }}>
-                  {currentPrice !== null && currentPrice !== undefined ? (
-                    <>
-                      {hasDiscount && (
-                        <span style={{ fontSize: 24, color: "#999", textDecoration: "line-through", fontWeight: 500, paddingBottom: 4 }}>
-                          ₹{Math.round(basePrice)}
-                        </span>
-                      )}
-                      <span style={{ fontSize: 42, fontWeight: 600, color: "#1a1a1a", letterSpacing: "-0.04em", lineHeight: 1 }}>
-                        ₹{Math.round(currentPrice)}
+              {/* Features list */}
+              <div style={{ paddingBottom: 24 }}>
+                <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 12 }}>
+                  {plan.includedFeatures.map((f) => (
+                    <li key={f} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13.5, color: "#1a1a1a" }}>
+                      <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, flexShrink: 0 }}>
+                        <Check size={16} strokeWidth={2.5} />
                       </span>
-                      {currentPrice > 0 && (
-                        <div style={{ display: "flex", flexDirection: "column", marginLeft: 4, paddingBottom: 2 }}>
-                          <span style={{ fontSize: 12, color: "#1a1a1a", fontWeight: 600 }}>/month</span>
-                          <span style={{ fontSize: 11, color: "#666" }}>{getBillingText(billing)}</span>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <span style={{ fontSize: 24, fontWeight: 600, color: '#1a1a1a' }}>
-                      Unavailable
-                    </span>
-                  )}
-                </div>
+                      <span style={{ flex: 1 }}>{f}</span>
+                      <Info size={14} color="#b3b3b3" style={{ flexShrink: 0 }} />
+                    </li>
+                  ))}
+                  {plan.excludedFeatures.map((f) => (
+                    <li key={f} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13.5, color: "#999" }}>
+                      <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, flexShrink: 0 }}>
+                        <X size={16} strokeWidth={2} />
+                      </span>
+                      <span style={{ flex: 1 }}>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
 
-                <div style={{ fontSize: 13, color: "#4a4a4a", marginBottom: 24, fontWeight: 500 }}>
-                  {plan.creditsText}
-                </div>
+              {/* Unlimited Box */}
+              {plan.unlimitedFeatures && plan.unlimitedFeatures.length > 0 && (
+                <div style={{
+                  background: plan.cardBg === '#ffffff' ? '#f8f8f8' : '#efebe5',
+                  borderRadius: 12,
+                  padding: "20px",
+                  marginTop: "auto",
+                  position: "relative"
+                }}>
+                  <ArrowUpRight size={18} color="#1a1a1a" style={{ position: "absolute", top: 16, right: 16 }} />
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#1a1a1a", marginBottom: 4 }}>
+                    UNLIMITED, ALL YEAR
+                  </div>
+                  <div style={{ fontSize: 12, color: "#666", marginBottom: 16 }}>
+                    Save credits on 30+ models
+                  </div>
 
-                {/* CTA */}
-                <button
-                  onClick={() => handleUpgrade(plan)}
-                  disabled={upgrading === plan.id || isCurrentPlan || isCheckoutDisabled}
-                  style={{
-                    width: "100%",
-                    padding: "14px 20px",
-                    borderRadius: 12,
-                    border: isCurrentPlan ? '1px solid #059669' : plan.btnBorder,
-                    background: isCurrentPlan ? 'transparent' : plan.btnBg,
-                    color: isCurrentPlan ? '#059669' : plan.btnText,
-                    fontSize: 14,
-                    fontWeight: 500,
-                    cursor: (isCurrentPlan || isCheckoutDisabled) ? "not-allowed" : "pointer",
-                    transition: "opacity 0.2s",
-                    marginBottom: 32,
-                    opacity: upgrading === plan.id || isCurrentPlan || isCheckoutDisabled ? 0.7 : 1,
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isCheckoutDisabled && !isCurrentPlan) e.currentTarget.style.opacity = 0.9;
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isCheckoutDisabled && !isCurrentPlan) e.currentTarget.style.opacity = 1;
-                  }}
-                >
-                  {isCheckoutDisabled ? 'Unavailable' : (upgrading === plan.id ? "Processing..." : (isCurrentPlan ? 'Current Plan' : plan.cta))}
-                </button>
-
-                {/* Features list */}
-                <div style={{ paddingBottom: 24 }}>
-                  <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 12 }}>
-                    {plan.includedFeatures.map((f) => (
-                      <li key={f} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13.5, color: "#1a1a1a" }}>
-                        <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, flexShrink: 0 }}>
-                          <Check size={16} strokeWidth={2.5} />
+                  <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+                    {plan.unlimitedFeatures.map(uf => (
+                      <li key={uf.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: "#1a1a1a" }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ width: 12, height: 12, background: "#e5e5e5", borderRadius: "50%" }}></div>
+                          {uf.label}
                         </span>
-                        <span style={{ flex: 1 }}>{f}</span>
-                        <Info size={14} color="#b3b3b3" style={{ flexShrink: 0 }} />
-                      </li>
-                    ))}
-                    {plan.excludedFeatures.map((f) => (
-                      <li key={f} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13.5, color: "#999" }}>
-                        <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, flexShrink: 0 }}>
-                          <X size={16} strokeWidth={2} />
+                        <span style={{
+                          background: "#fae8c8",
+                          color: "#966f33",
+                          padding: "4px 8px",
+                          borderRadius: 12,
+                          fontSize: 10,
+                          fontWeight: 700
+                        }}>
+                          {uf.badge}
                         </span>
-                        <span style={{ flex: 1 }}>{f}</span>
                       </li>
                     ))}
                   </ul>
                 </div>
-
-                {/* Unlimited Box */}
-                {plan.unlimitedFeatures && plan.unlimitedFeatures.length > 0 && (
-                  <div style={{
-                    background: plan.cardBg === '#ffffff' ? '#f8f8f8' : '#efebe5',
-                    borderRadius: 12,
-                    padding: "20px",
-                    marginTop: "auto",
-                    position: "relative"
-                  }}>
-                    <ArrowUpRight size={18} color="#1a1a1a" style={{ position: "absolute", top: 16, right: 16 }} />
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "#1a1a1a", marginBottom: 4 }}>
-                      UNLIMITED, ALL YEAR
-                    </div>
-                    <div style={{ fontSize: 12, color: "#666", marginBottom: 16 }}>
-                      Save credits on 30+ models
-                    </div>
-                    
-                    <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 10 }}>
-                      {plan.unlimitedFeatures.map(uf => (
-                        <li key={uf.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: "#1a1a1a" }}>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <div style={{ width: 12, height: 12, background: "#e5e5e5", borderRadius: "50%" }}></div>
-                            {uf.label}
-                          </span>
-                          <span style={{ 
-                            background: "#fae8c8", 
-                            color: "#966f33", 
-                            padding: "4px 8px", 
-                            borderRadius: 12, 
-                            fontSize: 10, 
-                            fontWeight: 700 
-                          }}>
-                            {uf.badge}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
+              )}
+              {(!plan.unlimitedFeatures || plan.unlimitedFeatures.length === 0) && (
+                <div style={{
+                  background: plan.cardBg === '#ffffff' ? '#f8f8f8' : 'rgba(239, 235, 229, 0.5)',
+                  borderRadius: 12,
+                  padding: "20px",
+                  marginTop: "auto",
+                  minHeight: 120,
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "center",
+                  alignItems: "center",
+                }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#999", marginBottom: 12, textAlign: "left", width: "100%" }}>
+                    UNLIMITED, ALL YEAR
                   </div>
-                )}
-                {(!plan.unlimitedFeatures || plan.unlimitedFeatures.length === 0) && (
-                  <div style={{
-                    background: plan.cardBg === '#ffffff' ? '#f8f8f8' : 'rgba(239, 235, 229, 0.5)',
-                    borderRadius: 12,
-                    padding: "20px",
-                    marginTop: "auto",
-                    minHeight: 120,
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "center",
-                    alignItems: "center",
-                  }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "#999", marginBottom: 12, textAlign: "left", width: "100%" }}>
-                      UNLIMITED, ALL YEAR
-                    </div>
-                    <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 10, width: "100%" }}>
-                      <li style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#b3b3b3" }}>
-                        <X size={14} strokeWidth={2} />
-                        <span>Advanced features limited</span>
-                      </li>
-                      <li style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#b3b3b3" }}>
-                        <X size={14} strokeWidth={2} />
-                        <span>Basic support only</span>
-                      </li>
-                    </ul>
-                  </div>
-                )}
-              </motion.div>
-            )
-          })}
+                  <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 10, width: "100%" }}>
+                    <li style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#b3b3b3" }}>
+                      <X size={14} strokeWidth={2} />
+                      <span>Advanced features limited</span>
+                    </li>
+                    <li style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#b3b3b3" }}>
+                      <X size={14} strokeWidth={2} />
+                      <span>Basic support only</span>
+                    </li>
+                  </ul>
+                </div>
+              )}
+            </motion.div>
+          )
+        })}
       </div>
     </div>
   );

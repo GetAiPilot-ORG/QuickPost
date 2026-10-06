@@ -1778,8 +1778,9 @@ function ComposerModal({
       }
     }
     if (hasInstagram && effectivePostType !== "story" && autoDMConfig.enabled) {
-      if (!autoDMConfig.keywords?.length) {
-        setError("Add at least one Auto DM keyword or turn Auto DM off.");
+      const isAnyComment = autoDMConfig.keywordMatchType === "any" || (autoDMConfig.keywords?.length === 1 && autoDMConfig.keywords[0] === "*");
+      if (!isAnyComment && !autoDMConfig.keywords?.length) {
+        setError("Add at least one Auto DM keyword, select 'Any comment', or turn Auto DM off.");
         return false;
       }
       if (!autoDMConfig.responseFlow?.nodes?.length) {
@@ -1836,7 +1837,13 @@ function ComposerModal({
       formData.append("userTimezone", userTimezone);
       formData.append("isScheduled", isScheduled ? "true" : "false");
       if (hasInstagram && publishPostType !== "story" && autoDMConfig.enabled) {
-        formData.append("autoDMConfig", JSON.stringify(autoDMConfig));
+        const payloadAutoDMConfig = {
+          ...autoDMConfig,
+          keywords: (autoDMConfig.keywordMatchType === "any" || !autoDMConfig.keywords?.length)
+            ? ["*"]
+            : autoDMConfig.keywords,
+        };
+        formData.append("autoDMConfig", JSON.stringify(payloadAutoDMConfig));
       }
 
       if (isScheduled) {
@@ -2352,9 +2359,7 @@ function ComposerModal({
             )}
 
             {/* ── COMPOSER (main content) ── */}
-            {(!isMobile ||
-              mobileActiveTab === "compose" ||
-              mobileActiveTab === "insights") && (
+            {(!isMobile || mobileActiveTab === "compose") && (
               <div
                 style={{
                   flex: 1,
@@ -3039,7 +3044,7 @@ function ComposerModal({
                   mediaFiles={mediaFiles}
                 />
 
-                {panelItems.length > 0 && (
+                {!isMobile && panelItems.length > 0 && (
                   <div style={{ marginTop: 14 }}>
                     <IntelligencePanel panelItems={panelItems} />
                   </div>
