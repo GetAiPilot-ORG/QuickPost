@@ -151,15 +151,13 @@ export default function BotBuilderForm({
               <Bot className="h-5 w-5" />
             </span>
             <div>
-              <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[var(--arc)]">Bot Builder</p>
-              <h2 className="mt-1 text-2xl font-semibold tracking-[-0.02em] text-[var(--ink)]">
+              <h2 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--ink)]">
                 {form.id ? "Edit AI bot" : "Create AI bot"}
               </h2>
-              <p className="mt-1 text-sm text-[var(--slate)]">Configure identity, response behavior, lead capture, and safety defaults.</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className={`rounded-md px-3 py-2 text-xs font-black uppercase tracking-[0.14em] ${form.is_active ? "bg-emerald-100 text-emerald-800" : "bg-black/5 text-[var(--slate)]"}`}>
+            <span className={`rounded-md px-3 py-1.5 text-xs font-semibold ${form.is_active ? "bg-emerald-100 text-emerald-800" : "bg-black/5 text-[var(--slate)]"}`}>
               {statusLabel}
             </span>
             {form.id ? (
@@ -228,12 +226,8 @@ export default function BotBuilderForm({
           <div>
             <SectionTitle icon={<Wand2 className="h-4 w-4" />} title="Custom AI Instructions & Persona (System Prompt)" />
             <div className="mt-4 space-y-4">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <span className="text-xs text-[var(--slate)]">
-                  Pick a 1-click preset or write your own custom rules for persona, lead collection, and behavior:
-                </span>
-                <div className="flex items-center gap-1.5 text-xs text-[var(--slate)]">
-                  <span>Dynamic tags:</span>
+              <div className="flex items-center justify-end gap-1.5 text-xs text-[var(--slate)]">
+                <span>Dynamic tags:</span>
                   <button
                     type="button"
                     onClick={() => setField("system_prompt", (form.system_prompt || "") + " {{business_name}}")}
@@ -251,7 +245,6 @@ export default function BotBuilderForm({
                     {"{{bot_name}}"}
                   </button>
                 </div>
-              </div>
 
               {/* Presets Bar */}
               <div className="flex flex-wrap gap-2">
@@ -336,7 +329,7 @@ export default function BotBuilderForm({
         </div>
 
         <div className="space-y-3 rounded-lg border border-black/10 bg-[#fbfaf8] p-4">
-          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[var(--arc)]">Safety Controls</p>
+          <p className="text-xs font-semibold text-[var(--arc)]">Safety Controls</p>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-1">
             <ToggleRow
               icon={<Power className="h-4 w-4" />}
@@ -378,7 +371,7 @@ export default function BotBuilderForm({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-2 block text-[11px] font-black uppercase tracking-[0.08em] text-[var(--slate)]">{label}</span>
+      <span className="mb-1.5 block text-xs font-semibold text-[var(--slate)]">{label}</span>
       {children}
     </label>
   );

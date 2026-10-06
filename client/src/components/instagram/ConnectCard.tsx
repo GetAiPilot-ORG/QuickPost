@@ -57,7 +57,7 @@ export default function ConnectCard({ accounts, onChanged }: { accounts: any[]; 
                   <Instagram className="h-5 w-5" />
                 </span>
                 <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[var(--arc)]">Instagram setup</p>
+                  <p className="text-xs font-semibold text-[var(--arc)]">Instagram setup</p>
                   <h2 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--ink)]">
                     Connect Instagram
                   </h2>
@@ -153,7 +153,7 @@ function InstagramAccountCard({ account, busy, setBusy, onChanged }: { account: 
               )}
             </span>
             <div>
-              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[var(--arc)]">Connected Account</p>
+              <p className="text-xs font-semibold text-[var(--arc)]">Connected Account</p>
               <h2 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--ink)]">
                 {displayName}
               </h2>
@@ -241,7 +241,7 @@ function StatusRow({ good, title, text }: { good: boolean; title: string; text: 
 function MetaField({ label, value }: { label: string; value?: string }) {
   return (
     <div>
-      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--slate)]">{label}</div>
+      <div className="text-xs font-semibold text-[var(--slate)]">{label}</div>
       <div className="mt-1 break-all font-mono text-xs text-[var(--ink)]">{value || "Not available"}</div>
     </div>
   );
