@@ -5852,9 +5852,9 @@ textarea {
   font-family: var(--font-body);
 }
 
-input,
-select,
-textarea {
+input:not(.bare-input),
+select:not(.bare-input),
+textarea:not(.bare-input) {
   border-color: var(--dust) !important;
   border-radius: 8px !important;
   background: var(--white) !important;
@@ -5862,14 +5862,24 @@ textarea {
   box-shadow: none !important;
 }
 
-input:focus,
-select:focus,
-textarea:focus,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible {
+input:not(.bare-input):focus,
+select:not(.bare-input):focus,
+textarea:not(.bare-input):focus,
+input:not(.bare-input):focus-visible,
+select:not(.bare-input):focus-visible,
+textarea:not(.bare-input):focus-visible {
   border-color: var(--ink) !important;
   box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.06) !important;
+  outline: none !important;
+}
+
+.bare-input,
+.bare-input:focus,
+.bare-input:focus-visible {
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
   outline: none !important;
 }
 

@@ -344,12 +344,37 @@ export async function listBots(userId) {
   return data || [];
 }
 
+function ensureArray(val, fallback = []) {
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') {
+    try {
+      const parsed = JSON.parse(val);
+      if (Array.isArray(parsed)) return parsed;
+    } catch (_) {
+      const parts = val.split(',').map((s) => s.trim()).filter(Boolean);
+      if (parts.length > 0) return parts;
+    }
+  }
+  return fallback;
+}
+
+function ensureObject(val, fallback = {}) {
+  if (val && typeof val === 'object' && !Array.isArray(val)) return val;
+  if (typeof val === 'string') {
+    try {
+      const parsed = JSON.parse(val);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+    } catch (_) {}
+  }
+  return fallback;
+}
+
 function cleanBotPayload(payload, userId) {
   return {
     user_id: userId,
     instagram_account_id: payload.instagram_account_id,
-    bot_name: payload.bot_name?.trim(),
-    business_name: payload.business_name?.trim(),
+    bot_name: payload.bot_name?.trim() || 'InstaPilot Bot',
+    business_name: payload.business_name?.trim() || '',
     tone: payload.tone || 'friendly',
     language: payload.language || 'auto-detect',
     bot_goal: payload.bot_goal || 'support',
@@ -357,10 +382,10 @@ function cleanBotPayload(payload, userId) {
     fallback_message: payload.fallback_message || DEFAULT_REPLY,
     welcome_message:
       payload.welcome_message || 'Hi! Welcome to {{business_name}}. How can I help you today?',
-    quick_replies: payload.quick_replies || ['Pricing', 'Services', 'Book a Call', 'Talk to Human'],
-    handoff_keywords: payload.handoff_keywords || ['human', 'agent', 'call me', 'support'],
-    lead_fields: payload.lead_fields || ['name', 'phone', 'email', 'requirement'],
-    business_hours: payload.business_hours || {},
+    quick_replies: ensureArray(payload.quick_replies, ['Pricing', 'Services', 'Book a Call', 'Talk to Human']),
+    handoff_keywords: ensureArray(payload.handoff_keywords, ['human', 'agent', 'call me', 'support']),
+    lead_fields: ensureArray(payload.lead_fields, ['name', 'phone', 'email', 'requirement']),
+    business_hours: ensureObject(payload.business_hours, {}),
     is_active: Boolean(payload.is_active),
     human_handoff_enabled: payload.human_handoff_enabled !== false,
     confidence_threshold: Number(payload.confidence_threshold || 0.68),
