@@ -16,7 +16,7 @@ export default function InboxConversationList({
       <div className="border-b border-black/10 p-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.2em] text-[var(--arc)]">Inbox</p>
+            <p className="text-xs font-semibold text-[var(--arc)]">Inbox</p>
             <h2 className="mt-1 text-xl font-semibold text-[var(--ink)]">Conversations</h2>
           </div>
           {handoffCount ? (

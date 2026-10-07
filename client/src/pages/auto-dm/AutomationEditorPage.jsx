@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -42,6 +42,7 @@ import { KeywordInput } from '../../features/autodm/KeywordInput';
 
 import ResponseFlowBuilder from '../../features/autodm/ResponseFlowBuilder';
 import MobilePreview from './MobilePreview';
+import HeartLikeCheckbox from '../../components/HeartLikeCheckbox';
 
 
 const triggerTypes = [
@@ -368,6 +369,7 @@ export default function AutomationEditorPage() {
   const [isCaseSensitive, setIsCaseSensitive] = useState(false);
   const [commentReplyEnabled, setCommentReplyEnabled] = useState(true);
   const [commentReplyText, setCommentReplyText] = useState('Sent it to your DM. Tap SETUP to continue.');
+  const [autoLikeComment, setAutoLikeComment] = useState(true);
   const [requireFollow, setRequireFollow] = useState(false);
   const [fallbackCommentReply, setFallbackCommentReply] = useState('');
   const [scheduleType, setScheduleType] = useState('duration');
@@ -379,6 +381,66 @@ export default function AutomationEditorPage() {
   const [recentMedia, setRecentMedia] = useState([]);
   const [isLoadingRecentMedia, setIsLoadingRecentMedia] = useState(false);
   const [activePreviewTab, setActivePreviewTab] = useState('Post');
+
+  const commentReplyInputRef = useRef(null);
+  const fallbackReplyInputRef = useRef(null);
+  const openingMessageInputRef = useRef(null);
+
+  const insertVariable = (variable, target = 'reply') => {
+    const tag = variable === 'username' ? '@{{username}}' : `{{${variable}}}`;
+    if (target === 'reply') {
+      const inputEl = commentReplyInputRef.current;
+      if (inputEl && typeof inputEl.selectionStart === 'number') {
+        const start = inputEl.selectionStart;
+        const end = inputEl.selectionEnd ?? start;
+        const current = commentReplyText || '';
+        const nextText = current.slice(0, start) + tag + current.slice(end);
+        setCommentReplyText(nextText);
+        setTimeout(() => {
+          inputEl.focus();
+          const nextPos = start + tag.length;
+          inputEl.setSelectionRange(nextPos, nextPos);
+        }, 10);
+      } else {
+        setCommentReplyText((prev) => (prev ? `${prev} ${tag}` : tag));
+      }
+    } else if (target === 'fallback') {
+      const inputEl = fallbackReplyInputRef.current;
+      if (inputEl && typeof inputEl.selectionStart === 'number') {
+        const start = inputEl.selectionStart;
+        const end = inputEl.selectionEnd ?? start;
+        const current = fallbackCommentReply || '';
+        const nextText = current.slice(0, start) + tag + current.slice(end);
+        setFallbackCommentReply(nextText);
+        setTimeout(() => {
+          inputEl.focus();
+          const nextPos = start + tag.length;
+          inputEl.setSelectionRange(nextPos, nextPos);
+        }, 10);
+      } else {
+        setFallbackCommentReply((prev) => (prev ? `${prev} ${tag}` : tag));
+      }
+    } else if (target === 'opening') {
+      const current = responseFlow?.opening_message || '';
+      const inputEl = openingMessageInputRef.current;
+      if (inputEl && typeof inputEl.selectionStart === 'number') {
+        const start = inputEl.selectionStart;
+        const end = inputEl.selectionEnd ?? start;
+        const nextText = current.slice(0, start) + tag + current.slice(end);
+        setResponseFlow((prev) => ({ ...prev, opening_message: nextText }));
+        setTimeout(() => {
+          inputEl.focus();
+          const nextPos = start + tag.length;
+          inputEl.setSelectionRange(nextPos, nextPos);
+        }, 10);
+      } else {
+        setResponseFlow((prev) => ({
+          ...prev,
+          opening_message: current ? `${current} ${tag}` : tag,
+        }));
+      }
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -433,8 +495,10 @@ export default function AutomationEditorPage() {
           setKeywords(savedKeywords);
         }
         setIsCaseSensitive(Boolean(data.is_case_sensitive));
-        setCommentReplyEnabled(data.comment_reply_enabled !== false);
-        setCommentReplyText(data.comment_reply_text || 'Sent it to your DM. Tap SETUP to continue.');
+        const rawReply = String(data.comment_reply_text || '');
+        const cleanReply = rawReply.includes('|||') ? rawReply.split('|||')[0].trim() : rawReply.trim();
+        setCommentReplyText(cleanReply || 'Sent it to your DM. Tap SETUP to continue.');
+        setAutoLikeComment(Boolean(data.response_flow?.auto_like_comment ?? data.auto_like_comment ?? true));
         setRequireFollow(Boolean(data.require_follow));
         setFallbackCommentReply(data.fallback_comment_reply || '');
         setScheduleType(data.schedule_type || 'manual');
@@ -537,7 +601,10 @@ export default function AutomationEditorPage() {
         comment_reply_text: commentReplyEnabled ? commentReplyText : null,
         require_follow: requireFollow,
         fallback_comment_reply: fallbackCommentReply,
-        response_flow: responseFlow,
+        response_flow: {
+          ...responseFlow,
+          auto_like_comment: autoLikeComment,
+        },
         is_active: isActive,
         ...schedule.value,
         expired_at: null,
@@ -672,6 +739,12 @@ export default function AutomationEditorPage() {
                                 <Button variant="outline" size="sm" onClick={() => setShowMediaSelector(true)} className="w-full bg-white">
                                     Change Media
                                 </Button>
+                                {selectedMedia && recentMedia.length > 0 && !recentMedia.some(m => String(m.id) === String(selectedMedia.id)) && (
+                                    <div className="flex items-center gap-2 p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700">
+                                      <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                                      <span>This post was deleted on Instagram. Please select an active post.</span>
+                                    </div>
+                                )}
                             </div>
                         ) : (
                             <div className="flex flex-col gap-2">
@@ -768,7 +841,29 @@ export default function AutomationEditorPage() {
                    </div>
                    {commentReplyEnabled && (
                       <div className="mt-4">
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <span className="text-[11px] text-gray-500 font-medium">Insert variable:</span>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => insertVariable('first_name', 'reply')}
+                                className="px-2 py-0.5 rounded-md border border-black/10 bg-white hover:bg-orange-50 hover:border-orange-200 hover:text-orange-600 transition-colors font-mono text-[10px] text-gray-700 font-medium"
+                                title="Inserts user's first name"
+                              >
+                                + &#123;&#123;first_name&#125;&#125;
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => insertVariable('username', 'reply')}
+                                className="px-2 py-0.5 rounded-md border border-black/10 bg-white hover:bg-orange-50 hover:border-orange-200 hover:text-orange-600 transition-colors font-mono text-[10px] text-gray-700 font-medium"
+                                title="Inserts user's @username mention"
+                              >
+                                + @&#123;&#123;username&#125;&#125;
+                              </button>
+                            </div>
+                          </div>
                           <Textarea 
+                              ref={commentReplyInputRef}
                               value={commentReplyText}
                               onChange={(e) => setCommentReplyText(e.target.value)}
                               placeholder="Sent it to your DM. Tap SETUP to continue."
@@ -776,6 +871,37 @@ export default function AutomationEditorPage() {
                           />
                       </div>
                    )}
+
+                   {/* Auto-like Comment Toggle (Coming Soon) */}
+                   <div className="flex items-center justify-between pt-4 mt-4 border-t border-gray-200/60">
+                      <div className="flex items-center gap-3">
+                        <HeartLikeCheckbox 
+                          checked={false} 
+                          disabled={true}
+                          onChange={() => toast('Auto-like comment feature is coming soon!', { icon: '✨' })} 
+                        />
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <Label 
+                              className="text-sm font-semibold text-gray-700 cursor-pointer"
+                              onClick={() => toast('Auto-like comment feature is coming soon!', { icon: '✨' })}
+                            >
+                              Auto-like Comment
+                            </Label>
+                            <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase bg-amber-50 text-amber-700 border border-amber-200 rounded-full">
+                              Coming Soon
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div onClick={() => toast('Auto-like comment feature is coming soon!', { icon: '✨' })}>
+                        <Switch 
+                            checked={false} 
+                            disabled={true}
+                            className="opacity-50 cursor-not-allowed"
+                        />
+                      </div>
+                   </div>
                 </div>
 
                 {/* Follow Gate */}
@@ -793,8 +919,30 @@ export default function AutomationEditorPage() {
                    {requireFollow && (
                       <div className="mt-4 pt-4 border-t border-gray-200/60">
                           <Label className="text-sm font-semibold text-gray-800 block">Fallback Comment Reply</Label>
-                          <p className="text-xs text-gray-500 mt-1 mb-3">If they don't follow you, we'll reply to their comment with this text instead of sending a DM.</p>
+                          <p className="text-xs text-gray-500 mt-1 mb-2">If they don't follow you, we'll reply to their comment with this text instead of sending a DM.</p>
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <span className="text-[11px] text-gray-500 font-medium">Insert variable:</span>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => insertVariable('first_name', 'fallback')}
+                                className="px-2 py-0.5 rounded-md border border-black/10 bg-white hover:bg-orange-50 hover:border-orange-200 hover:text-orange-600 transition-colors font-mono text-[10px] text-gray-700 font-medium"
+                                title="Inserts user's first name"
+                              >
+                                + &#123;&#123;first_name&#125;&#125;
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => insertVariable('username', 'fallback')}
+                                className="px-2 py-0.5 rounded-md border border-black/10 bg-white hover:bg-orange-50 hover:border-orange-200 hover:text-orange-600 transition-colors font-mono text-[10px] text-gray-700 font-medium"
+                                title="Inserts user's @username mention"
+                              >
+                                + @&#123;&#123;username&#125;&#125;
+                              </button>
+                            </div>
+                          </div>
                           <Textarea 
+                              ref={fallbackReplyInputRef}
                               value={fallbackCommentReply}
                               onChange={(e) => setFallbackCommentReply(e.target.value)}
                               placeholder="Please follow our account to receive the link!"
@@ -829,7 +977,29 @@ export default function AutomationEditorPage() {
 
               {responseFlow.opening_message_enabled ? (
                 <div className="space-y-4 p-5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] text-gray-500 font-medium">Insert variable:</span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => insertVariable('first_name', 'opening')}
+                        className="px-2 py-0.5 rounded-md border border-black/10 bg-white hover:bg-orange-50 hover:border-orange-200 hover:text-orange-600 transition-colors font-mono text-[10px] text-gray-700 font-medium"
+                        title="Inserts user's first name"
+                      >
+                        + &#123;&#123;first_name&#125;&#125;
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => insertVariable('username', 'opening')}
+                        className="px-2 py-0.5 rounded-md border border-black/10 bg-white hover:bg-orange-50 hover:border-orange-200 hover:text-orange-600 transition-colors font-mono text-[10px] text-gray-700 font-medium"
+                        title="Inserts user's @username mention"
+                      >
+                        + @&#123;&#123;username&#125;&#125;
+                      </button>
+                    </div>
+                  </div>
                   <Textarea
+                    ref={openingMessageInputRef}
                     value={responseFlow.opening_message || ''}
                     onChange={(event) => setResponseFlow((prev) => ({ ...prev, opening_message: event.target.value }))}
                     placeholder="Hey there! I'm so happy you're here..."
@@ -883,6 +1053,7 @@ export default function AutomationEditorPage() {
                 responseFlow={responseFlow}
                 commentReplyText={commentReplyText}
                 commentReplyEnabled={commentReplyEnabled}
+                autoLikeComment={autoLikeComment}
                 requireFollow={requireFollow}
                 fallbackCommentReply={fallbackCommentReply}
                 activeTab={activePreviewTab}

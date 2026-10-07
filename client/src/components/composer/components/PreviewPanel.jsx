@@ -16,7 +16,7 @@
  *   connectedAccounts:        object
  */
 
-import React, { useState, useEffect, useMemo, memo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useRef, memo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePlatformMetrics } from "../../../utils/metrics";
 import {
@@ -32,6 +32,7 @@ import {
   MessageSquare,
   Repeat,
   Film,
+  Play,
 } from "lucide-react";
 import { PLATFORM_META, ASPECT_RATIOS } from "../data/platforms.js";
 
@@ -43,9 +44,17 @@ function useBlobUrl(file) {
       setUrl(null);
       return;
     }
-    const u = URL.createObjectURL(file);
-    setUrl(u);
-    return () => URL.revokeObjectURL(u);
+    if (typeof file === "string") {
+      setUrl(file);
+      return;
+    }
+    try {
+      const u = URL.createObjectURL(file);
+      setUrl(u);
+      return () => URL.revokeObjectURL(u);
+    } catch {
+      setUrl(null);
+    }
   }, [file]);
   return url;
 }
@@ -200,7 +209,7 @@ const UserAvatar = ({ user, picture, size = 28, background = "#eee" }) => {
 };
 
 const InstagramPreview = memo(
-  ({ caption, mediaFiles, cssClass, user, platformPicture, platformUsername, selectedRatio, selectedSizePreset }) => {
+  ({ caption, mediaFiles, cssClass, user, platformPicture, platformUsername, selectedRatio, selectedSizePreset, thumbnailFile }) => {
     const metrics = usePlatformMetrics(caption);
     const username =
       platformUsername ||
@@ -210,18 +219,141 @@ const InstagramPreview = memo(
     const isReel = selectedSizePreset === "ig-reel";
     const isStory = selectedSizePreset === "ig-story";
 
+    const primaryVideoMedia = useMemo(() => {
+      if (!mediaFiles?.length) return null;
+      return (
+        mediaFiles.find((m) =>
+          m.file?.type?.startsWith("video/") ||
+          m.type === "video" ||
+          /\.(mp4|mov|webm)$/i.test(m.url || "")
+        ) || null
+      );
+    }, [mediaFiles]);
+
+    const rawVideoSource = primaryVideoMedia?.file || primaryVideoMedia?.url || null;
+    const reelVideoUrl = useBlobUrl(rawVideoSource);
+    const coverUrl = useBlobUrl(thumbnailFile);
+
+    const [isHovered, setIsHovered] = useState(false);
+    const videoRef = useRef(null);
+
+    useEffect(() => {
+      const video = videoRef.current;
+      if (!video) return;
+
+      if (isHovered && reelVideoUrl) {
+        const playPromise = video.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(() => {});
+        }
+      } else {
+        video.pause();
+      }
+    }, [isHovered, reelVideoUrl]);
+
     if (isReel) {
       return (
         <div
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+          onClick={() => {
+            if (!reelVideoUrl) return;
+            const video = videoRef.current;
+            if (!video) return;
+            if (video.paused) {
+              video.play().catch(() => {});
+              setIsHovered(true);
+            } else {
+              video.pause();
+              setIsHovered(false);
+            }
+          }}
           style={{
             background: "#000",
             borderRadius: 12,
             overflow: "hidden",
             position: "relative",
             aspectRatio: "9/16",
+            cursor: reelVideoUrl ? "pointer" : "default",
           }}
         >
-          <MediaCarousel mediaFiles={mediaFiles} cssClass={cssClass} />
+          {reelVideoUrl ? (
+            <>
+              <video
+                ref={videoRef}
+                src={reelVideoUrl}
+                muted
+                playsInline
+                loop
+                preload="metadata"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  position: "absolute",
+                  inset: 0,
+                  background: "#000",
+                }}
+              />
+              {coverUrl && (
+                <img
+                  src={coverUrl}
+                  alt="Reel Cover"
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    zIndex: 1,
+                    transition: "opacity 0.25s ease",
+                    opacity: isHovered ? 0 : 1,
+                    pointerEvents: "none",
+                  }}
+                />
+              )}
+              {/* Subtle play indicator when paused and not hovered */}
+              {!isHovered && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "50%",
+                    left: "50%",
+                    transform: "translate(-50%, -50%)",
+                    width: 44,
+                    height: 44,
+                    borderRadius: "50%",
+                    background: "rgba(0, 0, 0, 0.45)",
+                    backdropFilter: "blur(4px)",
+                    WebkitBackdropFilter: "blur(4px)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    zIndex: 2,
+                    pointerEvents: "none",
+                    transition: "opacity 0.2s ease, transform 0.2s ease",
+                    boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
+                    border: "1px solid rgba(255,255,255,0.25)",
+                  }}
+                >
+                  <Play size={20} color="white" style={{ marginLeft: 2 }} />
+                </div>
+              )}
+            </>
+          ) : coverUrl ? (
+            <img
+              src={coverUrl}
+              alt="Reel Cover"
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+              }}
+            />
+          ) : (
+            <MediaCarousel mediaFiles={mediaFiles} cssClass={cssClass} />
+          )}
+
           {/* Reel Overlays */}
           <div
             style={{
@@ -232,6 +364,7 @@ const InstagramPreview = memo(
               padding: "60px 12px 16px",
               background: "linear-gradient(transparent, rgba(0,0,0,0.8))",
               pointerEvents: "none",
+              zIndex: 3,
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
@@ -243,7 +376,7 @@ const InstagramPreview = memo(
               {caption || "Amazing reel content... #reel #viral"}
             </p>
           </div>
-          <div style={{ position: "absolute", right: 10, bottom: 40, display: "flex", flexDirection: "column", gap: 18, alignItems: "center" }}>
+          <div style={{ position: "absolute", right: 10, bottom: 40, display: "flex", flexDirection: "column", gap: 18, alignItems: "center", zIndex: 3 }}>
             <div style={{ textAlign: "center" }}><Heart size={24} color="white" /><span style={{ color: "white", fontSize: 10, marginTop: 2 }}>{metrics.likes}</span></div>
             <div style={{ textAlign: "center" }}><MessageCircle size={24} color="white" /><span style={{ color: "white", fontSize: 10, marginTop: 2 }}>{metrics.comments}</span></div>
             <Send size={24} color="white" />
@@ -369,10 +502,9 @@ const InstagramPreview = memo(
           )}
           <p
             style={{
-              fontSize: 9,
+              fontSize: 10,
               color: "#888",
-              marginTop: 5,
-              textTransform: "uppercase",
+              marginTop: 4,
             }}
           >
             {metrics.timestamp}
@@ -940,6 +1072,7 @@ const PreviewPanel = memo(function PreviewPanel({
   selectedRatio,
   selectedSizePreset,
   youtubeThumbnail,
+  instagramCover,
   activePlatform,
   onActivePlatformChange,
   connectedAccounts,
@@ -1118,7 +1251,13 @@ const PreviewPanel = memo(function PreviewPanel({
                 cssClass={cssClass}
                 user={user}
                 platformId={activeId}
-                thumbnailFile={baseActiveId === "youtube" ? youtubeThumbnail : null}
+                thumbnailFile={
+                  baseActiveId === "youtube"
+                    ? youtubeThumbnail
+                    : baseActiveId === "instagram"
+                    ? instagramCover
+                    : null
+                }
                 platformUsername={platformUsername}
                 platformPicture={platformPicture}
                 selectedRatio={selectedRatio}

@@ -24,7 +24,6 @@ import {
   CreditCard,
   BarChart3,
   Flame,
-  TrendingUp,
 } from "lucide-react";
 import { useDialog } from "../context/DialogContext";
 import logo from "/logo.png";
@@ -733,11 +732,6 @@ function Sidebar({ onClose }) {
               to: "/dashboard/instapilot",
               label: "GAP InstaPilot",
               icon: <Instagram size={16} />,
-            },
-            {
-              to: "/dashboard/socialgrowth",
-              label: "GAP SocialGrowth",
-              icon: <TrendingUp size={16} />,
             },
             {
               to: "/dashboard/youtube",

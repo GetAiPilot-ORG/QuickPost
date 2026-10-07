@@ -39,7 +39,6 @@ const PaymentSuccessPage = lazy(() => import('./pages/PaymentSuccessPage'));
 const InstagramBots = lazy(() => import('./pages/InstagramBots'));
 const InstagramConnect = lazy(() => import('./pages/InstagramConnect'));
 const InstagramInbox = lazy(() => import('./pages/InstagramInbox'));
-const InstaGrowthPage = lazy(() => import('./pages/InstaGrowthPage'));
 const YouTubeManagerPage = lazy(() => import('./pages/YouTubeManagerPage'));
 const TrendFeedPage = lazy(() => import('./pages/TrendFeedPage'));
 const SocialInboxPage = lazy(() => import('./pages/SocialInboxPage'));
@@ -124,14 +123,13 @@ function AppContent() {
         <Route path="instapilot" element={<InstagramBots />} />
         <Route path="instapilot/connect" element={<InstagramConnect />} />
         <Route path="instapilot/inbox" element={<InstagramInbox />} />
-        <Route path="socialgrowth" element={<InstaGrowthPage />} />
-        <Route path="instagrowth" element={<InstaGrowthPage />} />
-        <Route path="growth" element={<InstaGrowthPage />} />
         <Route path="youtube" element={<YouTubeManagerPage />} />
         <Route path="trends" element={<TrendFeedPage />} />
         <Route path="inbox" element={<SocialInboxPage />} />
         <Route path="docs" element={<DocsGuidePage />} />
         <Route path="guide" element={<DocsGuidePage />} />
+        <Route path="connect" element={<Navigate to="/connect" replace />} />
+        <Route path="channels" element={<Navigate to="/connect" replace />} />
         <Route path="profile" element={<AutoDMProvider><ProfilePage /></AutoDMProvider>} />
 
         {/* AutoDM workspace — has its own full-screen layout */}

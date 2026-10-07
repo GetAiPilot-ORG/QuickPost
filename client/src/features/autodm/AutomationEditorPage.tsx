@@ -13,7 +13,7 @@ import {
   Tv2,
   Zap,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 
@@ -32,6 +32,7 @@ import { KeywordInput } from "./KeywordInput";
 import type { KeywordConflict } from "./KeywordInput";
 import { MediaSelector } from "./MediaSelector";
 import { ResponseFlowBuilder } from "./ResponseFlowBuilder";
+import HeartLikeCheckbox from "@/components/HeartLikeCheckbox";
 
 const triggerTypes = [
   { value: "comment_on_post", label: "User comments on your post", icon: MessageCircle, available: true },
@@ -59,10 +60,51 @@ export default function AutomationEditorPage() {
   const [isCaseSensitive, setIsCaseSensitive] = useState(false);
   const [commentReplyEnabled, setCommentReplyEnabled] = useState(false);
   const [commentReplyText, setCommentReplyText] = useState("");
+  const [autoLikeComment, setAutoLikeComment] = useState(true);
   const [requireFollow, setRequireFollow] = useState(false);
   const [fallbackCommentReply, setFallbackCommentReply] = useState("");
   const [responseFlow, setResponseFlow] = useState<any>({ nodes: [], opening_message_enabled: false, opening_message: "" });
   const [isActive, setIsActive] = useState(false);
+
+  const commentReplyInputRef = useRef<HTMLTextAreaElement>(null);
+  const fallbackReplyInputRef = useRef<HTMLTextAreaElement>(null);
+
+  const insertVariable = (variable: "first_name" | "username", target: "reply" | "fallback" = "reply") => {
+    const tag = variable === "username" ? "@{{username}}" : `{{${variable}}}`;
+    if (target === "reply") {
+      const inputEl = commentReplyInputRef.current;
+      if (inputEl && typeof inputEl.selectionStart === "number") {
+        const start = inputEl.selectionStart;
+        const end = inputEl.selectionEnd ?? start;
+        const current = commentReplyText || "";
+        const nextText = current.slice(0, start) + tag + current.slice(end);
+        setCommentReplyText(nextText);
+        setTimeout(() => {
+          inputEl.focus();
+          const nextPos = start + tag.length;
+          inputEl.setSelectionRange(nextPos, nextPos);
+        }, 10);
+      } else {
+        setCommentReplyText((prev) => (prev ? `${prev} ${tag}` : tag));
+      }
+    } else if (target === "fallback") {
+      const inputEl = fallbackReplyInputRef.current;
+      if (inputEl && typeof inputEl.selectionStart === "number") {
+        const start = inputEl.selectionStart;
+        const end = inputEl.selectionEnd ?? start;
+        const current = fallbackCommentReply || "";
+        const nextText = current.slice(0, start) + tag + current.slice(end);
+        setFallbackCommentReply(nextText);
+        setTimeout(() => {
+          inputEl.focus();
+          const nextPos = start + tag.length;
+          inputEl.setSelectionRange(nextPos, nextPos);
+        }, 10);
+      } else {
+        setFallbackCommentReply((prev) => (prev ? `${prev} ${tag}` : tag));
+      }
+    }
+  };
 
   // All existing automations for conflict detection
   const [allAutomations, setAllAutomations] = useState<any[]>([]);
@@ -105,7 +147,10 @@ export default function AutomationEditorPage() {
         setKeywords(automation.keywords || []);
         setIsCaseSensitive(Boolean(automation.is_case_sensitive));
         setCommentReplyEnabled(Boolean(automation.comment_reply_enabled));
-        setCommentReplyText(automation.comment_reply_text || "");
+        const rawReply = String(automation.comment_reply_text || "");
+        const cleanReply = rawReply.includes("|||") ? rawReply.split("|||")[0].trim() : rawReply.trim();
+        setCommentReplyText(cleanReply);
+        setAutoLikeComment(Boolean(automation.response_flow?.auto_like_comment ?? automation.auto_like_comment ?? true));
         setRequireFollow(Boolean(automation.require_follow));
         setFallbackCommentReply(automation.fallback_comment_reply || "");
         setResponseFlow(automation.response_flow || { nodes: [], opening_message_enabled: false, opening_message: "" });
@@ -198,7 +243,10 @@ export default function AutomationEditorPage() {
         comment_reply_text: commentReplyEnabled ? commentReplyText : null,
         require_follow: requireFollow,
         fallback_comment_reply: fallbackCommentReply,
-        response_flow: responseFlow,
+        response_flow: {
+          ...responseFlow,
+          auto_like_comment: autoLikeComment,
+        },
         is_active: isActive,
       };
       if (isNew) {
@@ -473,16 +521,71 @@ export default function AutomationEditorPage() {
                       />
                     </div>
                     {commentReplyEnabled && (
-                      <Textarea
-                        value={commentReplyText}
-                        onChange={(event: any) =>
-                          setCommentReplyText(event.target.value)
-                        }
-                        rows={3}
-                        placeholder="Check your DM!"
-                        className="resize-none rounded-xl border-black/10 text-sm"
-                      />
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] text-gray-500 font-medium">Insert variable:</span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => insertVariable("first_name", "reply")}
+                              className="px-2 py-0.5 rounded-md border border-black/10 bg-white hover:bg-orange-50 hover:border-orange-200 hover:text-orange-600 transition-colors font-mono text-[10px] text-gray-700 font-medium"
+                              title="Inserts user's first name"
+                            >
+                              + &#123;&#123;first_name&#125;&#125;
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => insertVariable("username", "reply")}
+                              className="px-2 py-0.5 rounded-md border border-black/10 bg-white hover:bg-orange-50 hover:border-orange-200 hover:text-orange-600 transition-colors font-mono text-[10px] text-gray-700 font-medium"
+                              title="Inserts user's @username mention"
+                            >
+                              + @&#123;&#123;username&#125;&#125;
+                            </button>
+                          </div>
+                        </div>
+                        <Textarea
+                          ref={commentReplyInputRef}
+                          value={commentReplyText}
+                          onChange={(event: any) =>
+                            setCommentReplyText(event.target.value)
+                          }
+                          rows={3}
+                          placeholder="Check your DM!"
+                          className="resize-none rounded-xl border-black/10 text-sm"
+                        />
+                      </div>
                     )}
+
+                    {/* Auto-like Comment Toggle (Coming Soon) */}
+                    <div className="flex items-center justify-between pt-3 mt-3 border-t border-black/5">
+                      <div className="flex items-center gap-3">
+                        <HeartLikeCheckbox
+                          checked={false}
+                          disabled={true}
+                          onChange={() => toast('Auto-like comment feature is coming soon!', { icon: '✨' })}
+                        />
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <Label 
+                              className="text-sm font-semibold text-slate-700 cursor-pointer"
+                              onClick={() => toast('Auto-like comment feature is coming soon!', { icon: '✨' })}
+                            >
+                              Auto-like Comment
+                            </Label>
+                            <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase bg-amber-50 text-amber-700 border border-amber-200 rounded-full">
+                              Coming Soon
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div onClick={() => toast('Auto-like comment feature is coming soon!', { icon: '✨' })}>
+                        <Switch
+                          checked={false}
+                          disabled={true}
+                          className="opacity-50 cursor-not-allowed"
+                        />
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
               )}
@@ -518,7 +621,29 @@ export default function AutomationEditorPage() {
                         <p className="text-xs text-slate-400 mb-2">
                           If they don't follow you, we'll reply to their comment with this text instead of sending a DM.
                         </p>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] text-gray-500 font-medium">Insert variable:</span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => insertVariable("first_name", "fallback")}
+                              className="px-2 py-0.5 rounded-md border border-black/10 bg-white hover:bg-orange-50 hover:border-orange-200 hover:text-orange-600 transition-colors font-mono text-[10px] text-gray-700 font-medium"
+                              title="Inserts user's first name"
+                            >
+                              + &#123;&#123;first_name&#125;&#125;
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => insertVariable("username", "fallback")}
+                              className="px-2 py-0.5 rounded-md border border-black/10 bg-white hover:bg-orange-50 hover:border-orange-200 hover:text-orange-600 transition-colors font-mono text-[10px] text-gray-700 font-medium"
+                              title="Inserts user's @username mention"
+                            >
+                              + @&#123;&#123;username&#125;&#125;
+                            </button>
+                          </div>
+                        </div>
                         <Textarea
+                          ref={fallbackReplyInputRef}
                           value={fallbackCommentReply}
                           onChange={(event: any) =>
                             setFallbackCommentReply(event.target.value)

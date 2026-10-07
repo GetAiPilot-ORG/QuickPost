@@ -141,7 +141,8 @@ function ChannelSelector({ selectedChannels, onChannelToggle, onBulkSelect, righ
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between mb-1 px-1">
-        <div className="eyebrow lowercase text-[10px] tracking-[0.12em] opacity-70">
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--slate,#8a8a82)]">
+          <span className="w-1.5 h-1.5 rounded-full bg-[var(--arc,#ea580c)] shrink-0" />
           Publish channels
         </div>
         {connectedPlatforms.length > 0 && (
@@ -204,13 +205,13 @@ function ChannelSelector({ selectedChannels, onChannelToggle, onBulkSelect, righ
         {connectedPlatforms.length === 0 && (
           <div className="w-full p-6 rounded-2xl border-2 border-dashed border-gray-100 flex flex-col items-center gap-2 bg-gray-50/30">
              <p className="text-sm font-medium text-gray-400">No accounts connected yet</p>
-             <button className="text-[10px] font-bold text-arc uppercase tracking-widest hover:underline">Connect accounts in sidebar →</button>
+             <button className="text-[11px] font-semibold text-arc hover:underline">Connect accounts in sidebar →</button>
           </div>
         )}
       </div>
 
       <div className="flex items-center justify-between mt-2 px-1">
-        <p className="text-[10px] font-bold text-slate uppercase tracking-wider opacity-50 m-0">
+        <p className="text-[11px] font-medium text-[var(--slate,#8a8a82)] m-0">
           Posting to {selectedChannels.length} channel{selectedChannels.length !== 1 ? 's' : ''}
         </p>
         {rightContent}

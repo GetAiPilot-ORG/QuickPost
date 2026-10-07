@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import {
   AlertCircle,
   ArrowUpRight,
@@ -100,15 +101,21 @@ function statValue(automation, keys) {
   return 0;
 }
 
-function AutomationThumb({ automation }) {
+function AutomationThumb({ automation, isPostDeleted }) {
   const [imgError, setImgError] = useState(false);
   const src = automation.media_thumbnail || automation.media_url || automation.post_thumbnail || automation.thumbnail_url;
   return (
-    <div className="autodm-list-thumb">
+    <div className={`autodm-list-thumb ${isPostDeleted ? 'border-dashed border-gray-300' : ''}`}>
       {src && !imgError ? (
-        <img src={src} alt="" referrerPolicy="no-referrer" onError={() => setImgError(true)} />
+        <img
+          src={src}
+          alt=""
+          referrerPolicy="no-referrer"
+          onError={() => setImgError(true)}
+          className={isPostDeleted ? 'opacity-50 grayscale' : ''}
+        />
       ) : (
-        <MessageCircle size={18} />
+        <MessageCircle size={18} className={isPostDeleted ? 'text-gray-400' : ''} />
       )}
     </div>
   );
@@ -559,6 +566,8 @@ function AnalyticsModal({ automation, analytics, loading, commentRows, commentsL
   );
 }
 
+const liveMediaCache = new Map();
+
 export default function AutoDMAutomationsPage() {
   const navigate = useNavigate();
   const {
@@ -572,6 +581,7 @@ export default function AutoDMAutomationsPage() {
     createAutomation,
     fetchAnalytics,
     fetchAutomationComments,
+    fetchInstagramMedia,
     syncInsights,
   } = useAutoDM();
   const [openMenuId, setOpenMenuId] = useState(null);
@@ -581,6 +591,42 @@ export default function AutoDMAutomationsPage() {
   const [comments, setComments] = useState([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentsError, setCommentsError] = useState('');
+  const [liveMediaIds, setLiveMediaIds] = useState(() => {
+    return activeAccount?.id ? liveMediaCache.get(activeAccount.id) ?? null : null;
+  });
+  const [mediaCheckCompleted, setMediaCheckCompleted] = useState(() => {
+    return Boolean(activeAccount?.id && liveMediaCache.has(activeAccount.id));
+  });
+
+  useEffect(() => {
+    let mounted = true;
+    const accountId = activeAccount?.id;
+    if (!accountId) return;
+
+    if (liveMediaCache.has(accountId)) {
+      setLiveMediaIds(liveMediaCache.get(accountId));
+      setMediaCheckCompleted(true);
+    }
+
+    if (automations && automations.length > 0 && automations.some((a) => a.media_id)) {
+      fetchInstagramMedia(60)
+        .then((mediaList) => {
+          if (!mounted) return;
+          const idSet = new Set((mediaList || []).map((m) => String(m.id)));
+          liveMediaCache.set(accountId, idSet);
+          setLiveMediaIds(idSet);
+          setMediaCheckCompleted(true);
+        })
+        .catch((err) => {
+          console.warn('[AutoDM] Failed to verify post presence:', err);
+        });
+    } else if (automations && automations.length > 0) {
+      setMediaCheckCompleted(true);
+    }
+    return () => {
+      mounted = false;
+    };
+  }, [activeAccount?.id, automations, fetchInstagramMedia]);
 
   useEffect(() => {
     loadAutomations();
@@ -629,6 +675,18 @@ export default function AutoDMAutomationsPage() {
   };
 
     const toggleActive = async (automation) => {
+    const hasSpecificPost = Boolean(automation.media_id);
+    const isPostDeleted =
+      hasSpecificPost &&
+      mediaCheckCompleted &&
+      liveMediaIds !== null &&
+      !liveMediaIds.has(String(automation.media_id));
+
+    if (isPostDeleted && !automation.is_active) {
+      toast.error('This post was deleted on Instagram. Please edit to select another post or delete this automation.');
+      return;
+    }
+
     // Optimistic UI update for instant toggle
     setAutomations(prev => prev.map(a => 
       a.id === automation.id ? { ...a, is_active: !a.is_active } : a
@@ -729,7 +787,7 @@ export default function AutoDMAutomationsPage() {
           </div>
         ) : rows.length === 0 ? (
           <div className="autodm-empty">
-            <img src="https://illustrations.popsy.co/amber/web-design.svg" className="h-40 object-contain mx-auto mb-4" alt="No Automations" />
+            <img src="https://static.vecteezy.com/system/resources/previews/014/337/128/non_2x/error-in-process-icon-with-gear-vector.jpg" className="h-40 object-contain mx-auto mb-4" alt="No Automations" />
             <p>No automations yet</p>
             <span>Create your first Instagram automation to start sending DMs.</span>
           </div>
@@ -737,23 +795,49 @@ export default function AutoDMAutomationsPage() {
           rows.map((automation) => {
             const comments = statValue(automation, ['comments', 'comments_count', 'total_comments']);
             const sent = statValue(automation, ['dms_sent', 'messages_sent', 'total_messages_sent']);
+            const hasSpecificPost = Boolean(automation.media_id);
+            const isPostDeleted =
+              hasSpecificPost &&
+              mediaCheckCompleted &&
+              liveMediaIds !== null &&
+              !liveMediaIds.has(String(automation.media_id));
+
             return (
               <article key={automation.id} className="autodm-automation-row">
                 <div className="autodm-automation-main">
-                  <AutomationThumb automation={automation} />
+                  <AutomationThumb automation={automation} isPostDeleted={isPostDeleted} />
                   <div>
-                    <strong>{automation.name || 'Untitled Automation'}</strong>
-                    <p>{triggerLabel(automation.trigger_type)}</p>
-                    <small>Created {formatRelativeTime(automation.created_at)}</small>
+                    <strong title={automation.name || 'Untitled Automation'}>
+                      {automation.name || 'Untitled Automation'}
+                    </strong>
+                    {isPostDeleted ? (
+                      <small className="autodm-deleted-note" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap', color: '#e11d48', marginTop: '4px' }}>
+                        <AlertCircle size={12} style={{ flexShrink: 0 }} />
+                        <span>Post deleted on Instagram</span>
+                      </small>
+                    ) : (
+                      <small>Created {formatRelativeTime(automation.created_at)}</small>
+                    )}
                   </div>
                 </div>
 
                 <div className="autodm-status-stack">
-                  <span className={`badge ${automation.is_active ? 'badge-success' : 'badge-slate'}`}>
-                    {automation.is_active ? 'Active' : 'Paused'}
-                  </span>
-                  <span className="badge badge-slate">Manual</span>
-                  <small>Runs until paused</small>
+                  {isPostDeleted ? (
+                    <>
+                      <span className="badge badge-error bg-rose-50 text-rose-700 border border-rose-200 font-medium inline-flex items-center gap-1">
+                        <AlertCircle size={12} className="shrink-0" /> Post Deleted
+                      </span>
+                      <small className="text-gray-500 font-medium">Inactive on IG</small>
+                    </>
+                  ) : (
+                    <>
+                      <span className={`badge ${automation.is_active ? 'badge-success' : 'badge-slate'}`}>
+                        {automation.is_active ? 'Active' : 'Paused'}
+                      </span>
+                      <span className="badge badge-slate">Manual</span>
+                      <small>Runs until paused</small>
+                    </>
+                  )}
                 </div>
 
                 <div className="autodm-activity-chips">
@@ -766,9 +850,11 @@ export default function AutoDMAutomationsPage() {
                 <div className="autodm-actions-cell">
                   <button
                     type="button"
-                    className={`autodm-switch ${automation.is_active ? 'is-on' : ''}`}
+                    disabled={isPostDeleted}
+                    className={`autodm-switch ${automation.is_active ? 'is-on' : ''} ${isPostDeleted ? 'opacity-40 cursor-not-allowed' : ''}`}
                     onClick={() => toggleActive(automation)}
                     aria-label={automation.is_active ? 'Pause automation' : 'Activate automation'}
+                    title={isPostDeleted ? 'Post deleted on Instagram' : undefined}
                   >
                     <span />
                   </button>

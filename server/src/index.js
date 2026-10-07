@@ -18,14 +18,12 @@ import autodmRouter from './routes/autodm.js';
 import billingRouter from './routes/billing.js';
 import youtubeRouter from './routes/youtube.js';
 import inboxRouter from './routes/inbox.js';
-import smmRouter from './routes/smm.js';
 import { initScheduler } from './services/scheduler.js';
-import { startSmmQueueWorker } from './services/smmQueueWorker.js';
-import { startSmmAutoPilotWorker } from './services/smmAutoPilotWorker.js';
 import supabase from './services/supabase.js';
 import { processInstagramWebhook } from './services/instapilot.js';
 import { persistInstagramWebhookToUnifiedInbox } from './services/unifiedInboxWebhook.js';
 import { sseClients, broadcastRefresh } from './services/sse.js';
+import { syncAutoDMMessageToInbox } from './services/inboxSyncWorker.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -93,7 +91,6 @@ app.use('/api/autodm', autodmRouter);
 app.use('/api/billing', billingRouter);
 app.use('/api/youtube', youtubeRouter);
 app.use('/api', inboxRouter);
-app.use('/api/smm', smmRouter);
 
 // SSE Endpoint for InstaPilot Realtime
 app.get('/api/instapilot/stream', (req, res) => {
@@ -405,12 +402,6 @@ const server = app.listen(PORT, () => {
   // Initialize Post Scheduler
   initScheduler();
 
-  // Initialize Social Growth SMM Queue Worker
-  startSmmQueueWorker();
-
-  // Initialize Smart Auto-Pilot Instagram Poller & Detection Worker
-  startSmmAutoPilotWorker();
-
   console.log(`\n✨ Ready to broadcast!\n`);
 });
 
@@ -418,78 +409,55 @@ const server = app.listen(PORT, () => {
 server.timeout = 300000;
 server.keepAliveTimeout = 300000;
 
-const isAutoDMButtonInteraction = (webhookPayload = {}) =>
-  Boolean(webhookPayload?.message?.quick_reply?.payload || webhookPayload?.postback);
-
 async function handleWebhookLogRecord(log) {
   if (!log || !log.id) return;
   const logId = log.id;
-  if (log.event_type !== 'messages' && log.event_type !== 'messaging_postbacks') {
-    return;
-  }
-  // Skip outbound messages (where sender is the page itself) to prevent infinite loops!
-  if (log.payload?.message?.is_echo) {
-    return;
-  }
-  if (isAutoDMButtonInteraction(log.payload)) {
-    return;
+  
+  let metaPayload = null;
+  const recipientId = log.payload?.recipient?.id || log.ig_id;
+
+  if (log.event_type === 'messages' || log.event_type === 'messaging_postbacks') {
+    metaPayload = {
+      object: 'instagram',
+      entry: [
+        {
+          id: recipientId,
+          time: Math.floor(Date.now() / 1000),
+          messaging: [log.payload]
+        }
+      ]
+    };
+  } else if (log.event_type === 'comments') {
+    metaPayload = {
+      object: 'instagram',
+      entry: [
+        {
+          id: recipientId,
+          time: Math.floor(Date.now() / 1000),
+          changes: [log.payload]
+        }
+      ]
+    };
   }
 
-  // Atomic database claim: only 1 worker/process can ever process this log record!
-  const { data: claimed, error: claimError } = await supabase
-    .from('webhook_logs')
-    .update({ processed: true })
-    .eq('id', logId)
-    .eq('processed', false)
-    .select('id')
-    .maybeSingle();
-
-  if (!claimed || claimError) {
-    // Already claimed or processed by another worker
-    return;
-  }
-
-  // Wrap the payload back into standard Meta format
-  const metaPayload = {
-    object: 'instagram',
-    entry: [
-      {
-        id: log.payload?.recipient?.id,
-        time: Math.floor(Date.now() / 1000),
-        messaging: [log.payload]
+  if (metaPayload) {
+    try {
+      const inboxResults = await persistInstagramWebhookToUnifiedInbox(metaPayload);
+      const persistedCount = inboxResults.filter((result) => result.persisted).length;
+      if (persistedCount) {
+        console.log(`[${logId}] ✅ Unified inbox persisted ${persistedCount} Instagram webhook item(s)`);
+        broadcastRefresh('WebhookLogRecord');
       }
-    ]
-  };
-
-  try {
-    const inboxResults = await persistInstagramWebhookToUnifiedInbox(metaPayload);
-    const persistedCount = inboxResults.filter((result) => result.persisted).length;
-    if (persistedCount) {
-      console.log(`[${logId}] ✅ Unified inbox persisted ${persistedCount} Instagram message(s)`);
-    } else {
-      console.warn(`[${logId}] ⚠️ Unified inbox could not map Instagram recipient`, {
-        recipients: inboxResults.map((result) => result.recipientId).filter(Boolean),
-      });
+    } catch (e) {
+      console.error(`[${logId}] ❌ Unified inbox webhook persistence failed:`, e.message || e);
     }
-  } catch (e) {
-    console.error(`[${logId}] ❌ Unified inbox webhook persistence failed:`, e.message || e);
-  }
-
-  // InstaPilot is an optional downstream automation consumer. A missing bot or
-  // imported InstaPilot account must never prevent the main Social Inbox write.
-  try {
-    await processInstagramWebhook(metaPayload);
-  } catch (e) {
-    console.error(`[${logId}] ❌ Optional InstaPilot processing failed:`, e.message || e);
   }
 }
 
 // Setup Supabase Realtime listener for Edge Function Webhooks
-// In development, avoid competing with the live deployed production server (api.getaipilot.in) unless explicitly requested.
-const isProduction = process.env.NODE_ENV === 'production';
-const enableLocalWorker = process.env.ENABLE_LOCAL_WEBHOOK_WORKER === 'true';
+const enableLocalWorker = process.env.ENABLE_LOCAL_WEBHOOK_WORKER !== 'false';
 
-if (isProduction || enableLocalWorker) {
+if (enableLocalWorker) {
   supabase
     .channel('webhook_logs_listener')
     .on(
@@ -503,23 +471,58 @@ if (isProduction || enableLocalWorker) {
       console.log(`📡 [SUPABASE] webhook_logs listener status: ${status}`);
     });
 } else {
-  console.log(`ℹ️ [INSTAPILOT] Development mode: Webhook listener passive (Live DMs are handled by cloud server https://api.getaipilot.in).`);
+  console.log(`ℹ️ [INSTAPILOT] Webhook listener disabled via ENABLE_LOCAL_WEBHOOK_WORKER=false.`);
 }
 
-// Dedicated listener to refresh the frontend ONLY when actual messages are inserted.
-const messagesChannel = supabase
-  .channel('instagram_messages_listener')
+// Dedicated listener to sync AutoDM messages table into Unified Inbox
+supabase
+  .channel('autodm_messages_realtime_listener')
   .on(
     'postgres_changes',
-    { event: 'INSERT', schema: 'public', table: 'instagram_messages' },
-    (payload) => {
-      setTimeout(() => {
-        broadcastRefresh('MessagesListener');
-      }, 200);
+    { event: 'INSERT', schema: 'public', table: 'messages' },
+    async (payload) => {
+      try {
+        console.log(`📨 [Realtime] New AutoDM message inserted (${payload.new?.id}), syncing to inbox...`);
+        await syncAutoDMMessageToInbox(payload.new);
+        if (payload.new?.user_id) {
+          await invalidateInboxCache([payload.new.user_id]);
+        }
+        broadcastRefresh('AutoDMMessagesListener');
+      } catch (err) {
+        console.error('❌ Error syncing realtime AutoDM message to inbox:', err.message);
+      }
     }
   )
   .subscribe((status) => {
-    console.log(`📡 [SUPABASE] instagram_messages listener status: ${status}`);
+    console.log(`📡 [SUPABASE] autodm_messages_realtime_listener status: ${status}`);
+  });
+
+// Dedicated listener to refresh the frontend when new inbox messages or conversations are inserted/updated
+supabase
+  .channel('social_inbox_realtime_broadcaster')
+  .on(
+    'postgres_changes',
+    { event: '*', schema: 'public', table: 'inbox_messages' },
+    () => {
+      broadcastRefresh('InboxMessagesListener');
+    }
+  )
+  .on(
+    'postgres_changes',
+    { event: '*', schema: 'public', table: 'inbox_conversations' },
+    () => {
+      broadcastRefresh('InboxConversationsListener');
+    }
+  )
+  .on(
+    'postgres_changes',
+    { event: 'INSERT', schema: 'public', table: 'instagram_messages' },
+    () => {
+      broadcastRefresh('LegacyMessagesListener');
+    }
+  )
+  .subscribe((status) => {
+    console.log(`📡 [SUPABASE] social_inbox_realtime_broadcaster status: ${status}`);
   });
 
 export default app;

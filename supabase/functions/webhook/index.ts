@@ -5,6 +5,8 @@ interface WebhookEvent {
   triggerType: 'dm' | 'comment';
   igId: string;
   senderId: string;
+  senderUsername?: string;
+  parentId?: string;
   messageText: string;
   eventType: string;
   eventId: string;
@@ -121,21 +123,15 @@ const extractEvents = (payload: any): WebhookEvent[] => {
     const entryId = String(entry?.id ?? '');
 
     for (const messaging of entry?.messaging ?? []) {
-      const senderId = String(messaging?.sender?.id ?? '');
-      const igId = String(messaging?.recipient?.id ?? entryId);
+      const isEcho = Boolean(messaging?.message?.is_echo);
+      const rawSenderId = String(messaging?.sender?.id ?? '');
+      const rawRecipientId = String(messaging?.recipient?.id ?? entryId);
+      const senderId = isEcho ? rawRecipientId : rawSenderId;
+      const igId = isEcho ? rawSenderId : rawRecipientId;
 
-      if (messaging?.message?.is_echo || senderId === entryId) {
-        logInfo('Skipping outbound echo message', {
-          entryId,
-          senderId,
-          messageId: messaging?.message?.mid,
-        });
-        continue;
-      }
-
-      if (messaging?.message?.text || messaging?.message?.quick_reply?.payload) {
+      if (messaging?.message?.text || messaging?.message?.quick_reply?.payload || messaging?.message?.attachments) {
         const quickReplyPayload = String(messaging?.message?.quick_reply?.payload ?? '').trim();
-        const messageText = quickReplyPayload || String(messaging.message.text ?? '');
+        const messageText = quickReplyPayload || String(messaging?.message?.text ?? (messaging?.message?.attachments ? '📎 Attachment' : ''));
         events.push({
           triggerType: 'dm',
           igId,
@@ -168,31 +164,55 @@ const extractEvents = (payload: any): WebhookEvent[] => {
       if (change?.field !== 'comments') continue;
 
       const senderId = String(change?.value?.from?.id ?? '');
+      const senderUsername = String(change?.value?.from?.username ?? '').trim().toLowerCase().replace(/^@/, '');
       const igId = entryId || String(change?.value?.instagram_business_account_id ?? '');
       const messageText = String(change?.value?.text ?? '');
       const eventId = String(change?.value?.id ?? `${entryId}-${Date.now()}-comment`);
       const mediaId = String(change?.value?.media?.id ?? '');
+      const parentId = String(change?.value?.parent_id ?? '');
 
-      // if (senderId === entryId || senderId === String(change?.value?.instagram_business_account_id ?? '')) {
-      //   logInfo('Skipping own comment webhook event', {
-      //     entryId,
-      //     senderId,
-      //     eventId,
-      //   });
-      //   continue;
-      // }
+      if (parentId) {
+        logInfo('Skipping child comment reply webhook event', {
+          entryId,
+          parentId,
+          senderId,
+          senderUsername,
+          eventId,
+        });
+        continue;
+      }
+
+      if (
+        Boolean(change?.value?.from?.self_ig_scoped_id) ||
+        (senderId &&
+          (senderId === entryId ||
+            senderId === String(change?.value?.instagram_business_account_id ?? '') ||
+            senderId === igId))
+      ) {
+        logInfo('Skipping own comment webhook event', {
+          entryId,
+          senderId,
+          senderUsername,
+          eventId,
+        });
+        continue;
+      }
 
       logInfo('Extracted comment event details', {
         entryId,
         payloadIgId: change?.value?.instagram_business_account_id,
         finalIgId: igId,
         mediaId,
+        senderUsername,
+        parentId,
       });
 
       events.push({
         triggerType: 'comment',
         igId,
         senderId,
+        senderUsername: senderUsername || undefined,
+        parentId: parentId || undefined,
         messageText,
         eventType: 'comments',
         eventId,
@@ -285,38 +305,42 @@ Deno.serve(async (request: Request) => {
         throw new Error(`Failed storing webhook event: ${insertError.message}`);
       }
 
-      try {
-        await processAutomationEvent({
-          igId: event.igId,
-          senderId: event.senderId,
-          messageText: event.messageText,
-          triggerType: event.triggerType,
-          mediaId: event.mediaId,
-          eventId: event.eventId, // FIX: comment reply ke liye zaruri hai
-          dedupeKey,
-          requestId,
-          externalPayload: event.payload,
-        });
-      } catch (automationError) {
-        const errorMessage = automationError instanceof Error ? automationError.message : String(automationError);
-        logError('Automation processing failed', {
-          requestId,
-          dedupeKey,
-          igId: event.igId,
-          senderId: event.senderId,
-          triggerType: event.triggerType,
-          error: errorMessage,
-          stack: automationError instanceof Error ? automationError.stack : undefined,
-        });
+      if (!(event.payload as any)?.message?.is_echo) {
+        try {
+          await processAutomationEvent({
+            igId: event.igId,
+            senderId: event.senderId,
+            senderUsername: event.senderUsername,
+            parentId: event.parentId,
+            messageText: event.messageText,
+            triggerType: event.triggerType,
+            mediaId: event.mediaId,
+            eventId: event.eventId, // FIX: comment reply ke liye zaruri hai
+            dedupeKey,
+            requestId,
+            externalPayload: event.payload,
+          });
+        } catch (automationError) {
+          const errorMessage = automationError instanceof Error ? automationError.message : String(automationError);
+          logError('Automation processing failed', {
+            requestId,
+            dedupeKey,
+            igId: event.igId,
+            senderId: event.senderId,
+            triggerType: event.triggerType,
+            error: errorMessage,
+            stack: automationError instanceof Error ? automationError.stack : undefined,
+          });
 
-        // Ensure processed: true even on error to prevent stuck state, and log the ERROR to DB
-        await supabase
-          .from('webhook_logs')
-          .update({ 
-            processed: true, 
-            processing_error: errorMessage,
-          })
-          .eq('dedupe_key', dedupeKey);
+          // Ensure processed: true even on error to prevent stuck state, and log the ERROR to DB
+          await supabase
+            .from('webhook_logs')
+            .update({ 
+              processed: true, 
+              processing_error: errorMessage,
+            })
+            .eq('dedupe_key', dedupeKey);
+        }
       }
     }
 

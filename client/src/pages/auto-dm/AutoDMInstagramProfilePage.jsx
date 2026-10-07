@@ -84,7 +84,7 @@ function MediaGrid({ items, loading, emptyLabel, error, onReconnect }) {
   if (items.length === 0) {
     return (
       <div className="autodm-empty autodm-media-empty">
-        <img src="https://illustrations.popsy.co/amber/graphic-design.svg" alt="No Media" className="h-32 object-contain mx-auto mb-4" />
+        <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRXkC8FxQJVxv0Id2hnbcva7i3TdIcc6Hxlzk8R1v8YgM_Te-4rPlU7BxkR&s=10" alt="No Media" className="h-32 object-contain mx-auto mb-4" />
         <p>{emptyLabel}</p>
         <span>Refresh after posting content on Instagram.</span>
       </div>
@@ -198,7 +198,7 @@ export default function AutoDMInstagramProfilePage() {
     return (
       <div className="autodm-page">
         <section className="card-shadow autodm-connect-state">
-          <img src="https://illustrations.popsy.co/amber/student-going-to-school.svg" alt="No Instagram Account" className="h-40 object-contain mx-auto mb-6" />
+          <img src="https://img.magnific.com/free-vector/cancel-culture-abstract-concept-vector-illustration-cancel-person-community-social-media-platform-internet-criticism-public-figure-celebrity-group-shaming-boycott-abstract-metaphor_335657-1926.jpg?semt=ais_hybrid&w=740&q=80" alt="No Instagram Account" className="h-40 object-contain mx-auto mb-6" />
           <h1>No Instagram Account</h1>
           <p>
             {hasSocialInstagramConnection

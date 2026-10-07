@@ -1236,7 +1236,9 @@ export async function fetchInstagramMediaForUser(user, limit = 30, targetInstagr
 }
 
 function isAutoDMComposerEnabled(config) {
-  return Boolean(config?.enabled && Array.isArray(config.keywords) && config.keywords.length);
+  if (!config?.enabled) return false;
+  if (config.triggerFilter === 'all' || (Array.isArray(config.keywords) && config.keywords.includes('*'))) return true;
+  return Boolean(Array.isArray(config.keywords) && config.keywords.length);
 }
 
 function buildComposerAutomationPayload({ user, account, config, publication, sourceBroadcastId, sourceJobId }) {
@@ -1244,8 +1246,38 @@ function buildComposerAutomationPayload({ user, account, config, publication, so
     config.triggerType ||
     (publication?.mediaType === 'video' ? 'comment_on_reel' : 'comment_on_post');
   const responseFlow = config.responseFlow || { nodes: [], opening_message_enabled: false, opening_message: '' };
-  const commentReplyText = config.commentReplyEnabled ? config.commentReplyText || null : null;
-  const keywords = config.keywords || [];
+  // Format comment reply variations:
+  // Store the clean first variation in comment_reply_text so it NEVER posts literal "|||" to Instagram
+  // Store all variations in response_flow.comment_reply_variations for randomization
+  let commentReplyText = null;
+  let variationsList = [];
+  if (config.commentReplyEnabled) {
+    if (Array.isArray(config.commentReplyTexts) && config.commentReplyTexts.length > 0) {
+      variationsList = config.commentReplyTexts.map((t) => String(t || '').trim()).filter(Boolean);
+      commentReplyText = variationsList[0] || (config.commentReplyText ? String(config.commentReplyText).trim() : null);
+    } else if (config.commentReplyText) {
+      const rawText = String(config.commentReplyText).trim();
+      if (rawText.includes('|||')) {
+        variationsList = rawText.split('|||').map((t) => t.trim()).filter(Boolean);
+        commentReplyText = variationsList[0] || null;
+      } else {
+        commentReplyText = rawText;
+        variationsList = [rawText];
+      }
+    }
+  }
+
+  const enrichedResponseFlow = {
+    ...responseFlow,
+    ...(variationsList.length > 0 ? { comment_reply_variations: variationsList } : {}),
+    ...(config.autoLikeComment !== undefined ? { auto_like_comment: Boolean(config.autoLikeComment) } : {}),
+  };
+
+  // If trigger filter is "all", use wildcard ["*"]
+  let keywords = Array.isArray(config.keywords) ? [...config.keywords] : [];
+  if (config.triggerFilter === 'all' || (!keywords.length && config.triggerFilter !== 'keywords')) {
+    keywords = ['*'];
+  }
 
   return {
     user_id: getPrimaryUserId(user),
@@ -1256,14 +1288,14 @@ function buildComposerAutomationPayload({ user, account, config, publication, so
     media_url: publication?.permalink || publication?.mediaUrl || null,
     media_thumbnail: publication?.thumbnailUrl || publication?.mediaUrl || null,
     keywords,
-    keyword: keywords[0] || '',
+    keyword: keywords[0] || '*',
     is_case_sensitive: Boolean(config.isCaseSensitive),
     comment_reply_enabled: Boolean(config.commentReplyEnabled),
     comment_reply_text: commentReplyText,
-    reply_text: commentReplyText || getFirstResponseFlowText(responseFlow),
+    reply_text: commentReplyText || getFirstResponseFlowText(enrichedResponseFlow),
     require_follow: Boolean(config.requireFollow),
     fallback_comment_reply: config.requireFollow ? (config.fallbackCommentReply || null) : null,
-    response_flow: responseFlow,
+    response_flow: enrichedResponseFlow,
     is_active: true,
     source: 'social_pilot_composer',
     source_broadcast_id: sourceBroadcastId || null,

@@ -4,8 +4,22 @@ import { Check, X, ArrowUpRight, Info } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../../context/AuthContext";
 import { supabase } from "../../../lib/supabase";
+import apiClient from "../../../utils/apiClient";
 
-const API_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_DEV_API_URL || 'http://localhost:5000';
+const HUB_PRICING_URL = 'https://uklxlappjcuvdqjvecfh.supabase.co/functions/v1/get-pricing?category=social&currency=INR';
+
+const calculateIntervalPrices = (baseMonthly) => ({
+  1: baseMonthly,
+  3: Math.round(baseMonthly * 3 * 0.90) / 3,
+  6: Math.round(baseMonthly * 6 * 0.80) / 6,
+  12: Math.round(baseMonthly * 12 * 0.70) / 12,
+});
+
+const DEFAULT_PRICES = {
+  free: { 1: 0, 3: 0, 6: 0, 12: 0 },
+  slite: calculateIntervalPrices(999),
+  sgrowth: calculateIntervalPrices(1999),
+};
 
 function PricingSkeletonCard({ tone = 'light' }) {
   const line = (width, height = 12) => (
@@ -65,7 +79,7 @@ const PLANS_TEMPLATE = [
   {
     name: 'Free',
     id: 'free',
-    price: { 1: 0, 3: 0, 6: 0, 12: 0 },
+    price: DEFAULT_PRICES.free,
     description: 'Perfect for getting started with basic scheduling.',
     creditsText: 'Basic access to core tools',
     includedFeatures: [
@@ -92,7 +106,7 @@ const PLANS_TEMPLATE = [
   {
     name: 'Starter',
     id: 'slite',
-    price: { 1: null, 3: null, 6: null, 12: null },
+    price: DEFAULT_PRICES.slite,
     description: 'For creators who broadcast seriously across every platform.',
     creditsText: 'Includes priority features + unlimited posts',
     badge: 'Most popular',
@@ -124,7 +138,7 @@ const PLANS_TEMPLATE = [
   {
     name: 'Growth',
     id: 'sgrowth',
-    price: { 1: null, 3: null, 6: null, 12: null },
+    price: DEFAULT_PRICES.sgrowth,
     description: 'For teams, agencies, and heavy automation users.',
     creditsText: 'Full access for scaling content production',
     badge: 'Expert choice',
@@ -156,47 +170,69 @@ export default function Pricing({ hideHeader = false }) {
   const { user, isAuthenticated } = useAuth();
   const [billing, setBilling] = useState(1);
   const [upgrading, setUpgrading] = useState(null);
-  const [plans, setPlans] = useState([]);
+  const [plans, setPlans] = useState(PLANS_TEMPLATE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   React.useEffect(() => {
+    let alive = true;
     async function fetchPlans() {
+      let rawPlans = null;
+
+      // 1. Try apiClient / backend route
       try {
-        const response = await fetch(`${API_URL}/api/billing/plans`);
-        const data = await response.json();
-        if (data.success && data.plans) {
-          const merged = data.plans.map(dp => {
-            const staticPlan = PLANS_TEMPLATE.find(sp => sp.id === dp.id);
-            if (!staticPlan) return null;
-            const priceMap = {
-              1: dp.prices && dp.prices.hasOwnProperty('month') ? dp.prices.month : staticPlan.price?.[1],
-              3: dp.prices && dp.prices.hasOwnProperty('quarterly') ? dp.prices.quarterly : staticPlan.price?.[3],
-              6: dp.prices && dp.prices.hasOwnProperty('six_months') ? dp.prices.six_months : staticPlan.price?.[6],
-              12: dp.prices && dp.prices.hasOwnProperty('year') ? dp.prices.year : staticPlan.price?.[12]
-            };
-            return {
-              ...staticPlan,
-              ...dp,
-              price: priceMap
-            };
-          }).filter(Boolean);
-          setPlans(merged);
-        } else {
-          throw new Error('Failed to load plans');
+        const res = await apiClient.get('/api/billing/plans', { timeout: 3500 });
+        if (res.data?.success && Array.isArray(res.data.plans)) {
+          rawPlans = res.data.plans;
         }
       } catch (err) {
-        console.error('Failed to load pricing:', err);
-        setError('Pricing temporarily unavailable');
-        setPlans(PLANS_TEMPLATE.map(sp => ({
-          ...sp,
-          price: { 1: sp.id === 'free' ? 0 : null, 3: sp.id === 'free' ? 0 : null, 6: sp.id === 'free' ? 0 : null, 12: sp.id === 'free' ? 0 : null }
-        })));
-      } finally {
-        setLoading(false);
+        console.warn('Backend /api/billing/plans unreachable, attempting direct Hub fallback...', err.message);
       }
+
+      // 2. If backend route failed, query authoritative Hub Supabase Edge Function directly
+      if (!rawPlans) {
+        try {
+          const res = await fetch(HUB_PRICING_URL, { headers: { 'Content-Type': 'application/json' } });
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.currency === 'INR' && Array.isArray(data.plans)) {
+              const starter = data.plans.find(p => p.plan_name === 'social_pilot_starter');
+              const growth = data.plans.find(p => p.plan_name === 'social_pilot_growth');
+              rawPlans = [
+                { id: 'free', prices: { month: 0, quarterly: 0, six_months: 0, year: 0 } },
+                { id: 'slite', prices: starter ? calculateIntervalPrices(starter.amount / 100) : DEFAULT_PRICES.slite },
+                { id: 'sgrowth', prices: growth ? calculateIntervalPrices(growth.amount / 100) : DEFAULT_PRICES.sgrowth },
+              ];
+            }
+          }
+        } catch (hubErr) {
+          console.warn('Hub edge function fetch failed, using fallback defaults:', hubErr.message);
+        }
+      }
+
+      if (!alive) return;
+
+      const merged = PLANS_TEMPLATE.map(sp => {
+        const dp = rawPlans?.find(p => p.id === sp.id);
+        const priceMap = {
+          1: dp?.prices?.month ?? dp?.prices?.[1] ?? sp.price[1],
+          3: dp?.prices?.quarterly ?? dp?.prices?.[3] ?? sp.price[3],
+          6: dp?.prices?.six_months ?? dp?.prices?.[6] ?? sp.price[6],
+          12: dp?.prices?.year ?? dp?.prices?.[12] ?? sp.price[12]
+        };
+        return {
+          ...sp,
+          ...(dp || {}),
+          price: priceMap
+        };
+      });
+
+      setPlans(merged);
+      setError(null);
+      setLoading(false);
     }
     fetchPlans();
+    return () => { alive = false; };
   }, []);
 
   const handleUpgrade = async (plan) => {
