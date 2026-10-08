@@ -19,6 +19,31 @@ import {
   updateConversation,
 } from "@/services/instagramApi";
 
+function renderMessageWithLinks(text: string, isOutbound: boolean) {
+  if (!text) return null;
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = text.split(urlRegex);
+  return parts.map((part, i) => {
+    if (part.match(urlRegex)) {
+      return (
+        <a
+          key={i}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`underline font-medium break-all hover:opacity-80 transition ${
+            isOutbound ? "text-white underline decoration-white/70" : "text-blue-600 underline decoration-blue-400"
+          }`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {part}
+        </a>
+      );
+    }
+    return <span key={i}>{part}</span>;
+  });
+}
+
 export default function ConversationThread({
   conversationId,
   refreshKey,
@@ -255,7 +280,9 @@ export default function ConversationThread({
                         : "rounded-tl-xs bg-white text-[var(--ink)] border border-[rgba(20,20,19,0.08)]"
                     }`}
                   >
-                    <div className="whitespace-pre-wrap">{message.message_text}</div>
+                    <div className="whitespace-pre-wrap">
+                      {renderMessageWithLinks(message.message_text, isOutbound)}
+                    </div>
 
                     <div
                       className={`mt-1 flex items-center gap-1.5 text-[10px] ${
