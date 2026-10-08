@@ -5,6 +5,7 @@ import {
   Zap,
   Workflow,
   MessageSquare,
+  Heart,
   Plus,
   CheckCircle2,
   Info,
@@ -26,6 +27,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import HeartLikeCheckbox from "@/components/HeartLikeCheckbox";
 import {
   getAutoDMStatus,
   importInstagramAccountFromSocial,
@@ -46,6 +48,7 @@ export const defaultComposerAutoDMConfig = {
     "Sent you the details in DM! ✨",
     "Check your direct messages! 📩",
   ],
+  autoLikeComment: true,
   requireFollow: false,
   fallbackCommentReply: "Please follow our account to receive the link!",
   responseFlow: {
@@ -199,6 +202,7 @@ export function AutoDMComposerPanel({ config, onChange, postType, onSectionFocus
     variable: "first_name" | "username",
     target: "reply" | "fallback" | "opening" = "reply"
   ) => {
+    const tag = variable === "username" ? "@{{username}}" : `{{${variable}}}`;
     if (target === "reply") {
       const current = config.commentReplyText || "";
       const inputEl = replyInputRef.current;
@@ -206,7 +210,6 @@ export function AutoDMComposerPanel({ config, onChange, postType, onSectionFocus
       if (inputEl && typeof inputEl.selectionStart === "number") {
         const start = inputEl.selectionStart;
         const end = inputEl.selectionEnd ?? start;
-        const tag = `{{${variable}}}`;
         nextText = current.slice(0, start) + tag + current.slice(end);
         update({
           commentReplyText: nextText,
@@ -219,7 +222,7 @@ export function AutoDMComposerPanel({ config, onChange, postType, onSectionFocus
         }, 10);
         return;
       } else {
-        nextText = current ? `${current} {{${variable}}}` : `{{${variable}}}`;
+        nextText = current ? `${current} ${tag}` : tag;
       }
       update({
         commentReplyText: nextText,
@@ -227,13 +230,13 @@ export function AutoDMComposerPanel({ config, onChange, postType, onSectionFocus
       });
     } else if (target === "fallback") {
       const current = config.fallbackCommentReply || "";
-      update({ fallbackCommentReply: current ? `${current} {{${variable}}}` : `{{${variable}}}` });
+      update({ fallbackCommentReply: current ? `${current} ${tag}` : tag });
     } else if (target === "opening") {
       const current = config.responseFlow?.opening_message || "";
       update({
         responseFlow: {
           ...config.responseFlow,
-          opening_message: current ? `${current} {{${variable}}}` : `{{${variable}}}`,
+          opening_message: current ? `${current} ${tag}` : tag,
         },
       });
     }
@@ -440,14 +443,46 @@ export function AutoDMComposerPanel({ config, onChange, postType, onSectionFocus
                               type="button"
                               onClick={() => insertVariable("username", "reply")}
                               className="px-2 py-0.5 rounded-md border border-black/10 bg-gray-50/80 hover:bg-orange-50 hover:border-orange-200 hover:text-[var(--arc,#ea580c)] transition-colors font-mono text-[10px] text-gray-700 font-medium"
-                              title="Inserts user's @username"
+                              title="Inserts user's @username mention"
                             >
-                              + &#123;&#123;username&#125;&#125;
+                              + @&#123;&#123;username&#125;&#125;
                             </button>
                           </div>
                         </div>
                       </motion.div>
                     )}
+
+                    {/* Auto-like comment toggle (Coming Soon) */}
+                    <div className="flex items-center justify-between gap-3 pt-3 mt-3 border-t border-black/5">
+                      <div className="flex items-center gap-2.5">
+                        <HeartLikeCheckbox
+                          checked={false}
+                          disabled={true}
+                          onChange={() => toast('Auto-like comment feature is coming soon!', { icon: '✨' })}
+                          size={24}
+                        />
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span 
+                              className="text-xs font-semibold text-[var(--ink)] cursor-pointer"
+                              onClick={() => toast('Auto-like comment feature is coming soon!', { icon: '✨' })}
+                            >
+                              Auto-like comment
+                            </span>
+                            <span className="inline-flex items-center px-1.5 py-0.2 text-[9px] font-semibold tracking-wide uppercase bg-amber-50 text-amber-700 border border-amber-200 rounded-full">
+                              Coming Soon
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div onClick={() => toast('Auto-like comment feature is coming soon!', { icon: '✨' })}>
+                        <Switch
+                          checked={false}
+                          disabled={true}
+                          className="opacity-50 cursor-not-allowed"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -514,7 +549,7 @@ export function AutoDMComposerPanel({ config, onChange, postType, onSectionFocus
                               }
                               className="px-2 py-0.5 rounded-md border border-black/10 bg-gray-50/80 hover:bg-orange-50 hover:border-orange-200 hover:text-[var(--arc,#ea580c)] transition-colors font-mono text-[10px] text-gray-700 font-medium"
                             >
-                              + &#123;&#123;username&#125;&#125;
+                              + @&#123;&#123;username&#125;&#125;
                             </button>
                           </div>
                         </div>
@@ -598,7 +633,7 @@ export function AutoDMComposerPanel({ config, onChange, postType, onSectionFocus
                                 }
                                 className="px-2 py-0.5 rounded-md border border-black/10 bg-white hover:bg-orange-50 hover:border-orange-200 hover:text-[var(--arc,#ea580c)] transition-colors font-mono text-[10px] text-gray-700 font-medium"
                               >
-                                + &#123;&#123;username&#125;&#125;
+                                + @&#123;&#123;username&#125;&#125;
                               </button>
                             </div>
                           </div>

@@ -5,6 +5,8 @@ interface WebhookEvent {
   triggerType: 'dm' | 'comment';
   igId: string;
   senderId: string;
+  senderUsername?: string;
+  parentId?: string;
   messageText: string;
   eventType: string;
   eventId: string;
@@ -162,20 +164,35 @@ const extractEvents = (payload: any): WebhookEvent[] => {
       if (change?.field !== 'comments') continue;
 
       const senderId = String(change?.value?.from?.id ?? '');
+      const senderUsername = String(change?.value?.from?.username ?? '').trim().toLowerCase().replace(/^@/, '');
       const igId = entryId || String(change?.value?.instagram_business_account_id ?? '');
       const messageText = String(change?.value?.text ?? '');
       const eventId = String(change?.value?.id ?? `${entryId}-${Date.now()}-comment`);
       const mediaId = String(change?.value?.media?.id ?? '');
+      const parentId = String(change?.value?.parent_id ?? '');
+
+      if (parentId) {
+        logInfo('Skipping child comment reply webhook event', {
+          entryId,
+          parentId,
+          senderId,
+          senderUsername,
+          eventId,
+        });
+        continue;
+      }
 
       if (
-        senderId &&
-        (senderId === entryId ||
-          senderId === String(change?.value?.instagram_business_account_id ?? '') ||
-          senderId === igId)
+        Boolean(change?.value?.from?.self_ig_scoped_id) ||
+        (senderId &&
+          (senderId === entryId ||
+            senderId === String(change?.value?.instagram_business_account_id ?? '') ||
+            senderId === igId))
       ) {
         logInfo('Skipping own comment webhook event', {
           entryId,
           senderId,
+          senderUsername,
           eventId,
         });
         continue;
@@ -186,12 +203,16 @@ const extractEvents = (payload: any): WebhookEvent[] => {
         payloadIgId: change?.value?.instagram_business_account_id,
         finalIgId: igId,
         mediaId,
+        senderUsername,
+        parentId,
       });
 
       events.push({
         triggerType: 'comment',
         igId,
         senderId,
+        senderUsername: senderUsername || undefined,
+        parentId: parentId || undefined,
         messageText,
         eventType: 'comments',
         eventId,
@@ -289,6 +310,8 @@ Deno.serve(async (request: Request) => {
           await processAutomationEvent({
             igId: event.igId,
             senderId: event.senderId,
+            senderUsername: event.senderUsername,
+            parentId: event.parentId,
             messageText: event.messageText,
             triggerType: event.triggerType,
             mediaId: event.mediaId,

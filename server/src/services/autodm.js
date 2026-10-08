@@ -1270,6 +1270,7 @@ function buildComposerAutomationPayload({ user, account, config, publication, so
   const enrichedResponseFlow = {
     ...responseFlow,
     ...(variationsList.length > 0 ? { comment_reply_variations: variationsList } : {}),
+    ...(config.autoLikeComment !== undefined ? { auto_like_comment: Boolean(config.autoLikeComment) } : {}),
   };
 
   // If trigger filter is "all", use wildcard ["*"]

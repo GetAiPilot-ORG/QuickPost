@@ -176,26 +176,28 @@ export function KeywordInput({
         </div>
       </div>
 
-      {/* Case sensitivity: Clean compact inline control */}
-      <div className="flex items-center justify-between pt-2 border-t border-black/[0.06]">
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-[10px] font-bold text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded border border-black/10 select-none">
-            Aa
-          </span>
-          <Label htmlFor="case-sensitive" className="text-xs font-medium text-gray-700 cursor-pointer select-none">
-            Case-sensitive matching
-          </Label>
-          <span className="text-[11px] text-gray-400 font-normal">
-            {caseSensitive ? "(exact match only)" : "(e.g. LINK and link both match)"}
-          </span>
+      {/* Case sensitivity: Only show when at least 1 keyword is configured */}
+      {keywords.length > 0 && (
+        <div className="flex items-center justify-between pt-2 border-t border-black/[0.06]">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[10px] font-bold text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded border border-black/10 select-none">
+              Aa
+            </span>
+            <Label htmlFor="case-sensitive" className="text-xs font-medium text-gray-700 cursor-pointer select-none">
+              Case-sensitive matching
+            </Label>
+            <span className="text-[11px] text-gray-400 font-normal">
+              {caseSensitive ? "(exact match only)" : "(e.g. LINK and link both match)"}
+            </span>
+          </div>
+          <Switch
+            id="case-sensitive"
+            checked={caseSensitive}
+            onCheckedChange={onCaseSensitiveChange}
+            className="scale-90"
+          />
         </div>
-        <Switch
-          id="case-sensitive"
-          checked={caseSensitive}
-          onCheckedChange={onCaseSensitiveChange}
-          className="scale-90"
-        />
-      </div>
+      )}
     </div>
   );
 }
