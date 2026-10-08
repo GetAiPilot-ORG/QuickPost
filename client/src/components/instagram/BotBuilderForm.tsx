@@ -239,7 +239,7 @@ export default function BotBuilderForm({
           <div>
             <SectionTitle icon={<Wand2 className="h-4 w-4" />} title="Custom AI Instructions & Persona (System Prompt)" />
             <div className="mt-4 space-y-4">
-              <div className="flex items-center justify-end gap-1.5 text-xs text-[var(--slate)]">
+              <div className="flex items-center justify-end flex-wrap gap-1.5 text-xs text-[var(--slate)]">
                 <span>Dynamic tags:</span>
                   <button
                     type="button"
@@ -256,6 +256,30 @@ export default function BotBuilderForm({
                     title="Click to insert {{bot_name}}"
                   >
                     {"{{bot_name}}"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setField("system_prompt", (form.system_prompt || "") + " {{current_date}}")}
+                    className="rounded bg-gray-100 border border-black/5 px-2 py-0.5 font-mono text-[11px] font-medium text-gray-700 hover:bg-gray-200 transition"
+                    title="Click to insert {{current_date}}"
+                  >
+                    {"{{current_date}}"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setField("system_prompt", (form.system_prompt || "") + " {{current_time}}")}
+                    className="rounded bg-gray-100 border border-black/5 px-2 py-0.5 font-mono text-[11px] font-medium text-gray-700 hover:bg-gray-200 transition"
+                    title="Click to insert {{current_time}}"
+                  >
+                    {"{{current_time}}"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setField("system_prompt", (form.system_prompt || "") + " {{current_day}}")}
+                    className="rounded bg-gray-100 border border-black/5 px-2 py-0.5 font-mono text-[11px] font-medium text-gray-700 hover:bg-gray-200 transition"
+                    title="Click to insert {{current_day}}"
+                  >
+                    {"{{current_day}}"}
                   </button>
                 </div>
 

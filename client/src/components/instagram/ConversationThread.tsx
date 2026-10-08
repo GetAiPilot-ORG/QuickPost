@@ -9,6 +9,31 @@ import {
   updateConversation,
 } from "@/services/instagramApi";
 
+function renderMessageWithLinks(text: string, isOutbound: boolean) {
+  if (!text) return null;
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = text.split(urlRegex);
+  return parts.map((part, i) => {
+    if (part.match(urlRegex)) {
+      return (
+        <a
+          key={i}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`underline font-medium break-all hover:opacity-80 transition ${
+            isOutbound ? "text-white underline decoration-white/70" : "text-blue-600 underline decoration-blue-400"
+          }`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {part}
+        </a>
+      );
+    }
+    return <span key={i}>{part}</span>;
+  });
+}
+
 export default function ConversationThread({ conversationId, refreshKey, onChanged }: { conversationId?: string; refreshKey?: number; onChanged: () => void }) {
   const [thread, setThread] = useState<any>(null);
   const [draft, setDraft] = useState("");
@@ -163,7 +188,7 @@ export default function ConversationThread({ conversationId, refreshKey, onChang
               <div className={`max-w-[78%] rounded-2xl px-4 py-3 text-[13px] leading-6 shadow-sm ${
                 message.direction === "outbound" ? "rounded-br-md bg-[#3797f0] text-white" : "rounded-bl-md bg-white text-[var(--ink)]"
               }`}>
-                {message.message_text}
+                {renderMessageWithLinks(message.message_text, message.direction === "outbound")}
                 <div className="mt-2 flex items-center gap-2 text-[10px] font-semibold opacity-65">
                   {message.ai_generated ? <Bot className="h-3 w-3" /> : null}
                   {new Date(message.created_at).toLocaleString()}
