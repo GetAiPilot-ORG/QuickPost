@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { Info } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { InformationCircleIcon } from "@hugeicons/core-free-icons";
 
 export default function InfoHelp({
   text,
@@ -124,8 +125,10 @@ export default function InfoHelp({
         aria-label="More information"
         className={className}
       >
-        <Info
+        <HugeiconsIcon
+          icon={InformationCircleIcon}
           size={14}
+          strokeWidth={1.8}
           style={{
             width: "14px",
             height: "14px",

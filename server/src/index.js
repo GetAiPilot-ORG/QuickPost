@@ -409,10 +409,13 @@ const server = app.listen(PORT, () => {
 server.timeout = 300000;
 server.keepAliveTimeout = 300000;
 
+const inFlightWebhookLogs = new Set();
+
 async function handleWebhookLogRecord(log) {
-  if (!log || !log.id) return;
+  if (!log || !log.id || inFlightWebhookLogs.has(log.id)) return;
   const logId = log.id;
-  
+  inFlightWebhookLogs.add(logId);
+
   let metaPayload = null;
   const recipientId = log.payload?.recipient?.id || log.ig_id;
 
@@ -442,15 +445,43 @@ async function handleWebhookLogRecord(log) {
 
   if (metaPayload) {
     try {
+      // 1. Persist to Unified Inbox
       const inboxResults = await persistInstagramWebhookToUnifiedInbox(metaPayload);
       const persistedCount = inboxResults.filter((result) => result.persisted).length;
       if (persistedCount) {
         console.log(`[${logId}] ✅ Unified inbox persisted ${persistedCount} Instagram webhook item(s)`);
         broadcastRefresh('WebhookLogRecord');
       }
+
+      // 2. Trigger InstaPilot AI Bot for incoming user DMs
+      const isEcho = Boolean(log.payload?.message?.is_echo);
+      if ((log.event_type === 'messages' || log.event_type === 'messaging_postbacks') && !isEcho && !log.processed) {
+        console.log(`[${logId}] 🤖 Triggering InstaPilot AI Bot for inbound message...`);
+        const startedAt = Date.now();
+        try {
+          await processInstagramWebhook(metaPayload);
+          console.log(`[TIMING] InstaPilot webhook ${logId} completed in ${Date.now() - startedAt}ms`);
+        } catch (error) {
+          console.error(`[${logId}] ❌ InstaPilot webhook reply failed:`, error.message || error);
+        }
+        
+        await supabase
+          .from('webhook_logs')
+          .update({ processed: true, updated_at: new Date().toISOString() })
+          .eq('id', logId);
+      }
     } catch (e) {
-      console.error(`[${logId}] ❌ Unified inbox webhook persistence failed:`, e.message || e);
+      console.error(`[${logId}] ❌ Webhook processing failed:`, e.message || e);
+      await supabase
+        .from('webhook_logs')
+        .update({ processed: true, processing_error: e.message || String(e) })
+        .eq('id', logId)
+        .catch(() => {});
+    } finally {
+      inFlightWebhookLogs.delete(logId);
     }
+  } else {
+    inFlightWebhookLogs.delete(logId);
   }
 }
 
@@ -470,6 +501,31 @@ if (enableLocalWorker) {
     .subscribe((status) => {
       console.log(`📡 [SUPABASE] webhook_logs listener status: ${status}`);
     });
+
+  // Resilient fallback sweeper (ensures 100% at-least-once message processing if Realtime drops an event)
+  const webhookSweeper = setInterval(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('webhook_logs')
+        .select('*')
+        .eq('processed', false)
+        .in('event_type', ['messages', 'messaging_postbacks'])
+        .order('created_at', { ascending: true })
+        .limit(10);
+
+      if (!error && Array.isArray(data) && data.length > 0) {
+        for (const record of data) {
+          if (!inFlightWebhookLogs.has(record.id)) {
+            await handleWebhookLogRecord(record);
+          }
+        }
+      }
+    } catch (err) {
+      // Silent suppression in background loop
+    }
+  }, 4000);
+
+  if (webhookSweeper?.unref) webhookSweeper.unref();
 } else {
   console.log(`ℹ️ [INSTAPILOT] Webhook listener disabled via ENABLE_LOCAL_WEBHOOK_WORKER=false.`);
 }

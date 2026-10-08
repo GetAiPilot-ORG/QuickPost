@@ -1,21 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { HugeiconsIcon } from '@hugeicons/react';
 import {
-  AlertCircle,
-  AlertTriangle,
-  BarChart3,
-  Camera,
-  ExternalLink,
-  Film,
-  Grid3X3,
-  Heart,
-  Image as ImageIcon,
-  Instagram,
-  MessageCircle,
-  RefreshCw,
-  TrendingUp,
-  UserRound,
-  Users,
-} from 'lucide-react';
+  Alert02Icon,
+  Analytics01Icon,
+  Camera01Icon,
+  Comment01Icon,
+  ExternalLinkIcon,
+  FavouriteIcon,
+  Film01Icon,
+  Grid02Icon,
+  RefreshIcon,
+  TradeUpIcon,
+  UserGroupIcon,
+} from '@hugeicons/core-free-icons';
 import { useAutoDM } from '../../context/AutoDMContext';
 import AutoDMAccountSwitcher from './AutoDMAccountSwitcher';
 
@@ -33,7 +30,7 @@ function isReel(item) {
   return item.media_type === 'VIDEO' || item.media_type === 'REELS';
 }
 
-function StatCard({ icon: Icon, label, value, detail }) {
+function StatCard({ icon, label, value, detail }) {
   return (
     <article className="autodm-analytics-card">
       <div>
@@ -42,7 +39,7 @@ function StatCard({ icon: Icon, label, value, detail }) {
         <small>{detail}</small>
       </div>
       <span>
-        <Icon size={18} />
+        <HugeiconsIcon icon={icon} size={18} strokeWidth={1.8} />
       </span>
     </article>
   );
@@ -71,7 +68,7 @@ function MediaGrid({ items, loading, emptyLabel, error, onReconnect }) {
   if (error) {
     return (
       <div className="autodm-empty card">
-        <AlertTriangle size={32} style={{ color: '#d93025' }} />
+        <HugeiconsIcon icon={Alert02Icon} size={32} strokeWidth={1.8} style={{ color: '#d93025' }} />
         <h3>Failed to load posts</h3>
         <p>{error}</p>
         <button type="button" className="btn-arc mt-2" onClick={onReconnect}>
@@ -103,15 +100,15 @@ function MediaGrid({ items, loading, emptyLabel, error, onReconnect }) {
           aria-label="Open Instagram media"
         >
           <img src={item.thumbnail_url || item.media_url} alt={item.caption || 'Instagram media'} />
-          {isReel(item) ? <Film className="autodm-media-type" size={16} /> : null}
-          {item.media_type === 'CAROUSEL_ALBUM' ? <Grid3X3 className="autodm-media-type" size={16} /> : null}
+          {isReel(item) ? <HugeiconsIcon icon={Film01Icon} className="autodm-media-type" size={16} strokeWidth={1.8} /> : null}
+          {item.media_type === 'CAROUSEL_ALBUM' ? <HugeiconsIcon icon={Grid02Icon} className="autodm-media-type" size={16} strokeWidth={1.8} /> : null}
           <div className="autodm-media-overlay">
             <span>
-              <Heart size={14} />
+              <HugeiconsIcon icon={FavouriteIcon} size={14} strokeWidth={1.8} />
               {fullNumber(item.like_count || 0)}
             </span>
             <span>
-              <MessageCircle size={14} />
+              <HugeiconsIcon icon={Comment01Icon} size={14} strokeWidth={1.8} />
               {fullNumber(item.comments_count || 0)}
             </span>
           </div>
@@ -239,10 +236,8 @@ export default function AutoDMInstagramProfilePage() {
         </div>
 
         <div className="autodm-profile-copy">
-          <p className="eyebrow">Instagram Profile</p>
           <div className="autodm-profile-title">
             <h1>@{username}</h1>
-            <span className="badge badge-arc">{activeAccount.account_type || 'BUSINESS'}</span>
           </div>
           <p>{displayName}</p>
           <small>Profile data is synced from your connected Instagram professional account.</small>
@@ -250,11 +245,11 @@ export default function AutoDMInstagramProfilePage() {
 
         <div className="autodm-profile-actions">
           <button type="button" className="btn-ghost" onClick={() => window.open(profileUrl, '_blank')}>
-            <ExternalLink size={15} />
+            <HugeiconsIcon icon={ExternalLinkIcon} size={15} strokeWidth={1.8} />
             Open Instagram
           </button>
           <button type="button" className="btn-arc" onClick={loadMedia} disabled={mediaLoading}>
-            <RefreshCw size={15} className={mediaLoading ? 'is-spinning' : ''} />
+            <HugeiconsIcon icon={RefreshIcon} size={15} strokeWidth={1.8} className={mediaLoading ? 'is-spinning' : ''} />
             Refresh
           </button>
         </div>
@@ -264,16 +259,15 @@ export default function AutoDMInstagramProfilePage() {
       <section className="autodm-section">
         <div className="autodm-section-heading">
           <div>
-            <p className="eyebrow">Growth Dashboard</p>
             <h2>Professional insights</h2>
           </div>
         </div>
 
         <div className="autodm-analytics-grid">
-          <StatCard icon={TrendingUp} label="Reach" value="-" detail="No Meta insight yet" />
-          <StatCard icon={BarChart3} label="Views" value="-" detail="No Meta insight yet" />
-          <StatCard icon={Heart} label="Engagement" value={compactNumber(totals.engagement)} detail={`${fullNumber(totals.likes)} likes, ${fullNumber(totals.comments)} comments`} />
-          <StatCard icon={Users} label="Followers" value={compactNumber(activeAccount.followers_count)} detail={`${fullNumber(activeAccount.media_count ?? media.length)} synced posts`} />
+          <StatCard icon={TradeUpIcon} label="Reach" value="-" detail="No Meta insight yet" />
+          <StatCard icon={Analytics01Icon} label="Views" value="-" detail="No Meta insight yet" />
+          <StatCard icon={FavouriteIcon} label="Engagement" value={compactNumber(totals.engagement)} detail={`${fullNumber(totals.likes)} likes, ${fullNumber(totals.comments)} comments`} />
+          <StatCard icon={UserGroupIcon} label="Followers" value={compactNumber(activeAccount.followers_count)} detail={`${fullNumber(activeAccount.media_count ?? media.length)} synced posts`} />
         </div>
 
         <div className="autodm-profile-panels">
@@ -283,7 +277,7 @@ export default function AutoDMInstagramProfilePage() {
                 <h3>Account overview</h3>
                 <p>Profile and content totals</p>
               </div>
-              <BarChart3 size={18} />
+              <HugeiconsIcon icon={Analytics01Icon} size={18} strokeWidth={1.8} />
             </header>
             <div className="autodm-mini-grid">
               <MiniStat label="Posts" value={fullNumber(activeAccount.media_count ?? media.length)} />
@@ -298,7 +292,7 @@ export default function AutoDMInstagramProfilePage() {
                 <h3>Top content</h3>
                 <p>Based on likes and comments</p>
               </div>
-              <MessageCircle size={18} />
+              <HugeiconsIcon icon={Comment01Icon} size={18} strokeWidth={1.8} />
             </header>
             {totals.topPost ? (
               <div className="autodm-top-post">
@@ -320,17 +314,17 @@ export default function AutoDMInstagramProfilePage() {
       <section className="card autodm-media-card">
         <div className="autodm-media-tabs" role="tablist" aria-label="Instagram media">
           {[
-            { id: 'posts', label: 'Posts', icon: Grid3X3 },
-            { id: 'reels', label: 'Reels', icon: Film },
-            { id: 'all', label: 'All', icon: Camera },
-          ].map(({ id, label, icon: Icon }) => (
+            { id: 'posts', label: 'Posts', icon: Grid02Icon },
+            { id: 'reels', label: 'Reels', icon: Film01Icon },
+            { id: 'all', label: 'All', icon: Camera01Icon },
+          ].map(({ id, label, icon }) => (
             <button
               key={id}
               type="button"
               className={activeTab === id ? 'is-active' : ''}
               onClick={() => setActiveTab(id)}
             >
-              <Icon size={15} />
+              <HugeiconsIcon icon={icon} size={15} strokeWidth={1.8} />
               {label}
             </button>
           ))}

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, ArrowRight, Zap, Sparkles } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Cancel01Icon, ArrowRight02Icon, SparklesIcon } from "@hugeicons/core-free-icons";
 import { useAuth } from "../context/AuthContext";
 import BlueskyConnectModal from "./BlueskyConnectModal";
 import PinterestConnectModal from "./PinterestConnectModal";
@@ -116,12 +117,12 @@ export default function ConnectChannelsModal() {
                   onClick={dismiss}
                   className="absolute top-4 right-4 p-2 bg-black/10 hover:bg-black/20 text-white/90 hover:text-white rounded-full transition-colors backdrop-blur-md"
                 >
-                  <X className="w-5 h-5" />
+                  <HugeiconsIcon icon={Cancel01Icon} size={20} strokeWidth={1.8} />
                 </button>
 
                 <div className="relative z-10">
                   <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/25 backdrop-blur-md border border-white/15 text-white text-xs font-semibold tracking-wide uppercase mb-4 shadow-sm">
-                    <Sparkles className="w-3.5 h-3.5 text-white/80" />
+                    <HugeiconsIcon icon={SparklesIcon} size={14} strokeWidth={1.8} className="text-white/80" />
                     <span>Onboarding</span>
                   </div>
                   <h2 className="text-3xl font-extrabold text-white tracking-tight mb-2">
@@ -149,7 +150,7 @@ export default function ConnectChannelsModal() {
                   {unconnectedPlatforms.length === 0 && (
                     <div className="col-span-full py-12 flex flex-col items-center justify-center text-center bg-gray-100/50 rounded-2xl border border-gray-200 border-dashed">
                       <div className="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-3">
-                        <Sparkles className="w-6 h-6" />
+                        <HugeiconsIcon icon={SparklesIcon} size={24} strokeWidth={1.8} />
                       </div>
                       <p className="text-gray-900 font-semibold">All channels connected! 🎉</p>
                       <p className="text-sm text-gray-500 mt-1">You're ready to start posting.</p>
@@ -171,7 +172,7 @@ export default function ConnectChannelsModal() {
                   className="inline-flex items-center gap-2 px-6 py-2.5 bg-gray-900 hover:bg-black text-white text-sm font-bold rounded-xl shadow-lg shadow-gray-900/20 transition-all hover:-translate-y-0.5"
                 >
                   Go to Dashboard
-                  <ArrowRight className="w-4 h-4" />
+                  <HugeiconsIcon icon={ArrowRight02Icon} size={16} strokeWidth={1.8} />
                 </button>
               </div>
             </motion.div>

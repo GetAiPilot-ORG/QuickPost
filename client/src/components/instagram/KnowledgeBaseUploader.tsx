@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Database, FileText, Globe2, Layers3, Pencil, Plus, Trash2, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,11 @@ export default function KnowledgeBaseUploader({ botId }: { botId?: string }) {
   const [saving, setSaving] = useState(false);
   const [editingSource, setEditingSource] = useState<any>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const wordCount = useMemo(() => {
+    if (!text || !text.trim()) return 0;
+    return text.trim().split(/\s+/).filter(Boolean).length;
+  }, [text]);
 
   const loadSources = async () => {
     if (!botId) return;
@@ -101,18 +106,18 @@ export default function KnowledgeBaseUploader({ botId }: { botId?: string }) {
   };
 
   return (
-    <section className="rounded-lg border border-black/10 bg-white shadow-sm">
-      <div className="flex items-center justify-between gap-3 border-b border-black/10 bg-[#fffaf7] p-5">
+    <section className="rounded-xl border border-black/10 bg-white shadow-sm overflow-hidden">
+      <div className="flex items-center justify-between gap-3 border-b border-black/10 bg-white p-5">
         <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-50 text-[var(--arc)]">
+          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 text-gray-700">
             <Database className="h-5 w-5" />
           </span>
           <div>
-            <p className="text-xs font-semibold text-[var(--arc)]">Knowledge Base</p>
-            <h2 className="text-xl font-semibold text-[var(--ink)]">Business answers</h2>
+            <h2 className="text-xl font-bold tracking-tight text-[var(--ink)]">Knowledge Base</h2>
+            <p className="text-xs text-[var(--slate)]">Add FAQs and business answers for your bot</p>
           </div>
         </div>
-        <span className="rounded-md bg-white px-3 py-2 text-xs font-semibold text-[var(--slate)]">{sources.length} sources</span>
+        <span className="rounded-md bg-gray-50 border border-black/5 px-3 py-1.5 text-xs font-medium text-[var(--slate)]">{sources.length} sources</span>
       </div>
 
       <div className="grid gap-5 p-5 lg:grid-cols-[220px_1fr]">
@@ -133,8 +138,8 @@ export default function KnowledgeBaseUploader({ botId }: { botId?: string }) {
                 }
                 setSourceType(type);
               }}
-              className={`flex w-full items-center gap-3 rounded-md border px-3 py-3 text-left text-sm font-semibold transition ${
-                sourceType === type ? "border-orange-300 bg-orange-50 text-[var(--ink)] shadow-sm" : "border-black/10 bg-[#f8f6f3] text-[var(--slate)] hover:border-black/20 hover:bg-white"
+              className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition ${
+                sourceType === type ? "border-black bg-black text-white shadow-sm" : "border-black/10 bg-[#f8f6f3] text-[var(--slate)] hover:border-black/20 hover:bg-white hover:text-[var(--ink)]"
               }`}
             >
               <Icon className="h-4 w-4" />
@@ -164,7 +169,28 @@ export default function KnowledgeBaseUploader({ botId }: { botId?: string }) {
           {sourceType === "website" ? (
             <input value={url} onChange={(e) => setUrl(e.target.value)} className="instapilot-input" placeholder="https://example.com/pricing" />
           ) : (
-            <textarea value={text} onChange={(e) => setText(e.target.value)} rows={8} className="instapilot-input" placeholder="Paste FAQs, product data, pricing, booking rules, refund policy, or service details." />
+            <div className="space-y-1.5">
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                rows={9}
+                className={`instapilot-input font-mono text-[13px] leading-5 ${
+                  wordCount > 5000 ? "border-red-400 focus:border-red-500" : ""
+                }`}
+                placeholder="Paste FAQs, product data, pricing, booking rules, refund policy, or service details."
+              />
+              <div className="flex items-center justify-between px-1 text-xs">
+                <span className={wordCount > 5000 ? "font-bold text-red-600" : "text-[var(--slate)]"}>
+                  📝 {wordCount.toLocaleString()} / 5,000 words
+                  {text.length > 0 ? ` (${text.length.toLocaleString()} characters · ~${Math.ceil(text.length / 1200)} chunks)` : ""}
+                </span>
+                {wordCount > 5000 ? (
+                  <span className="font-semibold text-red-600">Exceeds 5,000 words limit</span>
+                ) : (
+                  <span className="text-emerald-700">✓ Optimized for fast RAG</span>
+                )}
+              </div>
+            </div>
           )}
           {!botId ? (
             <div className="rounded-lg border border-dashed border-black/20 bg-[#f8f6f3] p-4 text-sm text-[var(--slate)]">
@@ -172,7 +198,12 @@ export default function KnowledgeBaseUploader({ botId }: { botId?: string }) {
             </div>
           ) : null}
           <div className="flex flex-wrap gap-2">
-          <Button type="button" onClick={saveSource} disabled={saving} className="gap-2 bg-[var(--arc)] text-white hover:bg-[#d95f27]">
+          <Button
+            type="button"
+            onClick={saveSource}
+            disabled={saving || wordCount > 5000}
+            className="gap-2 bg-[var(--arc)] text-white hover:bg-[#d95f27]"
+          >
             <Plus className="h-4 w-4" />
             {saving ? "Processing..." : botId ? (editingSource ? "Update Knowledge" : "Add Knowledge") : "Save Bot First"}
           </Button>
