@@ -1,21 +1,22 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import gsap from "gsap";
+import { HugeiconsIcon } from "@hugeicons/react";
 import {
-  AlertTriangle,
-  ArrowRight,
-  BarChart3,
-  CalendarClock,
-  CheckCircle2,
-  Clock3,
-  Layers,
-  Plus,
-  RefreshCw,
-  Send,
-  ShieldCheck,
-  TrendingUp,
-  Users,
-} from "lucide-react";
+  Add01Icon,
+  Alert02Icon,
+  Analytics01Icon,
+  ArrowRight02Icon,
+  Calendar03Icon,
+  CheckmarkCircle02Icon,
+  Clock01Icon,
+  Layers01Icon,
+  RefreshIcon,
+  SentIcon,
+  ShieldCheckIcon,
+  TradeUpIcon,
+  UserGroupIcon,
+} from "@hugeicons/core-free-icons";
 import { useAuth } from "../context/AuthContext";
 import apiClient from "../utils/apiClient";
 import ComposerModal from "./ComposerModal";
@@ -104,7 +105,7 @@ function getNextAction(data) {
       detail: "Link Instagram or another platform before your next broadcast.",
       action: "Connect channels",
       href: "/connect",
-      icon: Layers,
+      icon: Layers01Icon,
       tone: "warning",
     };
   }
@@ -114,7 +115,7 @@ function getNextAction(data) {
       detail: "Review failed broadcasts before adding more queue pressure.",
       action: "Open history",
       href: "/dashboard/history",
-      icon: AlertTriangle,
+      icon: Alert02Icon,
       tone: "danger",
     };
   }
@@ -124,7 +125,7 @@ function getNextAction(data) {
       detail: `Next scheduled for ${formatDateTime(ops.nextScheduled.scheduledFor)}`,
       action: "Open queue",
       href: "/dashboard/queue",
-      icon: CalendarClock,
+      icon: Calendar03Icon,
       tone: "success",
     };
   }
@@ -133,12 +134,12 @@ function getNextAction(data) {
     detail: "Create or schedule the next post when you are ready.",
     action: "New post",
     href: null,
-    icon: Send,
+    icon: SentIcon,
     tone: "neutral",
   };
 }
 
-function MetricCard({ icon: Icon, label, value, detail, tone = "neutral", info }) {
+function MetricCard({ icon, label, value, detail, tone = "neutral", info }) {
   return (
     <article className={`dash-card dash-metric is-${tone}`}>
       <div className="dash-card-head">
@@ -146,7 +147,7 @@ function MetricCard({ icon: Icon, label, value, detail, tone = "neutral", info }
           <span>{label}</span>
           {info && <InfoHelp text={info} />}
         </div>
-        <Icon size={17} />
+        <HugeiconsIcon icon={icon} size={17} strokeWidth={1.8} />
       </div>
       <strong>{value}</strong>
       <p>{detail}</p>
@@ -245,7 +246,6 @@ export default function DashboardOverview() {
   const growth = data.instagramGrowth || emptyOverview.instagramGrowth;
   const automation = data.automation || emptyOverview.automation;
   const nextAction = getNextAction(data);
-  const NextActionIcon = nextAction.icon;
   const maxTrend = Math.max(1, ...((data.publishingTrend || []).map((day) => day.sent + day.scheduled + day.failed)));
   const trendData = data.publishingTrend || [];
   const totalSent = useMemo(() => trendData.reduce((acc, curr) => acc + (curr.sent || 0), 0), [trendData]);
@@ -314,11 +314,11 @@ export default function DashboardOverview() {
             ))}
           </div>
           <button type="button" className="dash-btn secondary" onClick={() => navigate("/connect")}>
-            <Layers size={16} />
+            <HugeiconsIcon icon={Layers01Icon} size={16} strokeWidth={1.8} />
             Channels
           </button>
           <button type="button" className="dash-btn primary" onClick={() => setComposerOpen(true)}>
-            <Plus size={16} />
+            <HugeiconsIcon icon={Add01Icon} size={16} strokeWidth={1.8} />
             New Post
           </button>
         </div>
@@ -326,13 +326,13 @@ export default function DashboardOverview() {
 
       {error ? (
         <section className="dash-error">
-          <AlertTriangle size={18} />
+          <HugeiconsIcon icon={Alert02Icon} size={18} strokeWidth={1.8} />
           <div>
             <strong>Dashboard could not refresh</strong>
             <p>{error}</p>
           </div>
           <button type="button" className="dash-btn secondary" onClick={fetchOverview}>
-            <RefreshCw size={15} />
+            <HugeiconsIcon icon={RefreshIcon} size={15} strokeWidth={1.8} />
             Retry
           </button>
         </section>
@@ -345,7 +345,7 @@ export default function DashboardOverview() {
               <span>Next action</span>
               <InfoHelp text="Recommended high-impact action based on queue status, pending posts, or account connection health" />
             </div>
-            <NextActionIcon size={18} />
+            <HugeiconsIcon icon={nextAction.icon} size={18} strokeWidth={1.8} />
           </div>
           <h2>{nextAction.title}</h2>
           <p>{nextAction.detail}</p>
@@ -355,12 +355,12 @@ export default function DashboardOverview() {
             onClick={() => (nextAction.href ? navigate(nextAction.href) : setComposerOpen(true))}
           >
             {nextAction.action}
-            <ArrowRight size={15} />
+            <HugeiconsIcon icon={ArrowRight02Icon} size={15} strokeWidth={1.8} />
           </button>
         </article>
 
         <MetricCard
-          icon={CheckCircle2}
+          icon={CheckmarkCircle02Icon}
           label="Publish success"
           value={ops.successRate === null ? "No baseline" : `${ops.successRate}%`}
           detail={`${formatNumber(ops.sent)} sent, ${formatNumber(ops.failed)} failed in ${range} days`}
@@ -368,7 +368,7 @@ export default function DashboardOverview() {
           info="Percentage of broadcasts successfully dispatched across all connected channels in the selected range"
         />
         <MetricCard
-          icon={Clock3}
+          icon={Clock01Icon}
           label="Queue health"
           value={formatNumber(ops.queueCount)}
           detail={`${formatNumber(ops.processing)} processing, ${formatNumber(ops.scheduled)} waiting`}
@@ -376,7 +376,7 @@ export default function DashboardOverview() {
           info="Posts waiting to be dispatched or actively undergoing processing by the publishing queue"
         />
         <MetricCard
-          icon={Users}
+          icon={UserGroupIcon}
           label="Connected accounts"
           value={formatNumber(data.accounts?.totalConnected || 0)}
           detail={(data.accounts?.needsReconnect || []).length ? "Reconnect needed" : "All visible accounts healthy"}
@@ -422,7 +422,7 @@ export default function DashboardOverview() {
 
           {growthSummary.unavailableReason ? (
             <div className="dash-note">
-              <AlertTriangle size={15} />
+              <HugeiconsIcon icon={Alert02Icon} size={15} strokeWidth={1.8} />
               <span>{cleanInsightReason(growthSummary.unavailableReason)}</span>
             </div>
           ) : null}
@@ -434,7 +434,7 @@ export default function DashboardOverview() {
             <span>Automation lift</span>
             <InfoHelp text="Automated direct messages, captured sales leads, and new follower conversions" />
           </div>
-            <ShieldCheck size={17} />
+            <HugeiconsIcon icon={ShieldCheckIcon} size={17} strokeWidth={1.8} />
           </div>
           <div className="dash-mini-grid">
             <MetricInline label="DMs sent" value={formatNumber(automation.autodm?.messagesSent || 0)} detail="AutoDM" info="Automated direct messages triggered by comments and story interactions via AutoDM" />
@@ -626,7 +626,7 @@ export default function DashboardOverview() {
             </div>
             <button type="button" className="dash-small-link" onClick={() => navigate("/dashboard/history")}>
               History
-              <ArrowRight size={14} />
+              <HugeiconsIcon icon={ArrowRight02Icon} size={14} strokeWidth={1.8} />
             </button>
           </div>
           <div className="dash-list">
@@ -642,7 +642,7 @@ export default function DashboardOverview() {
               ))
             ) : (
               <div className="dash-empty">
-                <Send size={18} />
+                <HugeiconsIcon icon={SentIcon} size={18} strokeWidth={1.8} />
                 <p>No broadcast history in this range.</p>
               </div>
             )}
@@ -658,7 +658,7 @@ export default function DashboardOverview() {
               </div>
               <h2>{issues.length ? `${issues.length} item${issues.length === 1 ? "" : "s"} to review` : "No visible blockers"}</h2>
             </div>
-            <AlertTriangle size={17} />
+            <HugeiconsIcon icon={Alert02Icon} size={17} strokeWidth={1.8} />
           </div>
           <div className="dash-list compact">
             {issues.length ? (
@@ -673,7 +673,7 @@ export default function DashboardOverview() {
               ))
             ) : (
               <div className="dash-empty">
-                <ShieldCheck size={18} />
+                <HugeiconsIcon icon={ShieldCheckIcon} size={18} strokeWidth={1.8} />
                 <p>Connected accounts look ready from the data available.</p>
               </div>
             )}
@@ -691,14 +691,14 @@ export default function DashboardOverview() {
               </div>
               <h2>Best recent engagement</h2>
             </div>
-            <BarChart3 size={17} />
+            <HugeiconsIcon icon={Analytics01Icon} size={17} strokeWidth={1.8} />
           </div>
           <div className="dash-media-list">
             {topMedia.length ? (
               topMedia.map((item) => (
                 <a className="dash-media-row" href={item.permalink || "#"} target="_blank" rel="noreferrer" key={item.id}>
                   <div className="dash-thumb">
-                    {item.mediaUrl ? <img src={item.mediaUrl} alt={item.caption || "Instagram media"} /> : <TrendingUp size={18} />}
+                    {item.mediaUrl ? <img src={item.mediaUrl} alt={item.caption || "Instagram media"} /> : <HugeiconsIcon icon={TradeUpIcon} size={18} strokeWidth={1.8} />}
                   </div>
                   <div>
                     <strong>{shortCaption(item.caption)}</strong>
@@ -708,7 +708,7 @@ export default function DashboardOverview() {
               ))
             ) : (
               <div className="dash-empty">
-                <BarChart3 size={18} />
+                <HugeiconsIcon icon={Analytics01Icon} size={18} strokeWidth={1.8} />
                 <p>Top content will appear when Meta returns media engagement.</p>
               </div>
             )}

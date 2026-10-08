@@ -457,7 +457,13 @@ async function handleWebhookLogRecord(log) {
       const isEcho = Boolean(log.payload?.message?.is_echo);
       if ((log.event_type === 'messages' || log.event_type === 'messaging_postbacks') && !isEcho && !log.processed) {
         console.log(`[${logId}] 🤖 Triggering InstaPilot AI Bot for inbound message...`);
-        await processInstagramWebhook(metaPayload);
+        const startedAt = Date.now();
+        try {
+          await processInstagramWebhook(metaPayload);
+          console.log(`[TIMING] InstaPilot webhook ${logId} completed in ${Date.now() - startedAt}ms`);
+        } catch (error) {
+          console.error(`[${logId}] ❌ InstaPilot webhook reply failed:`, error.message || error);
+        }
         
         await supabase
           .from('webhook_logs')

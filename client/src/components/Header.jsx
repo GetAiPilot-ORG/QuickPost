@@ -1,5 +1,12 @@
 import React, { useState } from "react";
-import { Menu, Unplug, LogOut, X, ChevronDown, UserRound } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  Menu01Icon,
+  Cancel01Icon,
+  ChevronDownIcon,
+  UserIcon,
+  Logout01Icon,
+} from "@hugeicons/core-free-icons";
 import { useLocation, useNavigate } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -190,7 +197,7 @@ function Header({ onMenuClick, sidebarOpen, isDesktop, topOffset = 0 }) {
               transition: "all 0.2s",
             }}
           >
-            <Menu size={18} />
+            <HugeiconsIcon icon={Menu01Icon} size={18} strokeWidth={1.8} />
           </button>
         )}
       </div>
@@ -221,7 +228,7 @@ function Header({ onMenuClick, sidebarOpen, isDesktop, topOffset = 0 }) {
             onMouseEnter={e => { e.currentTarget.style.background = "rgba(20,20,19,0.05)"; e.currentTarget.style.color = "var(--ink)"; }}
             onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--slate)"; }}
           >
-            <UserRound size={18} />
+            <HugeiconsIcon icon={UserIcon} size={18} strokeWidth={1.8} />
           </button>
           <button
             onClick={handleLogout}
@@ -229,7 +236,7 @@ function Header({ onMenuClick, sidebarOpen, isDesktop, topOffset = 0 }) {
             aria-label="Logout"
             title="Logout"
           >
-            <LogOut size={16} strokeWidth={2.5} />
+            <HugeiconsIcon icon={Logout01Icon} size={16} strokeWidth={2} />
             <span className="text-[13px] tracking-wide">Logout</span>
           </button>
         </div>
@@ -244,7 +251,7 @@ function Header({ onMenuClick, sidebarOpen, isDesktop, topOffset = 0 }) {
           <div className="modal-content" style={{ maxWidth: 460, borderRadius: "12px", padding: 0 }} onClick={e => e.stopPropagation()}>
             <div style={{ padding: "20px 24px", borderBottom: "1px solid rgba(20,20,19,0.08)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <h2 style={{ fontSize: 18, fontWeight: 600, color: "var(--ink)" }}>Connected Accounts</h2>
-              <button onClick={() => setShowSettings(false)} style={{ border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: "50%", background: "rgba(20,20,19,0.04)" }}><X size={16} /></button>
+              <button onClick={() => setShowSettings(false)} style={{ border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: "50%", background: "rgba(20,20,19,0.04)" }}><HugeiconsIcon icon={Cancel01Icon} size={16} strokeWidth={1.8} /></button>
             </div>
             
             <div 
@@ -321,8 +328,10 @@ function Header({ onMenuClick, sidebarOpen, isDesktop, topOffset = 0 }) {
                           </span>
                         </div>
 
-                        <ChevronDown
+                        <HugeiconsIcon
+                          icon={ChevronDownIcon}
                           size={14}
+                          strokeWidth={1.8}
                           style={{
                             color: "var(--side-muted)",
                             transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",

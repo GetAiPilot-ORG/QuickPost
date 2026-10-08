@@ -3,28 +3,27 @@ import { motion, AnimatePresence } from "framer-motion";
 import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { HugeiconsIcon } from "@hugeicons/react";
 import {
-  CalendarClock,
-  Gauge,
-  LayoutGrid,
-  Workflow,
-  Users,
-  Instagram,
-  Settings,
-  UserRound,
-  ChevronDown,
-  X,
-  Plus,
-  Sparkles,
-  Lock,
-  MessagesSquare,
-  Video,
-  LogOut,
-  HelpCircle,
-  CreditCard,
-  BarChart3,
-  Flame,
-} from "lucide-react";
+  DashboardSpeed01Icon,
+  Analytics01Icon,
+  Calendar03Icon,
+  InstagramIcon,
+  YoutubeIcon,
+  FlameIcon,
+  Message01Icon,
+  WorkflowSquare01Icon,
+  UserGroupIcon,
+  UserIcon,
+  Grid02Icon,
+  CreditCardIcon,
+  HelpCircleIcon,
+  SparklesIcon,
+  Logout01Icon,
+  ChevronDownIcon,
+  Add01Icon,
+  LockKeyIcon,
+} from "@hugeicons/core-free-icons";
 import { useDialog } from "../context/DialogContext";
 import logo from "/logo.png";
 import InstagramBusinessSetupModal from "./InstagramBusinessSetupModal";
@@ -49,7 +48,7 @@ const platformDetails = {
     icon: (
       <img
         src="/icons/facebook-round-color-icon.svg"
-        style={{ width: 20, height: 20 }}
+        style={{ width: 24, height: 24, display: "block" }}
         alt=""
       />
     ),
@@ -59,7 +58,7 @@ const platformDetails = {
     icon: (
       <img
         src="/icons/ig-instagram-icon.svg"
-        style={{ width: 20, height: 20 }}
+        style={{ width: 24, height: 24, display: "block" }}
         alt=""
       />
     ),
@@ -69,7 +68,7 @@ const platformDetails = {
     icon: (
       <img
         src="/icons/x-social-media-round-icon.svg"
-        style={{ width: 20, height: 20 }}
+        style={{ width: 24, height: 24, display: "block" }}
         alt=""
       />
     ),
@@ -79,7 +78,7 @@ const platformDetails = {
     icon: (
       <img
         src="/icons/linkedin-icon.svg"
-        style={{ width: 20, height: 20 }}
+        style={{ width: 24, height: 24, display: "block" }}
         alt=""
       />
     ),
@@ -89,7 +88,7 @@ const platformDetails = {
     icon: (
       <img
         src="/icons/youtube-color-icon.svg"
-        style={{ width: 20, height: 20 }}
+        style={{ width: 24, height: 24, display: "block" }}
         alt=""
       />
     ),
@@ -99,7 +98,7 @@ const platformDetails = {
     icon: (
       <img
         src="/icons/pinterest-round-color-icon.svg"
-        style={{ width: 20, height: 20 }}
+        style={{ width: 24, height: 24, display: "block" }}
         alt=""
       />
     ),
@@ -109,7 +108,7 @@ const platformDetails = {
     icon: (
       <img
         src="/icons/threads-icon.svg"
-        style={{ width: 20, height: 20 }}
+        style={{ width: 24, height: 24, display: "block" }}
         alt=""
       />
     ),
@@ -119,7 +118,7 @@ const platformDetails = {
     icon: (
       <img
         src="/icons/mastodon-round-icon.svg"
-        style={{ width: 20, height: 20 }}
+        style={{ width: 24, height: 24, display: "block" }}
         alt=""
       />
     ),
@@ -129,7 +128,7 @@ const platformDetails = {
     icon: (
       <img
         src="/icons/bluesky-circle-color-icon.svg"
-        style={{ width: 20, height: 20 }}
+        style={{ width: 24, height: 24, display: "block" }}
         alt=""
       />
     ),
@@ -139,7 +138,7 @@ const platformDetails = {
     icon: (
       <img
         src="/icons/google-icon.svg"
-        style={{ width: 20, height: 20 }}
+        style={{ width: 24, height: 24, display: "block" }}
         alt=""
       />
     ),
@@ -149,7 +148,7 @@ const platformDetails = {
     icon: (
       <img
         src="/icons/reddit-icon.svg"
-        style={{ width: 20, height: 20 }}
+        style={{ width: 24, height: 24, display: "block" }}
         alt=""
       />
     ),
@@ -390,7 +389,7 @@ function Sidebar({ onClose }) {
       icon: (
         <img
           src="/icons/facebook-round-color-icon.svg"
-          style={{ width: 20, height: 20 }}
+          style={{ width: 24, height: 24, display: "block" }}
           alt=""
         />
       ),
@@ -405,13 +404,13 @@ function Sidebar({ onClose }) {
         icon: acc.profilePicture ? (
           <img
             src={acc.profilePicture}
-            style={{ width: 20, height: 20, borderRadius: "50%", objectFit: "cover" }}
+            style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover", display: "block" }}
             alt=""
           />
         ) : (
           <img
             src="/icons/ig-instagram-icon.svg"
-            style={{ width: 20, height: 20 }}
+            style={{ width: 22, height: 22, display: "block" }}
             alt=""
           />
         ),
@@ -425,7 +424,7 @@ function Sidebar({ onClose }) {
           icon: (
             <img
               src="/icons/ig-instagram-icon.svg"
-              style={{ width: 20, height: 20 }}
+              style={{ width: 24, height: 24, display: "block" }}
               alt=""
             />
           ),
@@ -441,7 +440,7 @@ function Sidebar({ onClose }) {
           icon: (
             <img
               src="/icons/ig-instagram-icon.svg"
-              style={{ width: 20, height: 20 }}
+              style={{ width: 24, height: 24, display: "block" }}
               alt=""
             />
           ),
@@ -456,7 +455,7 @@ function Sidebar({ onClose }) {
       icon: (
         <img
           src="/icons/x-social-media-round-icon.svg"
-          style={{ width: 20, height: 20 }}
+          style={{ width: 24, height: 24, display: "block" }}
           alt=""
         />
       ),
@@ -473,7 +472,7 @@ function Sidebar({ onClose }) {
       icon: (
         <img
           src="/icons/linkedin-icon.svg"
-          style={{ width: 20, height: 20 }}
+          style={{ width: 24, height: 24, display: "block" }}
           alt=""
         />
       ),
@@ -486,7 +485,7 @@ function Sidebar({ onClose }) {
       icon: (
         <img
           src="/icons/youtube-color-icon.svg"
-          style={{ width: 20, height: 20 }}
+          style={{ width: 24, height: 24, display: "block" }}
           alt=""
         />
       ),
@@ -500,7 +499,7 @@ function Sidebar({ onClose }) {
       icon: (
         <img
           src="/icons/pinterest-round-color-icon.svg"
-          style={{ width: 20, height: 20 }}
+          style={{ width: 24, height: 24, display: "block" }}
           alt=""
         />
       ),
@@ -513,7 +512,7 @@ function Sidebar({ onClose }) {
       icon: (
         <img
           src="/icons/threads-icon.svg"
-          style={{ width: 20, height: 20 }}
+          style={{ width: 24, height: 24, display: "block" }}
           alt=""
         />
       ),
@@ -527,7 +526,7 @@ function Sidebar({ onClose }) {
       icon: (
         <img
           src="/icons/mastodon-round-icon.svg"
-          style={{ width: 20, height: 20 }}
+          style={{ width: 24, height: 24, display: "block" }}
           alt=""
         />
       ),
@@ -540,7 +539,7 @@ function Sidebar({ onClose }) {
       icon: (
         <img
           src="/icons/bluesky-circle-color-icon.svg"
-          style={{ width: 20, height: 20 }}
+          style={{ width: 24, height: 24, display: "block" }}
           alt=""
         />
       ),
@@ -554,7 +553,7 @@ function Sidebar({ onClose }) {
       icon: (
         <img
           src="/icons/google-icon.svg"
-          style={{ width: 20, height: 20 }}
+          style={{ width: 24, height: 24, display: "block" }}
           alt=""
         />
       ),
@@ -571,7 +570,7 @@ function Sidebar({ onClose }) {
       icon: (
         <img
           src="/icons/reddit-icon.svg"
-          style={{ width: 20, height: 20 }}
+          style={{ width: 24, height: 24, display: "block" }}
           alt=""
         />
       ),
@@ -596,10 +595,16 @@ function Sidebar({ onClose }) {
       icon: account.profilePicture ? (
         <img
           src={account.profilePicture}
-          style={{ width: 20, height: 20, borderRadius: "50%", objectFit: "cover" }}
+          style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover", display: "block" }}
           alt=""
         />
-      ) : platform.icon,
+      ) : (
+        <img
+          src="/icons/ig-instagram-icon.svg"
+          style={{ width: 22, height: 22, display: "block" }}
+          alt=""
+        />
+      ),
     }));
   });
 
@@ -627,9 +632,9 @@ function Sidebar({ onClose }) {
   };
 
   const autoDMSubnav = [
-    { to: "/dashboard/auto-dm/automations", label: "Automations", icon: <Workflow size={14} /> },
-    { to: "/dashboard/auto-dm/contacts", label: "Contacts", icon: <Users size={14} /> },
-    { to: "/dashboard/auto-dm/instagram-profile", label: "Profile", icon: <Instagram size={14} /> },
+    { to: "/dashboard/auto-dm/automations", label: "Automations", icon: <HugeiconsIcon icon={WorkflowSquare01Icon} size={14} strokeWidth={1.5} /> },
+    { to: "/dashboard/auto-dm/contacts", label: "Contacts", icon: <HugeiconsIcon icon={UserGroupIcon} size={14} strokeWidth={1.5} /> },
+    { to: "/dashboard/auto-dm/instagram-profile", label: "Profile", icon: <HugeiconsIcon icon={InstagramIcon} size={14} strokeWidth={1.5} /> },
   ];
 
   return (
@@ -716,42 +721,42 @@ function Sidebar({ onClose }) {
             {
               to: "/dashboard",
               label: "Dashboard",
-              icon: <Gauge size={16} />,
+              icon: <HugeiconsIcon icon={DashboardSpeed01Icon} size={20} strokeWidth={1.8} />,
             },
             {
               to: "/dashboard/analytics",
               label: "All Channels",
-              icon: <BarChart3 size={16} />,
+              icon: <HugeiconsIcon icon={Analytics01Icon} size={20} strokeWidth={1.8} />,
             },
             {
               to: "/dashboard/queue",
               label: "Scheduled Queue",
-              icon: <CalendarClock size={16} />,
+              icon: <HugeiconsIcon icon={Calendar03Icon} size={20} strokeWidth={1.8} />,
             },
             {
               to: "/dashboard/instapilot",
               label: "GAP InstaPilot",
-              icon: <Instagram size={16} />,
+              icon: <HugeiconsIcon icon={InstagramIcon} size={20} strokeWidth={1.8} />,
             },
             {
               to: "/dashboard/youtube",
               label: "YouTube Studio",
-              icon: <Video size={16} />,
+              icon: <HugeiconsIcon icon={YoutubeIcon} size={20} strokeWidth={1.8} />,
             },
             {
               to: "/dashboard/trends",
               label: "Trend Feed",
-              icon: <Flame size={16} />,
+              icon: <HugeiconsIcon icon={FlameIcon} size={20} strokeWidth={1.8} />,
             },
             {
               to: "/dashboard/inbox",
               label: "Social Inbox",
-              icon: <MessagesSquare size={16} />,
+              icon: <HugeiconsIcon icon={Message01Icon} size={20} strokeWidth={1.8} />,
             },
             {
               to: "/dashboard/auto-dm",
               label: "GAP AutoDM",
-              icon: <Workflow size={16} />,
+              icon: <HugeiconsIcon icon={WorkflowSquare01Icon} size={20} strokeWidth={1.8} />,
             },
           ].map(({ to, label, icon }) => {
             const active = isActive(to);
@@ -762,22 +767,19 @@ function Sidebar({ onClose }) {
               <>
                 <span
                   style={{
-                    width: 24,
-                    height: 24,
-                    borderRadius: "var(--r-sm)",
-                    background: active
-                      ? "rgba(255,255,255,0.15)"
-                      : "rgba(20,20,19,0.06)",
+                    width: 22,
+                    height: 22,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     flexShrink: 0,
+                    color: "currentColor",
                   }}
                 >
                   {icon}
                 </span>
                 <span style={{ flex: 1 }}>{label}</span>
-                {isLocked && <Lock size={14} style={{ opacity: 0.5 }} />}
+                {isLocked && <HugeiconsIcon icon={LockKeyIcon} size={14} strokeWidth={1.5} style={{ opacity: 0.5 }} />}
               </>
             );
 
@@ -860,10 +862,13 @@ function Sidebar({ onClose }) {
                       aria-expanded={autoDMOpen}
                       className="sidebar-parent-toggle"
                     >
-                      <ChevronDown
+                      <HugeiconsIcon
+                        icon={ChevronDownIcon}
                         size={14}
+                        strokeWidth={1.5}
                         style={{
                           transform: autoDMOpen ? "rotate(180deg)" : "rotate(0deg)",
+                          transition: "transform 0.2s",
                         }}
                       />
                     </button>
@@ -977,7 +982,7 @@ function Sidebar({ onClose }) {
                       e.currentTarget.style.background = "rgba(20, 20, 19, 0.05)";
                     }}
                   >
-                    <Plus size={12} style={{ color: "var(--side-ink)" }} />
+                    <HugeiconsIcon icon={Add01Icon} size={12} strokeWidth={2} style={{ color: "var(--side-ink)" }} />
                   </button>
                   {connectedPlatforms.length > 0 && (
                     <div
@@ -1055,21 +1060,18 @@ function Sidebar({ onClose }) {
                           transition: "all 0.15s ease",
                         }}
                       >
-                        <div style={{ position: "relative", flexShrink: 0 }}>
-                          <div
-                            style={{
-                              width: 26,
-                              height: 26,
-                              borderRadius: "6px",
-                              background: "var(--side-surface)",
-                              border: "1px solid var(--side-hairline)",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                            }}
-                          >
-                            {details.icon}
-                          </div>
+                        <div
+                          style={{
+                            position: "relative",
+                            flexShrink: 0,
+                            width: 24,
+                            height: 24,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          {details.icon}
                         </div>
 
                         <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6 }}>
@@ -1102,8 +1104,10 @@ function Sidebar({ onClose }) {
                           </span>
                         </div>
 
-                        <ChevronDown
+                        <HugeiconsIcon
+                          icon={ChevronDownIcon}
                           size={14}
+                          strokeWidth={1.5}
                           style={{
                             color: "var(--side-muted)",
                             transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
@@ -1148,14 +1152,22 @@ function Sidebar({ onClose }) {
                                       : "transparent",
                                   }}
                                 >
-                                  <div style={{ position: "relative", flexShrink: 0 }}>
+                                  <div
+                                    style={{
+                                      position: "relative",
+                                      flexShrink: 0,
+                                      width: 22,
+                                      height: 22,
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                    }}
+                                  >
                                     <div
                                       style={{
                                         width: 22,
                                         height: 22,
                                         borderRadius: "50%",
-                                        background: "var(--side-surface)",
-                                        border: "1px solid var(--side-hairline)",
                                         display: "flex",
                                         alignItems: "center",
                                         justifyContent: "center",
@@ -1169,11 +1181,11 @@ function Sidebar({ onClose }) {
                                         position: "absolute",
                                         bottom: -1,
                                         right: -1,
-                                        width: 6,
-                                        height: 6,
+                                        width: 7,
+                                        height: 7,
                                         background: "#22c55e",
                                         borderRadius: "50%",
-                                        border: "1px solid var(--side-canvas)",
+                                        border: "1.5px solid var(--canvas, #f5f1ec)",
                                       }}
                                     />
                                   </div>
@@ -1278,14 +1290,14 @@ function Sidebar({ onClose }) {
                   {user.plan || "Free"} plan - {countConnectedTargets(connectedAccounts)} channels
                 </div>
               </div>
-              <ChevronDown size={14} className="qp-sidebar-account-chevron" />
+              <HugeiconsIcon icon={ChevronDownIcon} size={14} strokeWidth={1.5} className="qp-sidebar-account-chevron" />
             </button>
             <div className="qp-sidebar-account-panel">
               <div className="qp-sidebar-account-menu">
                 {[
-                  { to: "/dashboard/profile", label: "Profile", icon: <UserRound size={15} /> },
-                  { to: "/dashboard", label: "Channels", icon: <LayoutGrid size={15} /> },
-                  { to: "/dashboard/billing", label: "Plans and Billing", icon: <CreditCard size={15} /> },
+                  { to: "/dashboard/profile", label: "Profile", icon: <HugeiconsIcon icon={UserIcon} size={15} strokeWidth={1.5} /> },
+                  { to: "/dashboard", label: "Channels", icon: <HugeiconsIcon icon={Grid02Icon} size={15} strokeWidth={1.5} /> },
+                  { to: "/dashboard/billing", label: "Plans and Billing", icon: <HugeiconsIcon icon={CreditCardIcon} size={15} strokeWidth={1.5} /> },
                 ].map((item) => (
                   <Link
                     onClick={() => onClose && onClose()}
@@ -1301,7 +1313,7 @@ function Sidebar({ onClose }) {
                   href="mailto:support@gapsocialpilot.com"
                   className="qp-sidebar-account-link"
                 >
-                  <HelpCircle size={15} />
+                  <HugeiconsIcon icon={HelpCircleIcon} size={15} strokeWidth={1.5} />
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Help & Support</span>
                 </a>
                 {isFree(user?.plan) && (
@@ -1310,7 +1322,7 @@ function Sidebar({ onClose }) {
                     onClick={() => { navigate("/dashboard/billing"); onClose && onClose(); }}
                     className="qp-sidebar-account-upgrade"
                   >
-                    <Sparkles size={15} />
+                    <HugeiconsIcon icon={SparklesIcon} size={15} strokeWidth={1.5} />
                     Upgrade plan
                   </button>
                 )}
@@ -1319,7 +1331,7 @@ function Sidebar({ onClose }) {
                   onClick={handleLogout}
                   className="qp-sidebar-account-link qp-sidebar-account-logout"
                 >
-                  <LogOut size={15} />
+                  <HugeiconsIcon icon={Logout01Icon} size={15} strokeWidth={1.5} />
                   Log out
                 </button>
               </div>
