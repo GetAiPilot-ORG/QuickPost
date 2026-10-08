@@ -451,6 +451,13 @@ async function handleWebhookLogRecord(log) {
     } catch (e) {
       console.error(`[${logId}] ❌ Unified inbox webhook persistence failed:`, e.message || e);
     }
+    try {
+      const startedAt = Date.now();
+      await processInstagramWebhook(metaPayload);
+      console.log(`[TIMING] InstaPilot webhook ${logId} completed in ${Date.now() - startedAt}ms`);
+    } catch (error) {
+      console.error(`[${logId}] ❌ InstaPilot webhook reply failed:`, error.message || error);
+    }
   }
 }
 

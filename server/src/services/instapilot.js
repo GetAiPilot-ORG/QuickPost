@@ -1076,6 +1076,21 @@ export function extractLeadDataFromText(text) {
 }
 
 async function handleInboundMessage({ senderId, recipientId, messaging, injectedAccountId, skipBotReply }) {
+  const metaMessageId = messaging.message.mid || null;
+  // Prevent race conditions from concurrent duplicate webhooks (Ngrok + Edge, or Meta retries)
+  if (metaMessageId) {
+    if (processingMessageIds.has(metaMessageId)) {
+      console.log(`[INSTAPILOT] Race condition mitigated! Message ${metaMessageId} is already being processed.`);
+      return { skipped: true, reason: 'race_condition_duplicate' };
+    }
+    processingMessageIds.add(metaMessageId);
+
+    // Keep the lock for 60 seconds
+    setTimeout(() => {
+      processingMessageIds.delete(metaMessageId);
+    }, 60000);
+  }
+
   let account = null;
 
   if (injectedAccountId) {
@@ -1097,7 +1112,6 @@ async function handleInboundMessage({ senderId, recipientId, messaging, injected
   const bot = await findActiveBotForAccount(account.id);
   const conversation = await upsertConversation(account, bot, senderId, messaging.timestamp);
   const text = messaging.message.text;
-  const metaMessageId = messaging.message.mid || null;
 
   // Extract and save lead details (Phone, Email, Name, City) automatically
   const extractedLead = extractLeadDataFromText(text);
@@ -1130,20 +1144,6 @@ async function handleInboundMessage({ senderId, recipientId, messaging, injected
   }
 
   console.log(`[DEBUG] handleInboundMessage called for sender=${senderId}, metaMessageId=${metaMessageId}`);
-
-  // Prevent race conditions from concurrent duplicate webhooks (Ngrok + Edge, or Meta retries)
-  if (metaMessageId) {
-    if (processingMessageIds.has(metaMessageId)) {
-      console.log(`[INSTAPILOT] Race condition mitigated! Message ${metaMessageId} is already being processed.`);
-      return { skipped: true, reason: 'race_condition_duplicate' };
-    }
-    processingMessageIds.add(metaMessageId);
-
-    // Keep the lock for 60 seconds
-    setTimeout(() => {
-      processingMessageIds.delete(metaMessageId);
-    }, 60000);
-  }
 
   const existingInbound = await findExistingInboundMessage({
     accountId: account.id,
@@ -1209,7 +1209,9 @@ async function handleInboundMessage({ senderId, recipientId, messaging, injected
     return { skipped: true, reason: 'recent_outbound_already_sent' };
   }
 
+  const generationStartedAt = Date.now();
   const reply = await generateReply({ bot, messageText: text, conversation });
+  console.log(`[TIMING] Reply generation for conv ${conversation.id}: ${Date.now() - generationStartedAt}ms`);
   // Only increment failure_count on low confidence - don't lock the conversation immediately.
   // The bot will be handed off only when failure_count reaches the threshold above.
   if (reply.handoff) {
@@ -1475,7 +1477,18 @@ async function audit(userId, action, entityType, entityId, metadata = {}) {
   });
 }
 
-export async function syncInboxFromGraphAPI(userId) {
+const inboxSyncsInFlight = new Map();
+
+export function syncInboxFromGraphAPI(userId) {
+  if (inboxSyncsInFlight.has(userId)) return inboxSyncsInFlight.get(userId);
+  const sync = performInboxSyncFromGraphAPI(userId).finally(() => {
+    inboxSyncsInFlight.delete(userId);
+  });
+  inboxSyncsInFlight.set(userId, sync);
+  return sync;
+}
+
+async function performInboxSyncFromGraphAPI(userId) {
   const { data: accounts } = await supabase
     .from('instagram_accounts')
     .select('*')

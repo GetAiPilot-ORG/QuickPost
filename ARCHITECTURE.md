@@ -37,3 +37,5 @@
 - Expired Meta credentials are skipped, and permanent authorization/scope failures cool down for 24 hours unless account credentials are updated; transient timeouts remain eligible for the next sync.
 - Social Inbox subscribes to Supabase Realtime changes on `inbox_conversations`, debounces burst updates, refreshes the active thread when affected, and revalidates when the browser tab becomes visible.
 - A visibility-aware 15-second database poll covers missed Realtime events; source freshness still depends on webhook delivery or the three-minute provider synchronization worker.
+
+- InstaPilot replies run from the API server’s `webhook_logs` Realtime listener after unified inbox persistence; keep `ENABLE_LOCAL_WEBHOOK_WORKER` enabled on the bot-serving process. Manual Graph inbox sync shares one in-flight operation per user per process.
