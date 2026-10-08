@@ -1,31 +1,30 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { HugeiconsIcon } from '@hugeicons/react';
 import {
-  AlertCircle,
-  ArrowUpRight,
-  BarChart3,
-  CheckCircle2,
-  Clock,
-  Copy,
-  Edit3,
-  ExternalLink,
-  Instagram,
-  Loader2,
-  MessageCircle,
-  MoreHorizontal,
-  Plus,
-  RefreshCw,
-  Send,
-  Shield,
-  Sparkles,
-  Trash2,
-  UserCheck,
-  UserPlus,
-  Users,
-  UserX,
-  X,
-} from 'lucide-react';
+  Add01Icon,
+  AlertCircleIcon,
+  Analytics01Icon,
+  Cancel01Icon,
+  CheckmarkCircle02Icon,
+  Clock01Icon,
+  Comment01Icon,
+  Copy01Icon,
+  Delete02Icon,
+  Edit02Icon,
+  ExternalLinkIcon,
+  InstagramIcon,
+  Loading03Icon,
+  MoreHorizontalIcon,
+  RefreshIcon,
+  SentIcon,
+  Shield01Icon,
+  UserAdd01Icon,
+  UserCheck01Icon,
+  UserGroupIcon,
+  UserRemove01Icon,
+} from '@hugeicons/core-free-icons';
 import { useAutoDM } from '../../context/AutoDMContext';
 import AutoDMAccountSwitcher from './AutoDMAccountSwitcher';
 import InfoHelp from '../../components/InfoHelp';
@@ -115,7 +114,7 @@ function AutomationThumb({ automation, isPostDeleted }) {
           className={isPostDeleted ? 'opacity-50 grayscale' : ''}
         />
       ) : (
-        <MessageCircle size={18} className={isPostDeleted ? 'text-gray-400' : ''} />
+        <HugeiconsIcon icon={Comment01Icon} size={18} strokeWidth={1.8} className={isPostDeleted ? 'text-gray-400' : ''} />
       )}
     </div>
   );
@@ -127,11 +126,11 @@ function ActionMenu({ automation, onEdit, onData, onDuplicate, onDelete }) {
   return (
     <div className="autodm-row-actions">
       <button type="button" className="btn-ghost" onClick={onData}>
-        <BarChart3 size={14} />
+        <HugeiconsIcon icon={Analytics01Icon} size={14} strokeWidth={1.8} />
         Data
       </button>
       <button type="button" className="autodm-icon-action" onClick={onEdit} aria-label="Edit automation">
-        <Edit3 size={16} />
+        <HugeiconsIcon icon={Edit02Icon} size={16} strokeWidth={1.8} />
       </button>
       <div className="autodm-menu-anchor">
         <button
@@ -141,7 +140,7 @@ function ActionMenu({ automation, onEdit, onData, onDuplicate, onDelete }) {
           aria-label="Automation actions"
           aria-expanded={open}
         >
-          <MoreHorizontal size={18} />
+          <HugeiconsIcon icon={MoreHorizontalIcon} size={18} strokeWidth={1.8} />
         </button>
         {open ? (
           <div className="autodm-menu-popover">
@@ -152,7 +151,7 @@ function ActionMenu({ automation, onEdit, onData, onDuplicate, onDelete }) {
                 onDuplicate();
               }}
             >
-              <Copy size={14} />
+              <HugeiconsIcon icon={Copy01Icon} size={14} strokeWidth={1.8} />
               Duplicate
             </button>
             <button
@@ -163,7 +162,7 @@ function ActionMenu({ automation, onEdit, onData, onDuplicate, onDelete }) {
                 onDelete();
               }}
             >
-              <Trash2 size={14} />
+              <HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={1.8} />
               Delete
             </button>
           </div>
@@ -218,14 +217,14 @@ function AnalyticsModal({ automation, analytics, loading, commentRows, commentsL
             </p>
           </div>
           <button type="button" className="autodm-modal-close" onClick={onClose} aria-label="Close analytics">
-            <X size={18} />
+            <HugeiconsIcon icon={Cancel01Icon} size={18} strokeWidth={1.8} />
           </button>
         </header>
 
         <div className="autodm-analytics-body custom-scrollbar">
           {loading ? (
             <div className="autodm-empty">
-              <Loader2 className="is-spinning" size={30} />
+              <HugeiconsIcon icon={Loading03Icon} className="is-spinning" size={30} strokeWidth={1.8} />
               <p>Loading analytics</p>
             </div>
           ) : (
@@ -237,7 +236,7 @@ function AnalyticsModal({ automation, analytics, loading, commentRows, commentsL
                     <p>Comments</p>
                     <small>Matched events</small>
                   </div>
-                  <span><MessageCircle size={18} /></span>
+                  <span><HugeiconsIcon icon={Comment01Icon} size={18} strokeWidth={1.8} /></span>
                 </article>
                 <article className="autodm-analytics-card">
                   <div>
@@ -245,7 +244,7 @@ function AnalyticsModal({ automation, analytics, loading, commentRows, commentsL
                     <p>DMs Sent</p>
                     <small>Delivered messages</small>
                   </div>
-                  <span><Send size={18} /></span>
+                  <span><HugeiconsIcon icon={SentIcon} size={18} strokeWidth={1.8} /></span>
                 </article>
                 <article className="autodm-analytics-card">
                   <div>
@@ -253,7 +252,7 @@ function AnalyticsModal({ automation, analytics, loading, commentRows, commentsL
                     <p>People</p>
                     <small>Unique reached</small>
                   </div>
-                  <span><Users size={18} /></span>
+                  <span><HugeiconsIcon icon={UserGroupIcon} size={18} strokeWidth={1.8} /></span>
                 </article>
                 <article className="autodm-analytics-card">
                   <div>
@@ -261,7 +260,7 @@ function AnalyticsModal({ automation, analytics, loading, commentRows, commentsL
                     <p>Last Used</p>
                     <small>Latest activity</small>
                   </div>
-                  <span><Clock size={18} /></span>
+                  <span><HugeiconsIcon icon={Clock01Icon} size={18} strokeWidth={1.8} /></span>
                 </article>
               </div>
 
@@ -270,7 +269,7 @@ function AnalyticsModal({ automation, analytics, loading, commentRows, commentsL
                   <div className="autodm-panel-head">
                     <div className="autodm-panel-title-group">
                       <div className="autodm-icon-badge autodm-icon-badge-purple">
-                        <BarChart3 size={16} />
+                        <HugeiconsIcon icon={Analytics01Icon} size={16} strokeWidth={1.8} />
                       </div>
                       <div>
                         <h3>Delivery Health</h3>
@@ -283,17 +282,17 @@ function AnalyticsModal({ automation, analytics, loading, commentRows, commentsL
                   </div>
                   <div className="autodm-metrics-row">
                     <div className="autodm-metric-line">
-                      <span><CheckCircle2 size={16} /></span>
+                      <span><HugeiconsIcon icon={CheckmarkCircle02Icon} size={16} strokeWidth={1.8} /></span>
                       <p>Successful</p>
                       <strong>{sent}</strong>
                     </div>
                     <div className="autodm-metric-line">
-                      <span><X size={16} /></span>
+                      <span><HugeiconsIcon icon={Cancel01Icon} size={16} strokeWidth={1.8} /></span>
                       <p>Send Failed</p>
                       <strong>{analytics?.failed || 0}</strong>
                     </div>
                     <div className="autodm-metric-line">
-                      <span><Clock size={16} /></span>
+                      <span><HugeiconsIcon icon={Clock01Icon} size={16} strokeWidth={1.8} /></span>
                       <p>Awaiting Reply</p>
                       <strong>{analytics?.awaiting_reply || 0}</strong>
                     </div>
@@ -316,7 +315,7 @@ function AnalyticsModal({ automation, analytics, loading, commentRows, commentsL
                     <div className="autodm-panel-head" style={{ marginBottom: 0 }}>
                       <div className="autodm-panel-title-group">
                         <div className="autodm-icon-badge autodm-icon-badge-emerald">
-                          <Shield size={16} />
+                          <HugeiconsIcon icon={Shield01Icon} size={16} strokeWidth={1.8} />
                         </div>
                         <div>
                           <h3 className="inline-flex items-center gap-1.5">
@@ -330,7 +329,7 @@ function AnalyticsModal({ automation, analytics, loading, commentRows, commentsL
                     <div className="autodm-follow-gate-grid">
                       <div className="autodm-gate-card">
                         <div className="autodm-gate-card-icon icon-emerald">
-                          <UserCheck size={16} />
+                          <HugeiconsIcon icon={UserCheck01Icon} size={16} strokeWidth={1.8} />
                         </div>
                         <div className="autodm-gate-card-content">
                           <span className="autodm-gate-val">{analytics?.followersCommented || 0}</span>
@@ -339,7 +338,7 @@ function AnalyticsModal({ automation, analytics, loading, commentRows, commentsL
                       </div>
                       <div className="autodm-gate-card">
                         <div className="autodm-gate-card-icon icon-amber">
-                          <UserX size={16} />
+                          <HugeiconsIcon icon={UserRemove01Icon} size={16} strokeWidth={1.8} />
                         </div>
                         <div className="autodm-gate-card-content">
                           <span className="autodm-gate-val">{analytics?.followGateBlockedCount || 0}</span>
@@ -348,7 +347,7 @@ function AnalyticsModal({ automation, analytics, loading, commentRows, commentsL
                       </div>
                       <div className="autodm-gate-card">
                         <div className="autodm-gate-card-icon icon-indigo">
-                          <UserPlus size={16} />
+                          <HugeiconsIcon icon={UserAdd01Icon} size={16} strokeWidth={1.8} />
                         </div>
                         <div className="autodm-gate-card-content">
                           <span className="autodm-gate-val">
@@ -365,7 +364,7 @@ function AnalyticsModal({ automation, analytics, loading, commentRows, commentsL
                   <div className="autodm-panel-head">
                     <div className="autodm-panel-title-group">
                       <div className="autodm-icon-badge autodm-icon-badge-ig">
-                        <Instagram size={16} />
+                        <HugeiconsIcon icon={InstagramIcon} size={16} strokeWidth={1.8} />
                       </div>
                       <div>
                         <h3>Post Snapshot</h3>
@@ -415,7 +414,7 @@ function AnalyticsModal({ automation, analytics, loading, commentRows, commentsL
                       <div className="autodm-post-mock-card">
                         <div className="autodm-mock-header">
                           <div className="autodm-mock-avatar">
-                            <Instagram size={15} />
+                            <HugeiconsIcon icon={InstagramIcon} size={15} strokeWidth={1.8} />
                           </div>
                           <div className="autodm-mock-meta">
                             <strong>{automation.name || 'Instagram Post'}</strong>
@@ -427,7 +426,7 @@ function AnalyticsModal({ automation, analytics, loading, commentRows, commentsL
                         </div>
                         <div className="autodm-mock-gradient-banner">
                           <div className="autodm-mock-banner-content">
-                            <Instagram size={26} />
+                            <HugeiconsIcon icon={InstagramIcon} size={26} strokeWidth={1.8} />
                             <p>Target Instagram Media</p>
                             <span className="autodm-mock-id">
                               {automation.media_id ? `ID: ${automation.media_id}` : 'Click Sync Meta Data to fetch live post graphic'}
@@ -448,7 +447,7 @@ function AnalyticsModal({ automation, analytics, loading, commentRows, commentsL
                 <div className="autodm-panel-head">
                   <div className="autodm-panel-title-group">
                     <div className="autodm-icon-badge autodm-icon-badge-ig">
-                      <MessageCircle size={16} />
+                      <HugeiconsIcon icon={Comment01Icon} size={16} strokeWidth={1.8} />
                     </div>
                     <div>
                       <h3>Post Comments</h3>
@@ -460,7 +459,7 @@ function AnalyticsModal({ automation, analytics, loading, commentRows, commentsL
 
                 {commentsLoading ? (
                   <div className="autodm-empty compact">
-                    <Loader2 className="is-spinning" size={24} />
+                    <HugeiconsIcon icon={Loading03Icon} className="is-spinning" size={24} strokeWidth={1.8} />
                     <p>Loading comments</p>
                   </div>
                 ) : commentsError ? (
@@ -487,14 +486,14 @@ function AnalyticsModal({ automation, analytics, loading, commentRows, commentsL
                               <div className="autodm-avatar-wrapper" style={avatarStyle}>
                                 <span>{initial}</span>
                                 <span className="autodm-avatar-ig-badge">
-                                  <Instagram size={9} />
+                                  <HugeiconsIcon icon={InstagramIcon} size={9} strokeWidth={1.8} />
                                 </span>
                               </div>
                               <div className="autodm-user-details">
                                 <div className="autodm-user-title-row">
                                   <strong className="autodm-username">{username}</strong>
                                   <span className="autodm-time-pill">
-                                    <Clock size={11} />
+                                    <HugeiconsIcon icon={Clock01Icon} size={11} strokeWidth={1.8} />
                                     {formatCommentTime(comment.createdAt)}
                                   </span>
                                 </div>
@@ -503,18 +502,18 @@ function AnalyticsModal({ automation, analytics, loading, commentRows, commentsL
                             <div className="autodm-comment-badges">
                               {isProcessed ? (
                                 <span className="autodm-status-tag status-success">
-                                  <CheckCircle2 size={12} />
+                                  <HugeiconsIcon icon={CheckmarkCircle02Icon} size={12} strokeWidth={1.8} />
                                   <span>Processed</span>
                                 </span>
                               ) : (
                                 <span className="autodm-status-tag status-pending">
-                                  <Clock size={12} />
+                                  <HugeiconsIcon icon={Clock01Icon} size={12} strokeWidth={1.8} />
                                   <span>Pending</span>
                                 </span>
                               )}
                               {hasError && (
                                 <span className="autodm-status-tag status-error">
-                                  <AlertCircle size={12} />
+                                  <HugeiconsIcon icon={AlertCircleIcon} size={12} strokeWidth={1.8} />
                                   <span>{comment.processingError.replace(/_/g, ' ')}</span>
                                 </span>
                               )}
@@ -531,13 +530,13 @@ function AnalyticsModal({ automation, analytics, loading, commentRows, commentsL
                             <div className="autodm-footer-meta">
                               {comment.mediaId && (
                                 <span className="autodm-meta-pill">
-                                  <ExternalLink size={11} />
+                                  <HugeiconsIcon icon={ExternalLinkIcon} size={11} strokeWidth={1.8} />
                                   Media #{comment.mediaId}
                                 </span>
                               )}
                               {isProcessed && (
                                 <span className="autodm-meta-pill highlight">
-                                  <Send size={11} />
+                                  <HugeiconsIcon icon={SentIcon} size={11} strokeWidth={1.8} />
                                   Auto-DM Delivered
                                 </span>
                               )}
@@ -556,7 +555,7 @@ function AnalyticsModal({ automation, analytics, loading, commentRows, commentsL
         <footer className="autodm-analytics-footer">
           <button type="button" className="btn-ghost" onClick={onClose}>Close</button>
           <button type="button" className="btn-ghost" onClick={onSync}>
-            <RefreshCw size={14} />
+            <HugeiconsIcon icon={RefreshIcon} size={14} strokeWidth={1.8} />
             Sync Meta Data
           </button>
           <button type="button" className="btn-arc" onClick={onEdit}>Edit Automation</button>
@@ -766,7 +765,7 @@ export default function AutoDMAutomationsPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <AutoDMAccountSwitcher />
           <button type="button" className="autodm-create-btn" onClick={() => navigate('/dashboard/auto-dm/automations/new')}>
-            <Plus size={16} />
+            <HugeiconsIcon icon={Add01Icon} size={16} strokeWidth={1.8} />
             Create
           </button>
         </div>
@@ -812,7 +811,7 @@ export default function AutoDMAutomationsPage() {
                     </strong>
                     {isPostDeleted ? (
                       <small className="autodm-deleted-note" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap', color: '#e11d48', marginTop: '4px' }}>
-                        <AlertCircle size={12} style={{ flexShrink: 0 }} />
+                        <HugeiconsIcon icon={AlertCircleIcon} size={12} strokeWidth={1.8} style={{ flexShrink: 0 }} />
                         <span>Post deleted on Instagram</span>
                       </small>
                     ) : (
@@ -825,7 +824,7 @@ export default function AutoDMAutomationsPage() {
                   {isPostDeleted ? (
                     <>
                       <span className="badge badge-error bg-rose-50 text-rose-700 border border-rose-200 font-medium inline-flex items-center gap-1">
-                        <AlertCircle size={12} className="shrink-0" /> Post Deleted
+                        <HugeiconsIcon icon={AlertCircleIcon} size={12} strokeWidth={1.8} className="shrink-0" /> Post Deleted
                       </span>
                       <small className="text-gray-500 font-medium">Inactive on IG</small>
                     </>
@@ -841,8 +840,8 @@ export default function AutoDMAutomationsPage() {
                 </div>
 
                 <div className="autodm-activity-chips">
-                  <span><MessageCircle size={14} /> {comments}</span>
-                  <span><Send size={14} /> {sent}</span>
+                  <span><HugeiconsIcon icon={Comment01Icon} size={14} strokeWidth={1.8} /> {comments}</span>
+                  <span><HugeiconsIcon icon={SentIcon} size={14} strokeWidth={1.8} /> {sent}</span>
                 </div>
 
                 <time className="autodm-muted">{formatRelativeTime(automation.updated_at || automation.created_at)}</time>

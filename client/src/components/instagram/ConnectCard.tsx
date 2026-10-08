@@ -1,5 +1,15 @@
 import { Link } from "react-router-dom";
-import { AlertCircle, CheckCircle2, ChevronDown, ExternalLink, Instagram, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import {
+  AlertCircleIcon,
+  CheckmarkCircle02Icon,
+  ChevronDownIcon,
+  Delete02Icon,
+  ExternalLinkIcon,
+  InstagramIcon,
+  RefreshIcon,
+  ShieldCheckIcon,
+} from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
@@ -54,7 +64,7 @@ export default function ConnectCard({ accounts, onChanged }: { accounts: any[]; 
             <div>
               <div className="flex items-center gap-3">
                 <span className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-orange-50 text-[var(--arc)]">
-                  <Instagram className="h-5 w-5" />
+                  <HugeiconsIcon icon={InstagramIcon} size={20} strokeWidth={1.8} />
                 </span>
                 <div>
                   <p className="text-xs font-semibold text-[var(--arc)]">Instagram setup</p>
@@ -69,11 +79,11 @@ export default function ConnectCard({ accounts, onChanged }: { accounts: any[]; 
             </div>
             <div className="flex flex-wrap gap-2">
               <Button type="button" onClick={startMetaOAuth} className="gap-2 bg-[var(--arc)] text-white hover:bg-[#d95f27]">
-                <ExternalLink className="h-4 w-4" />
+                <HugeiconsIcon icon={ExternalLinkIcon} size={16} strokeWidth={1.8} />
                 Connect Instagram
               </Button>
               <Button type="button" variant="outline" onClick={importAccount} disabled={busy} className="gap-2 bg-white">
-                <RefreshCw className="h-4 w-4" />
+                <HugeiconsIcon icon={RefreshIcon} size={16} strokeWidth={1.8} />
                 {busy ? "Syncing..." : "Sync"}
               </Button>
             </div>
@@ -81,7 +91,7 @@ export default function ConnectCard({ accounts, onChanged }: { accounts: any[]; 
           <div className="p-5">
             <div className="rounded-lg border border-dashed border-black/15 bg-[#f8f6f3] p-5">
               <div className="flex items-start gap-3">
-                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-[var(--arc)]" />
+                <HugeiconsIcon icon={AlertCircleIcon} size={20} strokeWidth={1.8} className="mt-0.5 shrink-0 text-[var(--arc)]" />
                 <div>
                   <h3 className="font-semibold text-[var(--ink)]">No Instagram account connected yet</h3>
                   <p className="mt-1 text-sm leading-6 text-[var(--slate)]">
@@ -95,11 +105,11 @@ export default function ConnectCard({ accounts, onChanged }: { accounts: any[]; 
       ) : (
         <div className="flex gap-4">
           <Button type="button" onClick={startMetaOAuth} variant="outline" className="gap-2 bg-white">
-            <ExternalLink className="h-4 w-4" />
+            <HugeiconsIcon icon={ExternalLinkIcon} size={16} strokeWidth={1.8} />
             Connect Another Account
           </Button>
           <Button type="button" variant="outline" onClick={importAccount} disabled={busy} className="gap-2 bg-white">
-            <RefreshCw className="h-4 w-4" />
+            <HugeiconsIcon icon={RefreshIcon} size={16} strokeWidth={1.8} />
             {busy ? "Syncing..." : "Sync Accounts"}
           </Button>
         </div>
@@ -149,7 +159,7 @@ function InstagramAccountCard({ account, busy, setBusy, onChanged }: { account: 
               {account.profile_picture_url ? (
                 <img src={account.profile_picture_url} alt="" className="h-full w-full object-cover" />
               ) : (
-                <Instagram className="h-5 w-5" />
+                <HugeiconsIcon icon={InstagramIcon} size={20} strokeWidth={1.8} />
               )}
             </span>
             <div>
@@ -182,7 +192,7 @@ function InstagramAccountCard({ account, busy, setBusy, onChanged }: { account: 
           <div className="flex flex-wrap gap-2 border-t border-black/10 pt-4">
             {!webhookReady ? (
               <Button type="button" onClick={subscribeWebhooks} disabled={busy} className="gap-2 bg-[var(--arc)] text-white hover:bg-[#d95f27]">
-                <RefreshCw className="h-4 w-4" />
+                <HugeiconsIcon icon={RefreshIcon} size={16} strokeWidth={1.8} />
                 Enable bot DM automation
               </Button>
             ) : null}
@@ -190,7 +200,7 @@ function InstagramAccountCard({ account, busy, setBusy, onChanged }: { account: 
               <Link to="/dashboard/instapilot/inbox">Open Inbox</Link>
             </Button>
             <Button type="button" variant="outline" onClick={disconnect} disabled={busy} className="gap-2 border-red-200 bg-white text-red-700 hover:bg-red-50">
-              <Trash2 className="h-4 w-4" />
+              <HugeiconsIcon icon={Delete02Icon} size={16} strokeWidth={1.8} />
               Disconnect
             </Button>
           </div>
@@ -202,7 +212,7 @@ function InstagramAccountCard({ account, busy, setBusy, onChanged }: { account: 
             onClick={() => setAdvancedOpen((current) => !current)}
             className="flex items-center gap-2 text-sm font-semibold text-[var(--slate)] transition hover:text-[var(--ink)]"
           >
-            <ChevronDown className={`h-4 w-4 transition ${advancedOpen ? "rotate-180" : ""}`} />
+            <HugeiconsIcon icon={ChevronDownIcon} size={16} strokeWidth={1.8} className={`transition ${advancedOpen ? "rotate-180" : ""}`} />
             Advanced details
           </button>
           {advancedOpen ? (
@@ -228,7 +238,7 @@ function StatusRow({ good, title, text }: { good: boolean; title: string; text: 
   return (
     <div className={`flex items-start gap-3 rounded-lg border p-4 ${good ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
       <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${good ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
-        {good ? <CheckCircle2 className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
+        {good ? <HugeiconsIcon icon={CheckmarkCircle02Icon} size={16} strokeWidth={1.8} /> : <HugeiconsIcon icon={ShieldCheckIcon} size={16} strokeWidth={1.8} />}
       </span>
       <div>
         <div className="font-semibold text-[var(--ink)]">{title}</div>

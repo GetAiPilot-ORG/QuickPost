@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bot, RotateCcw, Send, Sparkles } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { RefreshIcon, RoboticIcon } from "@hugeicons/core-free-icons";
 import toast from "react-hot-toast";
 import { testInstagramBotReply } from "@/services/instagramApi";
 
@@ -71,7 +72,7 @@ export default function TestChat({
             <div className="relative">
               <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 p-0.5 shadow-xs">
                 <span className="flex h-full w-full items-center justify-center rounded-full bg-white text-gray-800">
-                  <Bot className="h-4 w-4" />
+                  <HugeiconsIcon icon={RoboticIcon} size={16} strokeWidth={1.8} />
                 </span>
               </span>
               <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
@@ -87,7 +88,7 @@ export default function TestChat({
             title="Clear chat history"
             className="flex items-center gap-1 rounded-full border border-black/[0.08] bg-white px-2.5 py-1 text-[11px] font-medium text-gray-600 transition hover:bg-gray-50 hover:text-black"
           >
-            <RotateCcw className="h-3 w-3" />
+            <HugeiconsIcon icon={RefreshIcon} size={12} strokeWidth={1.8} />
             <span>Reset</span>
           </button>
         </div>
