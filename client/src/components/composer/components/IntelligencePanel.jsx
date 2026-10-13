@@ -18,6 +18,7 @@ import {
   CheckCircle2,
   Lightbulb,
   ChevronDown,
+  ExternalLink,
 } from "lucide-react";
 
 /* ── Visual config per item kind ── */
@@ -127,6 +128,28 @@ const IntelligenceCard = memo(React.forwardRef(function IntelligenceCard({ item,
           }}>
             {item.message}
           </p>
+          {item.actionUrl && (
+            <div style={{ marginTop: 6 }}>
+              <a
+                href={item.actionUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: color || "#2563eb",
+                  textDecoration: "underline",
+                  cursor: "pointer",
+                }}
+              >
+                <span>{item.actionLabel || "Open link"}</span>
+                <ExternalLink size={11} />
+              </a>
+            </div>
+          )}
         </div>
       </div>
     </motion.div>

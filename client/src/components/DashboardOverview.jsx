@@ -267,6 +267,14 @@ export default function DashboardOverview() {
       detail: account.username ? `@${account.username}` : "Token is expired or unavailable.",
       href: "/connect",
     })),
+    ...((data.accounts?.accounts || [])
+      .filter((account) => account.provider === "youtube" && account.hasChannel === false)
+      .map((account) => ({
+        title: "YouTube channel not found",
+        detail: "No channel created for this Google account. Click to create one on YouTube.",
+        href: "https://www.youtube.com/create_channel",
+        external: true,
+      }))),
     ...((growth.accounts || [])
       .filter((account) => account.unavailableReason)
       .map((account) => ({
@@ -323,6 +331,35 @@ export default function DashboardOverview() {
           </button>
         </div>
       </header>
+
+      {new URLSearchParams(window.location.search).get("warning") === "youtube_no_channel" && (
+        <section
+          className="dash-error"
+          style={{
+            background: "rgba(245, 158, 11, 0.08)",
+            borderColor: "rgba(245, 158, 11, 0.3)",
+            color: "#b45309",
+            marginBottom: 20,
+          }}
+        >
+          <HugeiconsIcon icon={Alert02Icon} size={18} strokeWidth={1.8} style={{ color: "#d97706" }} />
+          <div style={{ flex: 1 }}>
+            <strong style={{ color: "#92400e" }}>No YouTube channel found for this Google account</strong>
+            <p style={{ color: "#b45309", margin: "2px 0 0" }}>
+              Aapke Google account par abhi tak koi YouTube channel nahi bana hai. YouTube par video publish karne ke liye pehle channel setup karein.
+            </p>
+          </div>
+          <a
+            href="https://www.youtube.com/create_channel"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="dash-btn secondary"
+            style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 6 }}
+          >
+            Create Channel &rarr;
+          </a>
+        </section>
+      )}
 
       {error ? (
         <section className="dash-error">
@@ -663,7 +700,16 @@ export default function DashboardOverview() {
           <div className="dash-list compact">
             {issues.length ? (
               issues.map((issue, index) => (
-                <button type="button" className="dash-row" key={`${issue.title}-${index}`} onClick={() => navigate(issue.href)}>
+                <button
+                  type="button"
+                  className="dash-row"
+                  key={`${issue.title}-${index}`}
+                  onClick={() =>
+                    issue.external
+                      ? window.open(issue.href, "_blank", "noopener,noreferrer")
+                      : navigate(issue.href)
+                  }
+                >
                   <span className="dash-status danger" />
                   <div>
                     <strong>{issue.title}</strong>

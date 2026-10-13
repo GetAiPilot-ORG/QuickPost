@@ -1202,7 +1202,7 @@ function ComposerModal({
 
   const [platformData, setPlatformData] = useState({
     instagram: { type: "post" },
-    youtube: { type: "short" },
+    youtube: { type: "short", title: "" },
     facebook: { type: "post" },
     pinterest: { boardId: "", title: "", link: "" },
     reddit: { subreddit: "", title: "", flairId: "" },
@@ -1779,6 +1779,19 @@ function ComposerModal({
       !platformData.reddit?.subreddit?.trim()
     ) {
       setError("Reddit requires a subreddit.");
+      return false;
+    }
+    if (
+      hasPlatform("youtube") &&
+      !platformData.youtube?.title?.trim() &&
+      !caption?.trim()
+    ) {
+      setError("YouTube requires a title. Please enter a title in Platform Customization or add a caption.");
+      return false;
+    }
+    const ytAccount = connectedAccounts?.youtube || connectedAccounts?.youtubeAccounts?.[0];
+    if (hasPlatform("youtube") && ytAccount && ytAccount.hasChannel === false) {
+      setError("No YouTube channel found for this Google account. Please create a channel at youtube.com/create_channel before publishing.");
       return false;
     }
     if (isScheduled) {
@@ -2474,6 +2487,7 @@ function ComposerModal({
                     user={user}
                     selectedChannels={selectedChannels}
                     caption={caption}
+                    platformData={platformData}
                     mediaFiles={mediaFiles}
                     selectedRatio={selectedRatio}
                     selectedSizePreset={platformPresets[activePreviewBasePlatform]}

@@ -198,7 +198,8 @@ export async function executeBroadcast(broadcastId, userId, caption, mediaUrls, 
             const isShort = (platData?.youtube?.type === "short");
             const visibility = platData?.youtube?.visibility || "public";
             const description = platData?.youtube?.description || "";
-            return postToYouTube(primaryVideoPath, resolveMentions(caption, 'youtube', ytTokens), ytTokens, null, visibility, isShort, description)
+            const youtubeTitle = platData?.youtube?.title?.trim() || caption;
+            return postToYouTube(primaryVideoPath, resolveMentions(youtubeTitle, 'youtube', ytTokens), ytTokens, null, visibility, isShort, description)
               .then(async result => {
                 const vId = result.videoId || result.mediaId;
                 if (result.success && vId && coverImagePath && fs.existsSync(coverImagePath)) {
