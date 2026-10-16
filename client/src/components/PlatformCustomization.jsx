@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ChevronDown, ChevronUp, Hash, Crop } from "lucide-react";
+import { ChevronDown, ChevronUp, Hash, Crop, ExternalLink } from "lucide-react";
 import { PLATFORM_META } from "./composer/data/platforms.js";
 import ImageCropperModal from "./composer/components/ImageCropperModal";
 
@@ -215,6 +215,25 @@ function PlatformCustomization({
                 </div>
 
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Title <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={platformData.youtube?.title || ""}
+                    onChange={(e) =>
+                      handleChange("youtube", "title", e.target.value)
+                    }
+                    placeholder="Enter YouTube video title (or leave empty to use caption)"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm placeholder:text-gray-400 transition-all"
+                    maxLength={100}
+                  />
+                  <p className="text-[10px] text-gray-400 mt-1.5 font-medium">
+                    {(platformData.youtube?.title || "").length}/100 characters
+                  </p>
+                </div>
+
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Visibility
                   </label>
@@ -340,6 +359,18 @@ function PlatformCustomization({
                   )}
                   <p className="text-[10px] text-gray-400 mt-2 leading-relaxed font-medium">
                     <span className="text-indigo-500">Pro Tip:</span> Thumbnail is uploaded as 16:9. Use crop when the image is not landscape.
+                  </p>
+                  <p className="text-[10px] text-gray-500 mt-1 leading-relaxed font-medium flex items-center gap-1">
+                    <span>Account not verified?</span>
+                    <a
+                      href="https://www.youtube.com/verify"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-indigo-600 hover:text-indigo-700 underline font-semibold inline-flex items-center gap-0.5"
+                    >
+                      Verify your YouTube channel here
+                      <ExternalLink size={10} />
+                    </a>
                   </p>
                 </div>
               </div>

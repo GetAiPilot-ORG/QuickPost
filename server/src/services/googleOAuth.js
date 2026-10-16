@@ -80,18 +80,22 @@ class GoogleOAuthService {
       let channelStatus = null;
       let channelStats = null;
       let channelThumbnail = null;
+      let hasChannel = false;
       try {
         const channelRes = await youtube.channels.list({
           part: "snippet,status,statistics",
           mine: true,
         });
         if (channelRes.data.items && channelRes.data.items.length > 0) {
+          hasChannel = true;
           const channel = channelRes.data.items[0];
           channelId = channel.id || channelId;
           channelTitle = channel.snippet.title;
           channelStatus = channel.status || null;
           channelStats = channel.statistics || null;
           channelThumbnail = channel.snippet?.thumbnails?.default?.url || channel.snippet?.thumbnails?.medium?.url || null;
+        } else {
+          console.warn("⚠️ [GOOGLE_OAUTH] No YouTube channel found for this Google account.");
         }
       } catch (err) {
         console.warn(
@@ -113,6 +117,7 @@ class GoogleOAuthService {
           username: channelTitle,
           youtubeStatus: channelStatus,
           youtubeStats: channelStats,
+          hasChannel,
         },
       };
     } catch (error) {

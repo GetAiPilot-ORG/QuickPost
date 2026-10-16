@@ -884,7 +884,8 @@ async function processBroadcastJob({
         try {
           const validAccessToken = await googleOAuth.getValidAccessToken(userId, account.id);
           const ytTokens = { ...account, accessToken: validAccessToken };
-          const resolvedCaption = resolveMentions(caption, 'youtube', ytTokens);
+          const youtubeTitle = platData?.youtube?.title?.trim() || caption;
+          const resolvedCaption = resolveMentions(youtubeTitle, 'youtube', ytTokens);
           updateJob(jobId, { step: "Uploading video to YouTube…" });
           const visibility = platData?.youtube?.visibility || "public";
           const isShort = (platData?.youtube?.type === "short");
