@@ -39,30 +39,40 @@ router.get('/plans', async (_req, res) => {
     const socialPricing = await getSocialPricing();
     const starterPlan = socialPricing.find(p => p.plan_name === 'social_pilot_starter');
     const growthPlan = socialPricing.find(p => p.plan_name === 'social_pilot_growth');
+    const corePlan = socialPricing.find(p => p.plan_name === 'all_in_one_bundle_monthly');
+    const scalePlan = socialPricing.find(p => p.plan_name === 'gap_scale');
 
     const freePlan = JSON.parse(JSON.stringify(PLANS.free));
     const slitePlan = JSON.parse(JSON.stringify(PLANS.slite));
     const sgrowthPlan = JSON.parse(JSON.stringify(PLANS.sgrowth));
+    const gapCorePlan = JSON.parse(JSON.stringify(PLANS.gap_core));
+    const gapScalePlan = JSON.parse(JSON.stringify(PLANS.gap_scale));
 
     applyPricing(slitePlan, starterPlan);
     applyPricing(sgrowthPlan, growthPlan);
+    applyPricing(gapCorePlan, corePlan);
+    applyPricing(gapScalePlan, scalePlan);
 
     res.json({
       success: true,
-      plans: [freePlan, slitePlan, sgrowthPlan],
+      plans: [freePlan, slitePlan, sgrowthPlan, gapCorePlan, gapScalePlan],
     });
   } catch (error) {
-    console.error('Failed to load dynamic pricing, failing closed:', error.message);
+    console.error('Failed to load dynamic pricing, using static defaults:', error.message);
     const freePlan = JSON.parse(JSON.stringify(PLANS.free));
     const slitePlan = JSON.parse(JSON.stringify(PLANS.slite));
     const sgrowthPlan = JSON.parse(JSON.stringify(PLANS.sgrowth));
+    const gapCorePlan = JSON.parse(JSON.stringify(PLANS.gap_core));
+    const gapScalePlan = JSON.parse(JSON.stringify(PLANS.gap_scale));
 
     slitePlan.prices = buildIntervalPrices(slitePlan);
     sgrowthPlan.prices = buildIntervalPrices(sgrowthPlan);
+    gapCorePlan.prices = buildIntervalPrices(gapCorePlan);
+    gapScalePlan.prices = buildIntervalPrices(gapScalePlan);
 
     res.json({
       success: true,
-      plans: [freePlan, slitePlan, sgrowthPlan],
+      plans: [freePlan, slitePlan, sgrowthPlan, gapCorePlan, gapScalePlan],
     });
   }
 });

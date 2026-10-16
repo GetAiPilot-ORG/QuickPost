@@ -107,7 +107,8 @@ export const getDeliveryPlan = (
 
   const usable = subscriptions
     .filter((subscription) => {
-      if (!["active", "trialing"].includes(String(subscription.status)))
+      const status = String(subscription.status || "").toLowerCase().trim();
+      if (!["active", "trialing", "created", "authenticated"].includes(status))
         return false;
       if(
         subscription.grace_period_ends_at &&

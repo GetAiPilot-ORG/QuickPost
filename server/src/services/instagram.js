@@ -229,6 +229,7 @@ export async function postToInstagram(videoUrl, caption, tokens, onProgress = nu
 
     if (tokens.coverUrl) {
       containerPayload.cover_url = tokens.coverUrl;
+      console.log('🖼️  Setting Instagram Reel cover_url:', tokens.coverUrl);
     }
 
     const containerResponse = await axios.post(

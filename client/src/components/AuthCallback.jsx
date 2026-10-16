@@ -34,8 +34,13 @@ function AuthCallback() {
         if (error) throw error;
 
         if (session) {
+          const requestedDestination = sessionStorage.getItem('qp_sso_return_to');
+          sessionStorage.removeItem('qp_sso_return_to');
+          const safeDestination = requestedDestination && /^\/dashboard(?:\/|$)/.test(requestedDestination)
+            ? requestedDestination
+            : '/dashboard';
           const destination = localStorage.getItem('qp_onboarding_done')
-            ? '/dashboard'
+            ? safeDestination
             : '/onboarding';
 
           if (!cancelled) navigate(destination, { replace: true });

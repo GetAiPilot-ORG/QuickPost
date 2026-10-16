@@ -12,7 +12,7 @@ CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS boolean AS $$
 BEGIN
   RETURN COALESCE(
-    (SELECT is_admin FROM public.profiles WHERE id = auth.uid()), 
+    (SELECT is_admin FROM public.users WHERE id = auth.uid()), 
     false
   );
 END;

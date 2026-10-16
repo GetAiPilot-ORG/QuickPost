@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ChevronDown, ChevronUp, Hash, Crop } from "lucide-react";
+import { ChevronDown, ChevronUp, Hash, Crop, ExternalLink } from "lucide-react";
 import { PLATFORM_META } from "./composer/data/platforms.js";
 import ImageCropperModal from "./composer/components/ImageCropperModal";
 
@@ -11,9 +11,13 @@ function PlatformCustomization({
   onToggleExpanded,
   youtubeThumbnail,
   onYoutubeThumbnailChange,
+  instagramCover,
+  onInstagramCoverChange,
   postType,
 }) {
   const [isCropOpen, setIsCropOpen] = useState(false);
+  const [isIgCropOpen, setIsIgCropOpen] = useState(false);
+
   const thumbnailPreviewUrl = React.useMemo(() => {
     if (!youtubeThumbnail) return "";
     if (typeof youtubeThumbnail === "string") return youtubeThumbnail;
@@ -25,14 +29,28 @@ function PlatformCustomization({
     }
   }, [youtubeThumbnail]);
 
-  // Clean up object URL when component unmounts
+  const igCoverPreviewUrl = React.useMemo(() => {
+    if (!instagramCover) return "";
+    if (typeof instagramCover === "string") return instagramCover;
+    try {
+      return URL.createObjectURL(instagramCover);
+    } catch (e) {
+      console.error("Failed to create object URL for Instagram cover:", e);
+      return "";
+    }
+  }, [instagramCover]);
+
+  // Clean up object URLs when component unmounts
   React.useEffect(() => {
     return () => {
       if (thumbnailPreviewUrl && thumbnailPreviewUrl.startsWith("blob:")) {
         URL.revokeObjectURL(thumbnailPreviewUrl);
       }
+      if (igCoverPreviewUrl && igCoverPreviewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(igCoverPreviewUrl);
+      }
     };
-  }, []);
+  }, [thumbnailPreviewUrl, igCoverPreviewUrl]);
 
   const lockedAspectRatio = React.useMemo(() => {
     const ytType = platformData.youtube?.type || "video";
@@ -61,6 +79,17 @@ function PlatformCustomization({
         return;
       }
       onYoutubeThumbnailChange(file);
+    }
+  };
+
+  const handleIgCoverChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      if (file.size > 5 * 1024 * 1024) {
+        alert("Cover image must be less than 5MB");
+        return;
+      }
+      onInstagramCoverChange(file);
     }
   };
 
@@ -183,6 +212,25 @@ function PlatformCustomization({
                     />
                     <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900 transition-colors">Short</span>
                   </label>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Title <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={platformData.youtube?.title || ""}
+                    onChange={(e) =>
+                      handleChange("youtube", "title", e.target.value)
+                    }
+                    placeholder="Enter YouTube video title (or leave empty to use caption)"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm placeholder:text-gray-400 transition-all"
+                    maxLength={100}
+                  />
+                  <p className="text-[10px] text-gray-400 mt-1.5 font-medium">
+                    {(platformData.youtube?.title || "").length}/100 characters
+                  </p>
                 </div>
 
                 <div>
@@ -311,6 +359,18 @@ function PlatformCustomization({
                   )}
                   <p className="text-[10px] text-gray-400 mt-2 leading-relaxed font-medium">
                     <span className="text-indigo-500">Pro Tip:</span> Thumbnail is uploaded as 16:9. Use crop when the image is not landscape.
+                  </p>
+                  <p className="text-[10px] text-gray-500 mt-1 leading-relaxed font-medium flex items-center gap-1">
+                    <span>Account not verified?</span>
+                    <a
+                      href="https://www.youtube.com/verify"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-indigo-600 hover:text-indigo-700 underline font-semibold inline-flex items-center gap-0.5"
+                    >
+                      Verify your YouTube channel here
+                      <ExternalLink size={10} />
+                    </a>
                   </p>
                 </div>
               </div>
@@ -446,6 +506,91 @@ function PlatformCustomization({
                 </label>
               ))}
             </div>
+
+            {(platformData.instagram?.type === "reel" || postType === "reel") && (
+              <div className="mb-4">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Reel Cover Image
+                  </label>
+                  <span className="text-[11px] text-gray-400 font-medium">9:16 Vertical</span>
+                </div>
+
+                {instagramCover ? (
+                  <div className="relative w-full max-w-[220px] aspect-[9/16] rounded-xl overflow-hidden border border-black/10 group bg-black shadow-sm">
+                    <img
+                      src={igCoverPreviewUrl}
+                      alt="Reel Cover Preview"
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsIgCropOpen(true)}
+                        className="px-2.5 py-1.5 bg-white text-gray-900 text-xs font-bold rounded-lg hover:bg-gray-50 transition-colors shadow-lg flex items-center gap-1.5"
+                      >
+                        <Crop size={12} className="text-pink-600" />
+                        Crop
+                      </button>
+                      <label className="px-2.5 py-1.5 bg-white text-gray-900 text-xs font-bold rounded-lg hover:bg-gray-50 transition-colors shadow-lg cursor-pointer">
+                        Change
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept="image/*"
+                          onChange={handleIgCoverChange}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => onInstagramCoverChange(null)}
+                        className="px-2.5 py-1.5 bg-red-600 text-white text-xs font-bold rounded-lg hover:bg-red-700 transition-colors shadow-lg"
+                      >
+                        Remove
+                      </button>
+                    </div>
+
+                    {isIgCropOpen && (
+                      <ImageCropperModal
+                        isOpen={isIgCropOpen}
+                        onClose={() => setIsIgCropOpen(false)}
+                        file={igCoverPreviewUrl}
+                        lockedAspectRatio="0.5625"
+                        onSave={(croppedFile) => {
+                          onInstagramCoverChange(croppedFile);
+                          setIsIgCropOpen(false);
+                        }}
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <label className="flex aspect-[9/16] w-full max-w-[220px] flex-col items-center justify-center rounded-xl border border-dashed border-black/20 bg-white hover:border-pink-500/50 hover:bg-pink-50/20 transition-all cursor-pointer group">
+                    <div className="flex flex-col items-center justify-center p-4 text-center">
+                      <div className="w-10 h-10 rounded-full bg-pink-50 text-pink-600 flex items-center justify-center mb-2 group-hover:scale-105 transition-transform">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.75" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                      <p className="text-[11px] font-bold text-gray-700 uppercase tracking-wider group-hover:text-pink-600">
+                        Set Reel Cover
+                      </p>
+                      <p className="text-[10px] text-gray-400 mt-1">
+                        PNG, JPG (Max 5MB)
+                      </p>
+                    </div>
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept="image/*"
+                      onChange={handleIgCoverChange}
+                    />
+                  </label>
+                )}
+                <p className="text-[10px] text-gray-400 mt-2 leading-relaxed font-medium">
+                  <span className="text-pink-600 font-semibold">Tip:</span> Set a custom 9:16 cover so your Reel looks crisp and intentional on your profile grid and Reels tab.
+                </p>
+              </div>
+            )}
 
             {(platformData.instagram?.type || postType || "post") !== "story" && (
               <div>

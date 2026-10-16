@@ -91,6 +91,11 @@ function socialTokenToAccount(row) {
     username: row.username || row.account_name || row.profile_data?.username || row.profile_data?.name || null,
     profilePicture: getProfilePicture(row),
     boardId: row.pinterest_board_id || row.profile_data?.boardId || null,
+    hasChannel: row.provider === 'youtube'
+      ? (row.profile_data?.hasChannel !== undefined
+          ? Boolean(row.profile_data.hasChannel)
+          : (typeof row.account_id === 'string' && row.account_id.startsWith('UC')))
+      : true,
     verified: row.provider === 'youtube' ? longUploadsStatus === 'allowed' : undefined,
     longUploadsStatus,
   };
@@ -337,23 +342,13 @@ export async function createOrUpdateUser(email, name, externalId = null, profile
 
     if (error) throw error;
 
-    // 1. Sync new user profile with SupermailBox
+    // 1. Sync new user profile with SupermailBox contact repository
     supermailbox.syncUser({
       id: data.id,
       email: data.email,
       fullName: data.name,
       attributes: { project: 'QuickPost', new_user: true }
     }).catch(err => console.warn('[SupermailBox SDK] Contact sync failed:', err?.message));
-
-    // 2. Send Welcome Email via SupermailBox
-    supermailbox.sendEmail({
-      to: data.email,
-      templateKey: 'auth_welcome',
-      variables: {
-        name: data.name || data.email,
-        otp_code: 'VERIFIED'
-      }
-    }).catch(err => console.warn('[SupermailBox SDK] Send welcome email failed:', err?.message));
 
     return data;
   } catch (err) {

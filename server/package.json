@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js",
+    "dev": "node --watch --watch-path=src src/index.js",
     "worker:trends:youtube": "node src/workers/trendYoutubeWorker.js",
     "worker:trends:reddit": "node src/workers/trendRedditWorker.js",
     "worker:trends:bluesky": "node src/workers/trendBlueskyWorker.js",
@@ -36,6 +36,7 @@
     "ioredis": "^5.11.1",
     "jsonwebtoken": "^9.0.3",
     "multer": "^1.4.5-lts.1",
-    "node-cron": "^4.2.1"
+    "node-cron": "^4.2.1",
+    "razorpay": "^2.9.8"
   }
 }

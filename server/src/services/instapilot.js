@@ -344,22 +344,48 @@ export async function listBots(userId) {
   return data || [];
 }
 
+function ensureArray(val, fallback = []) {
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') {
+    try {
+      const parsed = JSON.parse(val);
+      if (Array.isArray(parsed)) return parsed;
+    } catch (_) {
+      const parts = val.split(',').map((s) => s.trim()).filter(Boolean);
+      if (parts.length > 0) return parts;
+    }
+  }
+  return fallback;
+}
+
+function ensureObject(val, fallback = {}) {
+  if (val && typeof val === 'object' && !Array.isArray(val)) return val;
+  if (typeof val === 'string') {
+    try {
+      const parsed = JSON.parse(val);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+    } catch (_) { }
+  }
+  return fallback;
+}
+
 function cleanBotPayload(payload, userId) {
   return {
     user_id: userId,
     instagram_account_id: payload.instagram_account_id,
-    bot_name: payload.bot_name?.trim(),
-    business_name: payload.business_name?.trim(),
+    bot_name: payload.bot_name?.trim() || 'InstaPilot Bot',
+    business_name: payload.business_name?.trim() || '',
     tone: payload.tone || 'friendly',
     language: payload.language || 'auto-detect',
     bot_goal: payload.bot_goal || 'support',
+    system_prompt: typeof payload.system_prompt === 'string' ? payload.system_prompt.trim() : (payload.system_prompt || null),
     fallback_message: payload.fallback_message || DEFAULT_REPLY,
     welcome_message:
       payload.welcome_message || 'Hi! Welcome to {{business_name}}. How can I help you today?',
-    quick_replies: payload.quick_replies || ['Pricing', 'Services', 'Book a Call', 'Talk to Human'],
-    handoff_keywords: payload.handoff_keywords || ['human', 'agent', 'call me', 'support'],
-    lead_fields: payload.lead_fields || ['name', 'phone', 'email', 'requirement'],
-    business_hours: payload.business_hours || {},
+    quick_replies: ensureArray(payload.quick_replies, ['Pricing', 'Services', 'Book a Call', 'Talk to Human']),
+    handoff_keywords: ensureArray(payload.handoff_keywords, ['human', 'agent', 'call me', 'support']),
+    lead_fields: ensureArray(payload.lead_fields, ['name', 'phone', 'email', 'requirement']),
+    business_hours: ensureObject(payload.business_hours, {}),
     is_active: Boolean(payload.is_active),
     human_handoff_enabled: payload.human_handoff_enabled !== false,
     confidence_threshold: Number(payload.confidence_threshold || 0.68),
@@ -625,85 +651,273 @@ async function retrieveKnowledge(botId, question) {
   const words = String(question || '')
     .toLowerCase()
     .split(/\W+/)
-    .filter((w) => w.length > 3)
-    .slice(0, 12);
+    .filter((w) => w.length > 2)
+    .slice(0, 10);
+
   const { data, error } = await supabase
     .from('knowledge_chunks')
     .select('chunk_text, metadata')
     .eq('bot_id', botId)
-    .limit(80);
-  if (error) throw error;
-  return (data || [])
+    .limit(40);
+
+  if (error || !data || data.length === 0) return [];
+
+  // Score chunks by keyword matches
+  const scored = data
     .map((chunk) => ({
       ...chunk,
       score: words.reduce((sum, word) => sum + (chunk.chunk_text.toLowerCase().includes(word) ? 1 : 0), 0),
     }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 6);
+    .sort((a, b) => b.score - a.score);
+
+  // Return top 2-3 matching chunks, or in-memory top chunks if score is 0
+  const topMatches = scored.filter((c) => c.score > 0).slice(0, 3);
+  return topMatches.length > 0 ? topMatches : scored.slice(0, 2);
 }
 
-export async function generateReply({ bot, messageText, conversation = null }) {
-  const chunks = await retrieveKnowledge(bot.id, messageText);
-  // Fall back to top knowledge chunks if keyword score is 0
-  let effectiveChunks = chunks;
-  if (!effectiveChunks.length || !effectiveChunks.some((c) => c.score > 0)) {
-    const { data: allChunks } = await supabase
-      .from('knowledge_chunks')
-      .select('chunk_text, metadata')
-      .eq('bot_id', bot.id)
-      .limit(5);
-    if (allChunks?.length) effectiveChunks = allChunks;
+async function loadConversationHistory(conversationId, currentMessageText) {
+  if (!conversationId) return [];
+  try {
+    const { data: pastMessages } = await supabase
+      .from('instagram_messages')
+      .select('direction, message_text, created_at')
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: false })
+      .limit(8);
+
+    if (pastMessages && pastMessages.length > 0) {
+      const ordered = [...pastMessages].reverse();
+      const turns = ordered
+        .map((msg) => ({
+          role: msg.direction === 'inbound' ? 'user' : 'assistant',
+          content: String(msg.message_text || '').trim(),
+        }))
+        .filter((msg) => msg.content.length > 0);
+
+      if (
+        turns.length > 0 &&
+        turns[turns.length - 1].role === 'user' &&
+        turns[turns.length - 1].content === String(currentMessageText || '').trim()
+      ) {
+        turns.pop();
+      }
+
+      return turns.slice(-6);
+    }
+  } catch (err) {
+    console.warn('[INSTAPILOT] History retrieval fallback:', err.message);
   }
+  return [];
+}
+
+export function getDynamicTemporalContext(timeZone = 'Asia/Kolkata') {
+  let validTz = timeZone;
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: validTz });
+  } catch {
+    validTz = 'Asia/Kolkata';
+  }
+
+  const now = new Date();
+
+  const formattedFull = new Intl.DateTimeFormat('en-US', {
+    timeZone: validTz,
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  }).format(now);
+
+  const formattedDate = new Intl.DateTimeFormat('en-US', {
+    timeZone: validTz,
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  }).format(now);
+
+  const formattedTime = new Intl.DateTimeFormat('en-US', {
+    timeZone: validTz,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  }).format(now);
+
+  const dayOfWeek = new Intl.DateTimeFormat('en-US', {
+    timeZone: validTz,
+    weekday: 'long',
+  }).format(now);
+
+  return { formattedFull, formattedDate, formattedTime, dayOfWeek, timeZone: validTz };
+}
+
+export async function generateReply({ bot, messageText, conversation = null, systemPromptOverride = null, history = [] }) {
+  // Execute Knowledge Retrieval and Conversation History in Parallel for max speed
+  const [effectiveChunks, loadedDbHistory] = await Promise.all([
+    retrieveKnowledge(bot.id, messageText),
+    !history || history.length === 0 ? loadConversationHistory(conversation?.id, messageText) : Promise.resolve([]),
+  ]);
 
   if (!process.env.OPENAI_API_KEY) {
     const defaultText = effectiveChunks[0]?.chunk_text || bot.fallback_message || DEFAULT_REPLY;
     return {
-      text: `${defaultText.slice(0, 420)}${defaultText.length > 420 ? '...' : ''}`,
+      text: defaultText,
       confidence: 0.55,
       handoff: false,
     };
   }
 
+  const tz = (bot.timezone || bot.business_hours?.timezone || 'Asia/Kolkata');
+  const temporal = getDynamicTemporalContext(tz);
+
+  const customInstructions = (systemPromptOverride || bot.system_prompt || '')
+    .replace(/{{business_name}}/gi, bot.business_name || 'our business')
+    .replace(/{{bot_name}}/gi, bot.bot_name || 'InstaPilot Assistant')
+    .replace(/{{current_date}}/gi, temporal.formattedDate)
+    .replace(/{{current_time}}/gi, temporal.formattedTime)
+    .replace(/{{current_day}}/gi, temporal.dayOfWeek)
+    .replace(/{{current_year}}/gi, new Date().getFullYear().toString())
+    .trim();
+
+  // Dynamic system prompt constructed from database configuration & real-time temporal context
   const prompt = [
-    `You are the official Instagram DM AI assistant for ${bot.business_name}.`,
-    `Tone: ${bot.tone || 'friendly and professional'}. Language: ${bot.language || 'English'}. Goal: ${bot.bot_goal || 'Assist customers, answer questions, and collect contact details'}.`,
-    'Rules:',
-    '1. For greetings (e.g. "hello", "hi", "hey"), reply warmly and ask how you can assist them with our services.',
-    '2. Use the Knowledge Base to answer business questions accurately.',
-    '3. When the customer asks about pricing, booking a demo, or getting started, politely ask for their name, phone number, or email address so our team can assist them.',
-    '4. Never invent prices, policies, discounts, or guarantees not listed in the Knowledge Base.',
-    '5. Keep Instagram DM replies concise, natural, friendly, and mobile-friendly.',
-  ].join('\n');
+    `You are ${bot.bot_name || 'InstaPilot Assistant'}, the official AI assistant for ${bot.business_name || 'our business'}.`,
+    bot.tone ? `Tone: ${bot.tone}.` : '',
+    bot.language ? `Language: ${bot.language}.` : '',
+    bot.bot_goal ? `Primary Goal: ${bot.bot_goal}.` : '',
+    `\n--- Real-Time Temporal Reference ---`,
+    `Current Real-World Date & Time: ${temporal.formattedFull} (${temporal.timeZone})`,
+    `Current Day of Week: ${temporal.dayOfWeek}`,
+    `Temporal Guideline: Use this exact real-time reference whenever the user asks about today's date, current time, day of the week, yesterday, tomorrow, or date-based inquiries.`,
+    `------------------------------------`,
+    customInstructions ? `\n--- Custom Persona & Instructions ---\n${customInstructions}\n------------------------------------` : '',
+    '\nCore Knowledge & Accuracy Rules:',
+    '1. Answer accurately based on the Knowledge Base, Real-Time Temporal Reference, and Custom Instructions. Do not fabricate facts, prices, or policies not provided.',
+    '2. Follow all length, formatting, and behavioral guidelines specified in your Custom Persona & Instructions above.',
+  ].filter(Boolean).join('\n');
+
+  // Multi-turn history turns
+  let conversationTurns = [];
+  if (Array.isArray(history) && history.length > 0) {
+    conversationTurns = history
+      .filter((h) => h && (h.text || h.content) && (h.role === 'user' || h.role === 'bot' || h.role === 'assistant'))
+      .map((h) => ({
+        role: h.role === 'bot' ? 'assistant' : h.role,
+        content: String(h.text || h.content || '').trim(),
+      }))
+      .filter((h) => h.content.length > 0)
+      .slice(-6);
+  } else {
+    conversationTurns = loadedDbHistory;
+  }
+
+  const knowledgeSnippet = effectiveChunks.map((c, i) => `[${i + 1}] ${c.chunk_text}`).join('\n\n');
+
+  const openAiMessages = [
+    { role: 'system', content: prompt },
+    ...(knowledgeSnippet ? [{ role: 'system', content: `Approved Knowledge Base Content for this business:\n${knowledgeSnippet}` }] : []),
+    ...conversationTurns,
+    { role: 'user', content: messageText },
+  ];
 
   const { data } = await axios.post(
     'https://api.openai.com/v1/chat/completions',
     {
       model: process.env.INSTAPILOT_OPENAI_MODEL || 'gpt-4o-mini',
-      temperature: 0.3,
-      messages: [
-        { role: 'system', content: prompt },
-        {
-          role: 'user',
-          content: `Knowledge Base:\n${effectiveChunks.map((c, i) => `[${i + 1}] ${c.chunk_text}`).join('\n\n')}\n\nCustomer Message: ${messageText}`,
-        },
-      ],
+      temperature: bot.temperature ?? 0.3,
+      max_tokens: bot.max_tokens ?? 250,
+      messages: openAiMessages,
     },
     { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` } }
   );
-  const text = data.choices?.[0]?.message?.content?.trim() || bot.fallback_message || DEFAULT_REPLY;
+  const rawText = data.choices?.[0]?.message?.content?.trim() || bot.fallback_message || DEFAULT_REPLY;
+  const text = sanitizeLinks(rawText);
   return { text, confidence: 0.85, handoff: false };
 }
 
-export async function testReply(userId, botId, messageText) {
-  const bot = await getOwnedBot(userId, botId);
-  return generateReply({ bot, messageText });
+export function sanitizeLinks(text) {
+  if (!text || typeof text !== 'string') return text || '';
+  // Convert markdown links [Title](URL) -> Title:\nURL
+  let cleaned = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '$1:\n$2');
+
+  // Dynamically convert wa.me shortlinks to official Meta api.whatsapp.com
+  cleaned = cleaned.replace(/https?:\/\/wa\.me\/(?:\+?(\d+))(?:\?text=([^\s]+))?/gi, (_, phone, query) => {
+    return `https://api.whatsapp.com/send?phone=${phone}${query ? `&text=${query}` : ''}`;
+  });
+
+  // Attach any trailing emoji on the same line to the preceding sentence, isolating the URL on its own line
+  cleaned = cleaned.replace(/([^\n]*?)(https?:\/\/[^\s\uD800-\uDBFF\uDC00-\uDFFF]+)\s*([\uD800-\uDBFF\uDC00-\uDFFF\u2600-\u27BF]+)/gu, (match, prefix, url, emoji) => {
+    const cleanPrefix = prefix.trim();
+    return cleanPrefix ? `${cleanPrefix} ${emoji}\n${url}` : `${url}`;
+  });
+
+  // Strip trailing punctuation attached to URLs (such as . , ! ? : ) )
+  cleaned = cleaned.replace(/(https?:\/\/[^\s]+?)[.,!?:)]+(?=\s|$)/g, '$1');
+
+  // Clean up redundant extra blank lines
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+
+  return cleaned.trim();
 }
 
-function needsHandoff(bot, text) {
-  const normalized = String(text || '').toLowerCase();
-  const keywords = bot.handoff_keywords || ['human', 'agent', 'call me', 'support'];
-  const riskWords = ['refund', 'legal', 'payment failed', 'angry', 'complaint', 'fraud', 'cancel'];
-  return [...keywords, ...riskWords].some((word) => normalized.includes(String(word).toLowerCase()));
+export async function testReply(userId, botId, messageText, systemPromptOverride = null, history = []) {
+  const bot = await getOwnedBot(userId, botId);
+  return generateReply({ bot, messageText, systemPromptOverride, history });
+}
+
+export function needsHandoff(bot, text) {
+  if (!text || typeof text !== 'string') return false;
+  const normalized = text.toLowerCase().trim();
+
+  // Explicit handoff phrases or configured custom keywords
+  const customKeywords = Array.isArray(bot.handoff_keywords) ? bot.handoff_keywords : [];
+  const defaultHandoffPhrases = [
+    'talk to human',
+    'speak to human',
+    'talk to agent',
+    'speak to agent',
+    'human agent',
+    'call me',
+    'customer care',
+    'contact support',
+    'talk to support',
+    'human support',
+    'live agent',
+    'real person',
+  ];
+  const allKeywords = [...customKeywords, ...defaultHandoffPhrases];
+
+  // Word boundary regex check to prevent matching normal words like "support" in "do you support delivery"
+  for (const item of allKeywords) {
+    const cleanItem = String(item).toLowerCase().trim();
+    if (!cleanItem) continue;
+
+    if (cleanItem.includes(' ')) {
+      if (normalized.includes(cleanItem)) return true;
+    } else {
+      const regex = new RegExp(`\\b${cleanItem.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}\\b`, 'i');
+      if (regex.test(normalized)) return true;
+    }
+  }
+
+  // Critical risk phrases that warrant immediate escalation
+  const riskPhrases = [
+    'legal action',
+    'lawyer',
+    'filing a complaint',
+    'consumer court',
+    'scam',
+    'fraud',
+    'unauthorized charge',
+  ];
+
+  for (const phrase of riskPhrases) {
+    if (normalized.includes(phrase)) return true;
+  }
+
+  return false;
 }
 
 async function findActiveBotForAccount(accountId) {
@@ -831,6 +1045,7 @@ async function upsertConversation(account, bot, senderId, messageTimestamp = nul
 }
 
 const processingMessageIds = new Set();
+const activeConversationProcessing = new Set();
 
 async function findExistingInboundMessage({ accountId, senderId, recipientId, text, metaMessageId }) {
   if (metaMessageId) {
@@ -979,6 +1194,21 @@ export function extractLeadDataFromText(text) {
 }
 
 async function handleInboundMessage({ senderId, recipientId, messaging, injectedAccountId, skipBotReply }) {
+  const metaMessageId = messaging.message.mid || null;
+  // Prevent race conditions from concurrent duplicate webhooks (Ngrok + Edge, or Meta retries)
+  if (metaMessageId) {
+    if (processingMessageIds.has(metaMessageId)) {
+      console.log(`[INSTAPILOT] Race condition mitigated! Message ${metaMessageId} is already being processed.`);
+      return { skipped: true, reason: 'race_condition_duplicate' };
+    }
+    processingMessageIds.add(metaMessageId);
+
+    // Keep the lock for 60 seconds
+    setTimeout(() => {
+      processingMessageIds.delete(metaMessageId);
+    }, 60000);
+  }
+
   let account = null;
 
   if (injectedAccountId) {
@@ -1000,7 +1230,6 @@ async function handleInboundMessage({ senderId, recipientId, messaging, injected
   const bot = await findActiveBotForAccount(account.id);
   const conversation = await upsertConversation(account, bot, senderId, messaging.timestamp);
   const text = messaging.message.text;
-  const metaMessageId = messaging.message.mid || null;
 
   // Extract and save lead details (Phone, Email, Name, City) automatically
   const extractedLead = extractLeadDataFromText(text);
@@ -1033,20 +1262,6 @@ async function handleInboundMessage({ senderId, recipientId, messaging, injected
   }
 
   console.log(`[DEBUG] handleInboundMessage called for sender=${senderId}, metaMessageId=${metaMessageId}`);
-
-  // Prevent race conditions from concurrent duplicate webhooks (Ngrok + Edge, or Meta retries)
-  if (metaMessageId) {
-    if (processingMessageIds.has(metaMessageId)) {
-      console.log(`[INSTAPILOT] Race condition mitigated! Message ${metaMessageId} is already being processed.`);
-      return { skipped: true, reason: 'race_condition_duplicate' };
-    }
-    processingMessageIds.add(metaMessageId);
-
-    // Keep the lock for 60 seconds
-    setTimeout(() => {
-      processingMessageIds.delete(metaMessageId);
-    }, 60000);
-  }
 
   const existingInbound = await findExistingInboundMessage({
     accountId: account.id,
@@ -1097,118 +1312,238 @@ async function handleInboundMessage({ senderId, recipientId, messaging, injected
     return { skipped: true, reason: 'daily_reply_limit_reached' };
   }
 
-  // Guard against duplicate outbound replies within 10 seconds for the same conversation
-  const tenSecondsAgo = new Date(Date.now() - 10000).toISOString();
-  const { data: recentOutbound } = await supabase
-    .from('instagram_messages')
-    .select('id')
-    .eq('conversation_id', conversation.id)
-    .eq('direction', 'outbound')
-    .gte('created_at', tenSecondsAgo)
-    .limit(1);
-
-  if (recentOutbound && recentOutbound.length > 0) {
-    console.log(`[INSTAPILOT] Duplicate prevention: Outbound reply already sent in last 10s for conv ${conversation.id}. Skipping.`);
-    return { skipped: true, reason: 'recent_outbound_already_sent' };
-  }
-
-  const reply = await generateReply({ bot, messageText: text, conversation });
-  // Only increment failure_count on low confidence - don't lock the conversation immediately.
-  // The bot will be handed off only when failure_count reaches the threshold above.
-  if (reply.handoff) {
-    await supabase
-      .from('instagram_conversations')
-      .update({ failure_count: (conversation.failure_count || 0) + 1 })
-      .eq('id', conversation.id);
-  }
-
-  let sendText = reply.handoff ? bot.fallback_message || DEFAULT_REPLY : reply.text;
-
-  let usage = { allowed: true };
-  try {
-    usage = await consumeUsage(
-      account.user_id,
-      'autodm_replies_per_month',
-      1,
-      'month',
-    );
-  } catch (err) {
-    console.warn('[INSTAPILOT] Entitlement check warning, proceeding with reply:', err.message);
-  }
-
-  if (!usage.allowed) {
-    return { skipped: true, reason: 'monthly_reply_limit_reached' };
-  }
-  const isFreePlan = usage.entitlements?.plan?.id === 'free';
-  const watermark = '_⚡ Automation is powered by @Getaipilot_';
-
-  // Send main message
-  try {
-    await sendInstagramMessage({ account, recipientId: senderId, text: sendText, messagingType: 'RESPONSE' });
-    await supabase.from('instagram_messages').insert({
-      user_id: account.user_id,
-      bot_id: bot.id,
-      instagram_account_id: account.id,
-      conversation_id: conversation.id,
-      sender_id: recipientId,
-      recipient_id: senderId,
-      message_text: sendText,
-      direction: 'outbound',
-      ai_generated: true,
-      confidence_score: reply.confidence,
-      status: 'sent',
-    });
-    console.log(`[TIMING] OUTBOUND message inserted for conv ${conversation.id} at ${new Date().toISOString()}`);
-    broadcastRefresh('OutboundReply');
-
-    // Send watermark as separate message if free plan
-    if (isFreePlan) {
-      try {
-        await sendInstagramMessage({ account, recipientId: senderId, text: watermark, messagingType: 'RESPONSE' });
-        await supabase.from('instagram_messages').insert({
-          user_id: account.user_id,
-          bot_id: bot.id,
-          instagram_account_id: account.id,
-          conversation_id: conversation.id,
-          sender_id: recipientId,
-          recipient_id: senderId,
-          message_text: watermark,
-          direction: 'outbound',
-          ai_generated: true,
-          confidence_score: reply.confidence,
-          status: 'sent',
-        });
-      } catch (watermarkError) {
-        console.warn('[INSTAPILOT] Failed to send watermark message:', watermarkError.message);
-      }
+  // Handle in-flight concurrent turns for the same conversation gracefully
+  if (activeConversationProcessing.has(conversation.id)) {
+    console.log(`[INSTAPILOT] Conversation ${conversation.id} has an in-flight turn. Waiting for completion...`);
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      if (!activeConversationProcessing.has(conversation.id)) break;
     }
-  } catch (sendErr) {
-    console.error('❌ [INSTAPILOT] Failed to send Instagram DM reply:', sendErr.response?.data || sendErr.message);
-    return { skipped: true, reason: 'send_message_failed', error: sendErr.response?.data?.error?.message || sendErr.message };
   }
 
-  await supabase
-    .from('instagram_bots')
-    .update({ replies_sent_today: quotaBot.repliesSentToday + 1 })
-    .eq('id', bot.id);
-  await maybeCaptureLead(bot, conversation.id, account.user_id, text);
-  return { sent: true, conversationId: conversation.id };
+  activeConversationProcessing.add(conversation.id);
+
+  try {
+    const reply = await generateReply({ bot, messageText: text, conversation });
+    // Only increment failure_count on low confidence - don't lock the conversation immediately.
+    // The bot will be handed off only when failure_count reaches the threshold above.
+    if (reply.handoff) {
+      await supabase
+        .from('instagram_conversations')
+        .update({ failure_count: (conversation.failure_count || 0) + 1 })
+        .eq('id', conversation.id);
+    }
+
+    let sendText = reply.handoff ? bot.fallback_message || DEFAULT_REPLY : reply.text;
+
+    let usage = { allowed: true };
+    try {
+      usage = await consumeUsage(
+        account.user_id,
+        'autodm_replies_per_month',
+        1,
+        'month',
+      );
+    } catch (err) {
+      console.warn('[INSTAPILOT] Entitlement check warning, proceeding with reply:', err.message);
+    }
+
+    if (!usage.allowed) {
+      return { skipped: true, reason: 'monthly_reply_limit_reached' };
+    }
+    const isFreePlan = usage.entitlements?.plan?.id === 'free';
+    const watermark = '_⚡ Automation is powered by @Getaipilot_';
+
+    const shouldQuote = metaMessageId && shouldQuoteMessage(text);
+    const replyToMid = shouldQuote ? metaMessageId : null;
+    if (shouldQuote) {
+      console.log(`[INSTAPILOT] Smart Quote Triggered for message "${text.slice(0, 30)}..." (mid: ${metaMessageId})`);
+    }
+
+    // Send main message
+    try {
+      await sendInstagramMessage({ account, recipientId: senderId, text: sendText, messagingType: 'RESPONSE', replyToMid });
+      await supabase.from('instagram_messages').insert({
+        user_id: account.user_id,
+        bot_id: bot.id,
+        instagram_account_id: account.id,
+        conversation_id: conversation.id,
+        sender_id: recipientId,
+        recipient_id: senderId,
+        message_text: sendText,
+        direction: 'outbound',
+        ai_generated: true,
+        confidence_score: reply.confidence,
+        status: 'sent',
+      });
+      console.log(`[TIMING] OUTBOUND message inserted for conv ${conversation.id} at ${new Date().toISOString()}`);
+      broadcastRefresh('OutboundReply');
+
+      // Send watermark as separate message if free plan
+      if (isFreePlan) {
+        try {
+          await sendInstagramMessage({ account, recipientId: senderId, text: watermark, messagingType: 'RESPONSE', replyToMid: null });
+          await supabase.from('instagram_messages').insert({
+            user_id: account.user_id,
+            bot_id: bot.id,
+            instagram_account_id: account.id,
+            conversation_id: conversation.id,
+            sender_id: recipientId,
+            recipient_id: senderId,
+            message_text: watermark,
+            direction: 'outbound',
+            ai_generated: true,
+            confidence_score: reply.confidence,
+            status: 'sent',
+          });
+        } catch (watermarkError) {
+          console.warn('[INSTAPILOT] Failed to send watermark message:', watermarkError.message);
+        }
+      }
+    } catch (sendErr) {
+      console.error('❌ [INSTAPILOT] Failed to send Instagram DM reply:', sendErr.response?.data || sendErr.message);
+      return { skipped: true, reason: 'send_message_failed', error: sendErr.response?.data?.error?.message || sendErr.message };
+    }
+
+    await supabase
+      .from('instagram_bots')
+      .update({ replies_sent_today: quotaBot.repliesSentToday + 1 })
+      .eq('id', bot.id);
+    await maybeCaptureLead(bot, conversation.id, account.user_id, text);
+    return { sent: true, conversationId: conversation.id };
+  } finally {
+    activeConversationProcessing.delete(conversation.id);
+  }
 }
 
-export async function sendInstagramMessage({ account, recipientId, text, messagingType = 'RESPONSE' }) {
+/**
+ * Decides whether an incoming user message warrants a Quoted Reply (reply_to mid).
+ * Quotes on specific inquiries/questions, avoids quoting casual greetings or acknowledgments.
+ */
+export function shouldQuoteMessage(text) {
+  if (!text || typeof text !== 'string') return false;
+  const clean = text.trim().toLowerCase();
+
+  // 1. Never quote short casual greetings or acknowledgments
+  const casualPhrases = ['hi', 'hello', 'hey', 'ok', 'okay', 'thanks', 'thank you', 'cool', 'got it', 'sure', 'fine', 'yes', 'no', 'done'];
+  if (casualPhrases.includes(clean)) return false;
+  if (clean.length < 4) return false;
+
+  // 2. Always quote if it's an explicit question or specific inquiry
+  const hasQuestionMark = clean.includes('?');
+  const questionWordsRegex = /\b(what|what's|whats|where|when|why|how|who|which|whose|whom|can you|can i|is it|is there|are you|do you|how much|price|pricing|cost|available|timing|location|address|discount|coupon|promo|code|offer|deal|status|order|link|telegram|join|contact|details)\b/i;
+
+  return hasQuestionMark || questionWordsRegex.test(clean);
+}
+
+export async function sendInstagramMessage({ account, recipientId, text, messagingType = 'RESPONSE', replyToMid = null }) {
   const accessToken = await getPageTokenForAccount(account);
   const graphBase = getGraphBaseForToken(accessToken);
+
+  // Check if text contains a URL that can be formatted as an interactive native button
+  const urlMatch = String(text || '').match(/https?:\/\/[^\s]+/i);
+  if (urlMatch) {
+    const rawUrl = urlMatch[0];
+    let buttonTitle = '🔗 Visit Link';
+    if (/whatsapp\.com|wa\.me/i.test(rawUrl)) {
+      buttonTitle = '💬 Chat on WhatsApp';
+    } else if (/xmglobal\.com/i.test(rawUrl)) {
+      buttonTitle = '🚀 Open XM Global';
+    } else if (/play\.google\.com|apps\.apple\.com/i.test(rawUrl)) {
+      buttonTitle = '📱 Download App';
+    } else if (/t\.me/i.test(rawUrl)) {
+      buttonTitle = '✈️ Join Telegram';
+    } else if (/youtube\.com|youtu\.be/i.test(rawUrl)) {
+      buttonTitle = '▶️ Watch Video';
+    }
+
+    // Clean text for title and subtitle
+    const textWithoutUrl = String(text).replace(rawUrl, '').replace(/\n{2,}/g, '\n').trim();
+    const sentences = textWithoutUrl.split('\n').map(s => s.trim()).filter(Boolean);
+    const titleText = (sentences[0] || 'Support & Links').slice(0, 80);
+    const subtitleText = sentences.slice(1).join(' ').slice(0, 80) || undefined;
+
+    try {
+      const templatePayload = {
+        recipient: { id: recipientId },
+        messaging_type: messagingType,
+        message: {
+          attachment: {
+            type: 'template',
+            payload: {
+              template_type: 'generic',
+              elements: [
+                {
+                  title: titleText,
+                  subtitle: subtitleText,
+                  buttons: [
+                    {
+                      type: 'web_url',
+                      url: rawUrl,
+                      title: buttonTitle.slice(0, 20),
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        ...(replyToMid ? { reply_to: { mid: replyToMid } } : {}),
+      };
+
+      const { data } = await axios.post(
+        `${graphBase}/${account.page_id}/messages`,
+        templatePayload,
+        {
+          headers: accessToken.startsWith('IG') ? { Authorization: `Bearer ${accessToken}` } : undefined,
+          params: accessToken.startsWith('IG') ? undefined : { access_token: accessToken },
+        }
+      );
+      return data;
+    } catch (templateError) {
+      console.warn('[INSTAPILOT] Generic template fallback to plain text:', templateError.response?.data?.error?.message || templateError.message);
+      // Fallback to standard text sending below
+    }
+  }
+
+  // Standard text message delivery (with safe two-tier fallback for reply_to)
+  const basePayload = {
+    recipient: { id: recipientId },
+    messaging_type: messagingType,
+  };
+
+  const authConfig = {
+    headers: accessToken.startsWith('IG') ? { Authorization: `Bearer ${accessToken}` } : undefined,
+    params: accessToken.startsWith('IG') ? undefined : { access_token: accessToken },
+  };
+
+  if (replyToMid) {
+    try {
+      const { data } = await axios.post(
+        `${graphBase}/${account.page_id}/messages`,
+        {
+          ...basePayload,
+          message: {
+            text: String(text).slice(0, 1000),
+          },
+          reply_to: { mid: replyToMid },
+        },
+        authConfig
+      );
+      return data;
+    } catch (replyToError) {
+      console.warn('[INSTAPILOT] Quoted reply_to failed, seamlessly falling back to standard text delivery:', replyToError.response?.data?.error?.message || replyToError.message);
+    }
+  }
+
+  // Fallback / Standard unquoted delivery
   const { data } = await axios.post(
     `${graphBase}/${account.page_id}/messages`,
     {
-      recipient: { id: recipientId },
-      messaging_type: messagingType,
+      ...basePayload,
       message: { text: String(text).slice(0, 1000) },
     },
-    {
-      headers: accessToken.startsWith('IG') ? { Authorization: `Bearer ${accessToken}` } : undefined,
-      params: accessToken.startsWith('IG') ? undefined : { access_token: accessToken },
-    }
+    authConfig
   );
   return data;
 }
@@ -1255,7 +1590,7 @@ export async function listConversations(userId) {
 export async function getConversation(userId, conversationId) {
   let { data: conversation, error } = await supabase
     .from('instagram_conversations')
-    .select('*, instagram_leads(*)')
+    .select('*, instagram_leads(*), instagram_accounts(is_connected, token_status, instagram_username)')
     .eq('user_id', userId)
     .eq('id', conversationId)
     .maybeSingle();
@@ -1306,6 +1641,11 @@ export async function manualReply(userId, conversationId, text) {
   const { conversation } = await getConversation(userId, conversationId);
   if (!conversation) throw new Error('Conversation not found');
   const account = await getOwnedAccount(userId, conversation.instagram_account_id);
+  if (!account || account.is_connected === false || account.token_status === 'disconnected') {
+    const error = new Error(`Instagram account @${account?.instagram_username || ''} is disconnected. Please reconnect your account to send replies.`);
+    error.status = 403;
+    throw error;
+  }
   await sendInstagramMessage({ account, recipientId: conversation.instagram_user_id, text, messagingType: 'RESPONSE' });
   const { data, error } = await supabase
     .from('instagram_messages')
@@ -1373,7 +1713,18 @@ async function audit(userId, action, entityType, entityId, metadata = {}) {
   });
 }
 
-export async function syncInboxFromGraphAPI(userId) {
+const inboxSyncsInFlight = new Map();
+
+export function syncInboxFromGraphAPI(userId) {
+  if (inboxSyncsInFlight.has(userId)) return inboxSyncsInFlight.get(userId);
+  const sync = performInboxSyncFromGraphAPI(userId).finally(() => {
+    inboxSyncsInFlight.delete(userId);
+  });
+  inboxSyncsInFlight.set(userId, sync);
+  return sync;
+}
+
+async function performInboxSyncFromGraphAPI(userId) {
   const { data: accounts } = await supabase
     .from('instagram_accounts')
     .select('*')

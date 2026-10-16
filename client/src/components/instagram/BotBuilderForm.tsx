@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bot, Check, ChevronDown, Info, Instagram, Languages, MessageCircle, Power, Save, SlidersHorizontal, Store } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Bot, Check, ChevronDown, ExternalLink, Info, Instagram, Languages, MessageCircle, Power, Save, SlidersHorizontal, Sparkles, Store, Wand2, Tag } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { createInstagramBot, updateInstagramBot } from "@/services/instagramApi";
@@ -8,12 +9,51 @@ const tones = ["friendly", "professional", "casual", "luxury", "sales-focused"];
 const languages = ["auto-detect", "English", "Hindi", "Hinglish"];
 const goals = ["support", "sales", "course info", "booking", "product FAQ"];
 
+const promptPresets = [
+  {
+    id: "closer",
+    label: "🎯 Lead Closer",
+    desc: "Direct answers + asks for phone/email before pricing",
+    prompt:
+      "Act as an energetic sales & lead qualification specialist for {{business_name}}. Do not repeat greetings; jump straight into the answer. Answer product/service questions concisely, but whenever the user asks about pricing or booking, politely ask for their name and phone/WhatsApp number so our team can send the complete catalog.",
+  },
+  {
+    id: "support",
+    label: "🤝 Friendly Support",
+    desc: "Direct, patient, helpful answers without repetitive greetings",
+    prompt:
+      "Act as a patient, warm, and helpful customer support specialist for {{business_name}}. Do not repeat greetings on every reply; answer customer questions directly and politely using the Knowledge Base. Never push for aggressive sales unless requested.",
+  },
+  {
+    id: "booking",
+    label: "📅 Demo & Call Booker",
+    desc: "Drives prospective clients to schedule calls directly",
+    prompt:
+      "Your primary objective is to get prospective customers to book a 1-on-1 discovery call or demo. Jump straight to the point, highlight key benefits briefly, and ask if they would like to schedule a quick 15-minute walkthrough.",
+  },
+  {
+    id: "hinglish",
+    label: "🇮🇳 Hinglish Creator",
+    desc: "Conversational Hinglish with natural emojis",
+    prompt:
+      "Talk naturally in conversational, friendly Hinglish (Hindi + English blend) with emojis (🔥, 🙌, 🚀). Keep it casual and authentic. Do not say hello/hi on every message; jump directly into answering.",
+  },
+  {
+    id: "offers",
+    label: "🎁 Promo & Deals",
+    desc: "Direct answers + discount code when asked",
+    prompt:
+      "You are an assistant for {{business_name}}. Answer product and shipping questions directly without robotic greetings. If the customer expresses price hesitation or asks about ongoing offers, share the special 10% first-time discount code: WELCOME10.",
+  },
+];
+
 const defaultForm = {
   bot_name: "InstaPilot Assistant",
   business_name: "",
   tone: "friendly",
   language: "auto-detect",
   bot_goal: "support",
+  system_prompt: "",
   fallback_message: "I am not fully sure about that. Our team will help you shortly.",
   welcome_message: "Hi! Welcome to {{business_name}}. How can I help you today?",
   quick_replies: ["Pricing", "Services", "Book a Call", "Talk to Human"],
@@ -56,6 +96,11 @@ export default function BotBuilderForm({
         return true;
       });
   }, [accounts]);
+
+  const selectedAccount = useMemo(() => {
+    return activeAccountOptions.find((acc) => acc.id === form.instagram_account_id) || activeAccountOptions[0];
+  }, [activeAccountOptions, form.instagram_account_id]);
+
   const statusLabel = form.id ? (form.is_active ? "Active" : "Paused") : form.is_active ? "Active" : "Draft";
 
   const setField = (key: string, value: unknown) => setForm((current: any) => ({ ...current, [key]: value }));
@@ -84,15 +129,21 @@ export default function BotBuilderForm({
     }
     setSaving(true);
     try {
+      const sanitizedPayload = {
+        ...nextForm,
+        quick_replies: Array.isArray(nextForm.quick_replies) ? nextForm.quick_replies : [],
+        handoff_keywords: Array.isArray(nextForm.handoff_keywords) ? nextForm.handoff_keywords : [],
+        lead_fields: Array.isArray(nextForm.lead_fields) ? nextForm.lead_fields : [],
+      };
       const savedBot = nextForm.id
-        ? await updateInstagramBot(nextForm.id, nextForm)
-        : await createInstagramBot(nextForm);
+        ? await updateInstagramBot(nextForm.id, sanitizedPayload)
+        : await createInstagramBot(sanitizedPayload);
       toast.success(
         "is_active" in overrides
           ? nextForm.is_active
-            ? "Bot activated."
+            ? "Bot activated live!"
             : "Bot paused."
-          : "Bot saved. Knowledge base is unlocked."
+          : "Bot saved successfully."
       );
       onSaved(savedBot);
       if (savedBot) setForm(savedBot);
@@ -104,23 +155,20 @@ export default function BotBuilderForm({
   };
 
   return (
-    <section className="overflow-hidden rounded-lg border border-black/10 bg-white shadow-sm">
-      <div className="border-b border-black/10 bg-[#fffaf7] p-5">
+    <section className="overflow-hidden rounded-xl border border-black/10 bg-white shadow-xs">
+      {/* Top Header Bar */}
+      <div className="border-b border-black/10 bg-white p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-start gap-3">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-orange-50 text-[var(--arc)]">
-              <Bot className="h-5 w-5" />
-            </span>
-            <div>
-              <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[var(--arc)]">Bot Builder</p>
-              <h2 className="mt-1 text-2xl font-semibold tracking-[-0.02em] text-[var(--ink)]">
-                {form.id ? "Edit AI bot" : "Create AI bot"}
-              </h2>
-              <p className="mt-1 text-sm text-[var(--slate)]">Configure identity, response behavior, lead capture, and safety defaults.</p>
-            </div>
+          <div>
+            <h2 className="text-xl font-bold tracking-tight text-gray-900">
+              {form.id ? "Bot Persona & Behavior" : "Configure Bot Persona"}
+            </h2>
+            <p className="mt-0.5 text-xs text-gray-500">
+              Define how your AI bot speaks, represents your business, and handles customer inquiries.
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className={`rounded-md px-3 py-2 text-xs font-black uppercase tracking-[0.14em] ${form.is_active ? "bg-emerald-100 text-emerald-800" : "bg-black/5 text-[var(--slate)]"}`}>
+            <span className={`rounded-md px-3 py-1.5 text-xs font-semibold ${form.is_active ? "bg-emerald-100 text-emerald-800" : "bg-black/5 text-[var(--slate)]"}`}>
               {statusLabel}
             </span>
             {form.id ? (
@@ -142,26 +190,28 @@ export default function BotBuilderForm({
               className="gap-2 bg-[var(--arc)] text-white hover:bg-[#d95f27]"
             >
               <Save className="h-4 w-4" />
-              {saving ? "Saving..." : form.id ? "Save Bot" : "Save & Unlock Knowledge"}
+              {saving ? "Saving..." : "Save Bot Persona"}
             </Button>
           </div>
         </div>
       </div>
 
       {!activeAccountOptions.length && !accountsBusy ? (
-        <div className="m-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          Connect and import an Instagram Professional account before saving a bot.
+        <div className="m-5 rounded-xl border border-amber-200 bg-amber-50/80 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-bold text-amber-900">No Instagram Account Connected</h3>
+            <p className="mt-0.5 text-xs text-amber-700">Link your Instagram Professional account to activate automatic DM handling.</p>
+          </div>
+          <Button asChild className="gap-2 bg-[var(--arc)] text-xs font-semibold text-white hover:bg-[#d95f27] h-9">
+            <Link to="/dashboard/instapilot/connect">
+              <Instagram className="h-3.5 w-3.5" />
+              <span>Connect Instagram Account</span>
+            </Link>
+          </Button>
         </div>
       ) : null}
 
-      {!activeAccountOptions.length && accountsBusy ? (
-        <div className="m-5 rounded-lg border border-black/10 bg-white p-4">
-          <div className="h-4 w-80 max-w-full animate-pulse rounded bg-black/[0.08]" />
-          <div className="mt-3 h-3 w-[520px] max-w-full animate-pulse rounded bg-black/[0.06]" />
-        </div>
-      ) : null}
-
-      <div className="grid gap-5 p-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid gap-6 p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="space-y-6">
           <div>
             <SectionTitle icon={<Store className="h-4 w-4" />} title="Business Identity" />
@@ -182,6 +232,101 @@ export default function BotBuilderForm({
               </Field>
               <Field label="Bot purpose">
                 <Segmented options={goals} value={form.bot_goal} onChange={(value) => setField("bot_goal", value)} />
+              </Field>
+            </div>
+          </div>
+
+          <div>
+            <SectionTitle icon={<Wand2 className="h-4 w-4" />} title="Custom AI Instructions & Persona (System Prompt)" />
+            <div className="mt-4 space-y-4">
+              <div className="flex items-center justify-end flex-wrap gap-1.5 text-xs text-[var(--slate)]">
+                <span>Dynamic tags:</span>
+                  <button
+                    type="button"
+                    onClick={() => setField("system_prompt", (form.system_prompt || "") + " {{business_name}}")}
+                    className="rounded bg-gray-100 border border-black/5 px-2 py-0.5 font-mono text-[11px] font-medium text-gray-700 hover:bg-gray-200 transition"
+                    title="Click to insert {{business_name}}"
+                  >
+                    {"{{business_name}}"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setField("system_prompt", (form.system_prompt || "") + " {{bot_name}}")}
+                    className="rounded bg-gray-100 border border-black/5 px-2 py-0.5 font-mono text-[11px] font-medium text-gray-700 hover:bg-gray-200 transition"
+                    title="Click to insert {{bot_name}}"
+                  >
+                    {"{{bot_name}}"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setField("system_prompt", (form.system_prompt || "") + " {{current_date}}")}
+                    className="rounded bg-gray-100 border border-black/5 px-2 py-0.5 font-mono text-[11px] font-medium text-gray-700 hover:bg-gray-200 transition"
+                    title="Click to insert {{current_date}}"
+                  >
+                    {"{{current_date}}"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setField("system_prompt", (form.system_prompt || "") + " {{current_time}}")}
+                    className="rounded bg-gray-100 border border-black/5 px-2 py-0.5 font-mono text-[11px] font-medium text-gray-700 hover:bg-gray-200 transition"
+                    title="Click to insert {{current_time}}"
+                  >
+                    {"{{current_time}}"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setField("system_prompt", (form.system_prompt || "") + " {{current_day}}")}
+                    className="rounded bg-gray-100 border border-black/5 px-2 py-0.5 font-mono text-[11px] font-medium text-gray-700 hover:bg-gray-200 transition"
+                    title="Click to insert {{current_day}}"
+                  >
+                    {"{{current_day}}"}
+                  </button>
+                </div>
+
+              {/* Presets Bar */}
+              <div className="flex flex-wrap gap-2">
+                {promptPresets.map((preset) => {
+                  const isActive = form.system_prompt === preset.prompt;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => setField("system_prompt", preset.prompt)}
+                      className={`group flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition ${
+                        isActive
+                          ? "border-black bg-black text-white shadow-sm"
+                          : "border-black/10 bg-white text-[var(--slate)] hover:border-black/20 hover:text-[var(--ink)]"
+                      }`}
+                      title={preset.desc}
+                    >
+                      <span>{preset.label}</span>
+                    </button>
+                  );
+                })}
+                {form.system_prompt ? (
+                  <button
+                    type="button"
+                    onClick={() => setField("system_prompt", "")}
+                    className="rounded-lg border border-dashed border-black/20 px-2.5 py-2 text-xs text-[var(--slate)] hover:border-red-300 hover:text-red-600"
+                    title="Clear prompt"
+                  >
+                    Clear
+                  </button>
+                ) : null}
+              </div>
+
+              <Field label="System Prompt & Behavior Rules">
+                <textarea
+                  value={form.system_prompt || ""}
+                  onChange={(e) => setField("system_prompt", e.target.value)}
+                  rows={4}
+                  className="instapilot-input font-mono text-xs leading-5"
+                  placeholder="e.g. Act as a senior consultant named Priya for {{business_name}}. Speak in energetic Hinglish. Whenever someone asks for pricing, ask for their WhatsApp number so our team can send the catalog. Never provide medical advice."
+                />
+                <div className="mt-1 flex items-center justify-between text-[11px] text-[var(--slate)]">
+                  <span>Injected directly into OpenAI LLM system instructions before each reply.</span>
+                  <span>{(form.system_prompt || "").length} characters</span>
+                </div>
               </Field>
             </div>
           </div>
@@ -221,8 +366,8 @@ export default function BotBuilderForm({
         </div>
 
         <div className="space-y-3 rounded-lg border border-black/10 bg-[#fbfaf8] p-4">
-          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[var(--arc)]">Safety Controls</p>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-1">
+          <p className="text-xs font-semibold text-[var(--ink)]">Safety Controls</p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
             <ToggleRow
               icon={<Power className="h-4 w-4" />}
               title="Bot active"
@@ -263,7 +408,7 @@ export default function BotBuilderForm({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-2 block text-[11px] font-black uppercase tracking-[0.08em] text-[var(--slate)]">{label}</span>
+      <span className="mb-1.5 block text-xs font-semibold text-[var(--slate)]">{label}</span>
       {children}
     </label>
   );
@@ -385,7 +530,7 @@ function AccountAvatar({ account, selected = false }: { account?: any; selected?
 function SectionTitle({ icon, title }: { icon: React.ReactNode; title: string }) {
   return (
     <div className="flex items-center gap-2 border-b border-black/10 pb-3 text-sm font-semibold text-[var(--ink)]">
-      <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[#f1eee9] text-[var(--arc)]">{icon}</span>
+      <span className="flex h-7 w-7 items-center justify-center rounded-md bg-gray-100 text-gray-700">{icon}</span>
       {title}
     </div>
   );
@@ -399,8 +544,8 @@ function Segmented({ options, value, onChange }: { options: string[]; value: str
           type="button"
           key={option}
           onClick={() => onChange(option)}
-          className={`rounded-md border px-3 py-2 text-sm font-semibold transition ${
-            value === option ? "border-orange-300 bg-orange-50 text-[var(--ink)] shadow-sm" : "border-black/10 bg-[#f8f6f3] text-[var(--slate)] hover:border-black/20 hover:bg-white hover:text-[var(--ink)]"
+          className={`rounded-md border px-3 py-2 text-sm font-medium transition ${
+            value === option ? "border-black bg-black text-white shadow-sm" : "border-black/10 bg-[#f8f6f3] text-[var(--slate)] hover:border-black/20 hover:bg-white hover:text-[var(--ink)]"
           }`}
         >
           {option}
@@ -428,7 +573,7 @@ function ToggleRow({
   return (
     <label className="flex cursor-pointer items-start justify-between gap-3 rounded-lg border border-black/10 bg-white p-4">
       <span className="flex gap-3">
-        <span className="mt-0.5 text-[var(--arc)]">{icon}</span>
+        <span className="mt-0.5 text-gray-700">{icon}</span>
         <span>
           <span className="flex items-center gap-1.5 text-sm font-semibold text-[var(--ink)]">
             {title}
@@ -437,7 +582,7 @@ function ToggleRow({
           <span className="mt-1 block text-xs leading-5 text-[var(--slate)]">{description}</span>
         </span>
       </span>
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="mt-1 h-4 w-4 accent-[var(--arc)]" />
+      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="mt-1 h-4 w-4 accent-black" />
     </label>
   );
 }
@@ -453,9 +598,10 @@ function InfoHint({ text }: { text: string }) {
 }
 
 function TagInput({ value, onChange }: { value: string[]; onChange: (value: string[]) => void }) {
+  const safeArray = Array.isArray(value) ? value : [];
   return (
     <input
-      value={value.join(", ")}
+      value={safeArray.join(", ")}
       onChange={(event) => onChange(event.target.value.split(",").map((item) => item.trim()).filter(Boolean))}
       className="instapilot-input"
       placeholder="Comma separated"

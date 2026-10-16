@@ -49,6 +49,18 @@ function cleanUploadError(error = '') {
   return message || 'We encountered a brief interruption while processing your request. Please try again.';
 }
 
+function formatStepDescription(step = '') {
+  if (!step) return 'Processing data…';
+  // Strip out redundant sub-task percentages like "(15%)" or "(50%)." that conflict with the overall progress %
+  let cleaned = String(step)
+    .replace(/\s*\(\d+%\)\.?/g, '')
+    .trim();
+  if (cleaned && !cleaned.endsWith('…') && !cleaned.endsWith('!') && !cleaned.endsWith('.')) {
+    cleaned += '…';
+  }
+  return cleaned || 'Processing data…';
+}
+
 function StatusDot({ colorClass }) {
   return (
     <span className="relative inline-flex h-2 w-2 shrink-0">
@@ -151,7 +163,7 @@ const JobCard = React.forwardRef(function JobCard({ job, onRetry, onDismiss }, r
           </div>
 
           <p className={`mt-2 line-clamp-2 text-[11px] font-medium leading-relaxed ${isFailed ? 'text-red-600/90' : 'text-stone-500'}`}>
-            {isFailed ? displayError : (step || 'Processing data...')}
+            {isFailed ? displayError : formatStepDescription(step)}
           </p>
 
           <div className="mt-3.5 relative h-1.5 overflow-hidden rounded-full bg-stone-100">

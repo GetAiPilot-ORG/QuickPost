@@ -94,12 +94,41 @@ function Avatar({ src, username, className = 'h-7 w-7' }) {
   );
 }
 
-export default function MobilePreview({ selectedMedia, keywords, responseFlow, commentReplyText, commentReplyEnabled, requireFollow, fallbackCommentReply, activeTab = 'Post', onTabChange }) {
-  const { activeAccount } = useAutoDM();
-  const [previewAsFollower, setPreviewAsFollower] = useState(true);
+function formatPreviewTemplate(text) {
+  if (!text) return '';
+  return String(text)
+    .replace(/@+\{\{\s*username\s*\}\}/gi, '@alex_dev')
+    .replace(/\{\{\s*username\s*\}\}/gi, '@alex_dev')
+    .replace(/\{\{\s*(first_name|firstname)\s*\}\}/gi, 'Alex')
+    .replace(/\{\{\s*(name|full_name)\s*\}\}/gi, 'Alex');
+}
 
+export default function MobilePreview({
+  selectedMedia,
+  keywords,
+  responseFlow,
+  commentReplyText,
+  commentReplyEnabled,
+  autoLikeComment = false,
+  requireFollow,
+  fallbackCommentReply,
+  activeTab = 'Post',
+  onTabChange,
+  account,
+  scale = 1.1,
+}) {
+  const [previewAsFollower, setPreviewAsFollower] = useState(true);
+  let contextAccount = null;
+  try {
+    const ctx = useAutoDM();
+    contextAccount = ctx?.activeAccount;
+  } catch {
+    // Safe when rendered outside AutoDMProvider
+  }
+
+  const activeAccount = account || contextAccount;
   const username = activeAccount?.username || 'cricboss121';
-  const avatar = activeAccount?.profile_picture_url || '';
+  const avatar = activeAccount?.profile_picture_url || activeAccount?.profilePicture || '';
   const triggerKeyword = keywords?.[0] || 'link';
   const openingMessage =
     responseFlow?.opening_message ||
@@ -261,13 +290,13 @@ export default function MobilePreview({ selectedMedia, keywords, responseFlow, c
         </div>
         <div className="w-6" />
       </div>
-      <div className="absolute bottom-0 left-0 right-0 z-20 h-[375px] rounded-t-[22px] bg-white shadow-[0_-16px_45px_rgba(0,0,0,0.1)]">
-        <div className="relative flex items-center justify-center pt-3 pb-2 border-b border-gray-100">
+      <div className="absolute bottom-0 left-0 right-0 z-20 h-[375px] rounded-t-[22px] bg-white shadow-[0_-16px_45px_rgba(0,0,0,0.1)] flex flex-col">
+        <div className="relative flex items-center justify-center pt-3 pb-2 border-b border-gray-100 shrink-0">
           <span className="absolute top-2 left-1/2 h-1 w-8 -translate-x-1/2 rounded-full bg-gray-300" />
-          <span className="text-[15px] font-bold mt-2">Comments</span>
-          <Send className="absolute right-4 top-4 h-[22px] w-[22px] text-black" strokeWidth={1.5} />
+          <span className="text-[14px] font-bold mt-2">Comments</span>
+          <Send className="absolute right-4 top-4 h-[20px] w-[20px] text-black" strokeWidth={1.5} />
         </div>
-        <div className="px-4 pt-4">
+        <div className="flex-1 overflow-y-auto px-4 pt-3 pb-2 space-y-3.5" style={{ scrollbarWidth: "none" }}>
           <div className="flex gap-3">
             <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gray-200 overflow-hidden">
               <span className="h-full w-full bg-gray-300" />
@@ -282,19 +311,26 @@ export default function MobilePreview({ selectedMedia, keywords, responseFlow, c
                 <span>See Translation</span>
               </p>
             </div>
-            <Heart className="mt-1 h-[14px] w-[14px] text-gray-400" strokeWidth={1.5} />
+            <Heart
+              className={`mt-1 h-[14px] w-[14px] transition-colors ${
+                autoLikeComment ? "text-red-500 fill-red-500" : "text-gray-400"
+              }`}
+              strokeWidth={1.5}
+            />
           </div>
           {commentReplyEnabled ? (
-            <div className="mt-4 flex gap-3 pl-11">
+            <div className="flex gap-3 pl-11">
               <Avatar src={avatar} username={username} className="h-7 w-7" />
               <div className="min-w-0 flex-1">
                 <p className="text-[11px] leading-tight">
                   <span className="font-semibold">{username}</span> <span className="text-gray-500 text-[10px]">Now</span>
                 </p>
                 <p className="text-[11px] leading-[1.3] mt-0.5 text-black">
-                  {requireFollow && !previewAsFollower 
-                    ? fallbackCommentReply || 'Please follow our account to receive the link!' 
-                    : commentReplyText || 'Check your DM'}
+                  {formatPreviewTemplate(
+                    requireFollow && !previewAsFollower 
+                      ? fallbackCommentReply || 'Please follow our account to receive the link!' 
+                      : commentReplyText || 'Check your DM'
+                  )}
                 </p>
                 <p className="mt-1 text-[10px] font-semibold text-gray-500 flex gap-4">
                   <span>Reply</span>
@@ -305,18 +341,26 @@ export default function MobilePreview({ selectedMedia, keywords, responseFlow, c
             </div>
           ) : null}
         </div>
-        <div className="absolute bottom-[60px] left-4 right-4 flex justify-between text-[26px]">
-          {['❤️', '🙌', '🔥', '👏', '😢', '😍', '😮', '😂'].map((emoji) => (
-            <span key={emoji}>{emoji}</span>
-          ))}
-        </div>
-        <div className="absolute bottom-4 left-3 right-3 flex items-center gap-3">
-          <Avatar src={avatar} username={username} className="h-8 w-8 shrink-0" />
-          <div className="flex h-10 flex-1 items-center rounded-full border border-gray-300 bg-white px-4">
-            <span className="flex-1 text-[14px] text-gray-400">Add a comment...</span>
-            <div className="flex items-center gap-3 text-black opacity-60">
-              <ImageIcon className="h-[20px] w-[20px]" strokeWidth={1.5} />
-              <div className="rounded-[4px] border-[1.5px] border-current px-1 text-[10px] font-bold">GIF</div>
+        <div className="mt-auto border-t border-gray-100 bg-white px-3 pt-2 pb-3 shrink-0">
+          <div className="flex items-center justify-between px-1.5 pb-2 text-[19px] select-none">
+            {['❤️', '🙌', '🔥', '👏', '😢', '😍', '😮', '😂'].map((emoji) => (
+              <span key={emoji} className="cursor-pointer transition-transform hover:scale-110 active:scale-95">
+                {emoji}
+              </span>
+            ))}
+          </div>
+          <div className="flex items-center gap-2.5">
+            <Avatar src={avatar} username={username} className="h-7 w-7 shrink-0" />
+            <div className="flex h-9 flex-1 min-w-0 items-center justify-between rounded-full border border-gray-200/90 bg-gray-50/70 px-3.5 shadow-sm">
+              <span className="flex-1 truncate whitespace-nowrap text-[12px] text-gray-400 select-none">
+                Add a comment...
+              </span>
+              <div className="flex shrink-0 items-center gap-2 text-gray-400">
+                <ImageIcon className="h-4 w-4" strokeWidth={1.75} />
+                <span className="rounded border border-gray-400/70 px-1 py-0.5 text-[8.5px] font-bold leading-none text-gray-500">
+                  GIF
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -341,7 +385,7 @@ export default function MobilePreview({ selectedMedia, keywords, responseFlow, c
         <div className="flex max-w-[240px] items-end gap-2">
           <Avatar src={avatar} username={username} className="h-5 w-5 shrink-0" />
           <div className="rounded-[18px] rounded-tl-sm bg-[#f0f0f0] p-3">
-            <p className="whitespace-pre-line text-[11px] font-normal leading-[1.35]">{openingMessage}</p>
+            <p className="whitespace-pre-line text-[11px] font-normal leading-[1.35]">{formatPreviewTemplate(openingMessage)}</p>
             <div className="mt-2 rounded-lg bg-white border border-gray-200 px-3 py-1.5 text-center text-[10px] font-semibold text-[#0095f6]">
               {openingButton}
             </div>
@@ -378,7 +422,10 @@ export default function MobilePreview({ selectedMedia, keywords, responseFlow, c
   );
 
   return (
-    <div className="flex flex-col items-center transform scale-[1.2] origin-top transition-all duration-300">
+    <div
+      className="flex flex-col items-center origin-top transition-all duration-300"
+      style={{ transform: `scale(${scale})` }}
+    >
       {requireFollow && activeTab === 'Comments' && (
         <div className="mb-6 flex items-center gap-2 rounded-full bg-white px-3 py-1.5 shadow-sm ring-1 ring-black/5 text-[11px]">
           <span className={previewAsFollower ? "font-semibold text-primary" : "text-gray-400"}>Following</span>

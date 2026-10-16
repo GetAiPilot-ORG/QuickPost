@@ -111,7 +111,7 @@ function AppContent() {
       <Route path="/connect/success" element={isAuthenticated ? <ConnectSuccessPage /> : <Navigate to="/login" replace />} />
       <Route path="/connect/select" element={isAuthenticated ? <SelectAccountsPage /> : <Navigate to="/login" replace />} />
 
-      // Protected dashboard
+      {/* Protected dashboard */}
       <Route path="/dashboard" element={<DashboardLayout />}>
         <Route index element={<DashboardOverview />} />
         <Route path="analytics" element={<Analytics />} />
@@ -128,6 +128,8 @@ function AppContent() {
         <Route path="inbox" element={<SocialInboxPage />} />
         <Route path="docs" element={<DocsGuidePage />} />
         <Route path="guide" element={<DocsGuidePage />} />
+        <Route path="connect" element={<Navigate to="/connect" replace />} />
+        <Route path="channels" element={<Navigate to="/connect" replace />} />
         <Route path="profile" element={<AutoDMProvider><ProfilePage /></AutoDMProvider>} />
 
         {/* AutoDM workspace — has its own full-screen layout */}

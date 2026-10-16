@@ -1,6 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useAutoDM } from '../../context/AutoDMContext';
-import { Download, ExternalLink, MessageCircle, Search, X } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import {
+  Cancel01Icon,
+  Comment01Icon,
+  Download01Icon,
+  ExternalLinkIcon,
+  Search01Icon,
+} from '@hugeicons/core-free-icons';
 import AutoDMAccountSwitcher from './AutoDMAccountSwitcher';
 import InfoHelp from '../../components/InfoHelp';
 
@@ -83,7 +90,7 @@ function MessageHistoryDialog({ contact, messages, loading, onClose }) {
             <p>Message history</p>
           </div>
           <button type="button" className="btn-icon" onClick={onClose} aria-label="Close message history">
-            <X size={18} />
+            <HugeiconsIcon icon={Cancel01Icon} size={18} strokeWidth={1.8} />
           </button>
         </header>
 
@@ -189,14 +196,14 @@ export default function AutoDMContactsPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <AutoDMAccountSwitcher />
           <button type="button" className="btn-secondary flex items-center justify-center gap-2 px-4" onClick={exportCSV} disabled={contacts.length === 0}>
-            <Download size={15} />
+            <HugeiconsIcon icon={Download01Icon} size={15} strokeWidth={1.8} />
             Export
           </button>
         </div>
       </header>
 
       <div className="autodm-toolbar">
-        <Search size={15} />
+        <HugeiconsIcon icon={Search01Icon} size={15} strokeWidth={1.8} />
         <input
           value={search}
           onChange={(event) => {
@@ -237,7 +244,7 @@ export default function AutoDMContactsPage() {
                   <strong>{contact.full_name || contact.username}</strong>
                   <a href={`https://instagram.com/${contact.username}`} target="_blank" rel="noopener noreferrer">
                     @{contact.username}
-                    <ExternalLink size={11} />
+                    <HugeiconsIcon icon={ExternalLinkIcon} size={11} strokeWidth={1.8} />
                   </a>
                 </div>
               </div>
@@ -256,7 +263,7 @@ export default function AutoDMContactsPage() {
               <time className="autodm-muted">{formatRelativeTime(contact.last_interaction_at)}</time>
 
               <button type="button" className="btn-ghost" onClick={() => openMessages(contact)}>
-                <MessageCircle size={14} />
+                <HugeiconsIcon icon={Comment01Icon} size={14} strokeWidth={1.8} />
                 History
               </button>
             </article>

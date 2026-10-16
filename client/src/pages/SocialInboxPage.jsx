@@ -1,25 +1,19 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MessagesSquare,
   Search,
   RefreshCw,
-  Send,
   Sparkles,
-  Star,
-  CheckCircle2,
   AlertCircle,
   Loader2,
-  Check,
-  ExternalLink,
   MessageCircle,
-  Filter,
   Layers,
-  ChevronRight,
-  ArrowLeft,
+  Clock,
+  X,
 } from "lucide-react";
 import apiClient from "../utils/apiClient";
-import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/AuthContext";
 import InfoHelp from "../components/InfoHelp";
 
@@ -35,9 +29,6 @@ const PLATFORMS = [
   { id: "youtube", label: "YouTube", icon: "/icons/youtube-color-icon.svg" },
   { id: "mastodon", label: "Mastodon", icon: "/icons/mastodon-round-icon.svg" },
 ];
-
-const INBOX_CLIENT_CACHE_TTL_MS = 60_000;
-const inboxClientCache = new Map();
 
 function getPlatformIcon(platformId) {
   const match = PLATFORMS.find((p) => p.id === platformId);
@@ -57,30 +48,57 @@ function timeAgo(dateString) {
   return `${days}d ago`;
 }
 
+function formatMsgTime(dateString) {
+  if (!dateString) return "";
+  try {
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function formatDateHeader(dateString) {
+  if (!dateString) return "Today";
+  try {
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return "Today";
+    const now = new Date();
+    if (d.toDateString() === now.toDateString()) return "Today";
+    return d.toLocaleDateString([], { day: "numeric", month: "short" });
+  } catch {
+    return "Today";
+  }
+}
+
 function getAvatarColor(str) {
   if (!str) return 'hsl(0, 0%, 40%)';
   let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  }
+  for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
   return `hsl(${Math.abs(hash) % 360}, 65%, 45%)`;
 }
 
-function AuthorAvatar({ src, name, size = 40, style = {} }) {
+function AuthorAvatar({ src, name, size = 40 }) {
   const [imgError, setImgError] = useState(false);
   const initial = (name || "U").replace(/^@/, "")[0]?.toUpperCase() || "U";
+  const avatarBg = getAvatarColor(name);
 
   useEffect(() => {
     setImgError(false);
   }, [src]);
 
-  if (src && !imgError) {
+  const cleanSrc = src ? String(src).replace(/^http:\/\//i, "https://") : null;
+  const currentSrc = cleanSrc && (cleanSrc.includes('cdninstagram.com') || cleanSrc.includes('fbcdn.net'))
+    ? `/api/inbox/avatar-proxy?url=${encodeURIComponent(cleanSrc)}`
+    : cleanSrc;
+
+  if (currentSrc && !imgError) {
     return (
       <img
-        src={src}
+        src={currentSrc}
         alt={name || ""}
         referrerPolicy="no-referrer"
-        crossOrigin="anonymous"
         onError={() => setImgError(true)}
         style={{
           width: size,
@@ -88,7 +106,6 @@ function AuthorAvatar({ src, name, size = 40, style = {} }) {
           borderRadius: "50%",
           objectFit: "cover",
           flexShrink: 0,
-          ...style,
         }}
       />
     );
@@ -100,14 +117,13 @@ function AuthorAvatar({ src, name, size = 40, style = {} }) {
         width: size,
         height: size,
         borderRadius: "50%",
-        background: "rgba(20,20,19,0.08)",
-        color: "var(--ink)",
+        background: avatarBg,
+        color: "#ffffff",
         display: "grid",
         placeItems: "center",
-        fontWeight: 750,
-        fontSize: size <= 28 ? 11 : 14,
+        fontWeight: 700,
+        fontSize: size <= 28 ? 11 : size <= 36 ? 13 : 15,
         flexShrink: 0,
-        ...style,
       }}
     >
       {initial}
@@ -115,97 +131,46 @@ function AuthorAvatar({ src, name, size = 40, style = {} }) {
   );
 }
 
-function PostThumbnailImage({ src, platform, postId, size = 64 }) {
-  const [imgSrc, setImgSrc] = useState(src);
-  const [failed, setFailed] = useState(false);
+export default function SocialInboxPage() {
+  const { user, connectedAccounts } = useAuth();
+  const [selectedPlatform, setSelectedPlatform] = useState("all");
+  const [selectedAccount, setSelectedAccount] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [items, setItems] = useState([]);
+  const [platformStatuses, setPlatformStatuses] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [selectedItemId, setSelectedItemId] = useState(null);
+  const [threadLoading, setThreadLoading] = useState(false);
+  const [starredIds, setStarredIds] = useState(new Set());
+  const [unreadIds, setUnreadIds] = useState(new Set());
 
-  useEffect(() => {
-    setImgSrc(src);
-    setFailed(false);
-  }, [src, postId]);
+  // Composer state
+  const [replyText, setReplyText] = useState("");
+  const [sendingReply, setSendingReply] = useState(false);
+  const [replyErrorMsg, setReplyErrorMsg] = useState(null);
+  const [generatingAi, setGeneratingAi] = useState(false);
+  const [showWindowPolicyModal, setShowWindowPolicyModal] = useState(false);
 
-  const handleError = () => {
-    if (platform === "youtube" && postId && !imgSrc?.includes("hqdefault.jpg")) {
-      setImgSrc(`https://i.ytimg.com/vi/${postId}/hqdefault.jpg`);
-    } else {
-      setFailed(true);
+  const selectedItemRef = useRef(null);
+  const chatScrollRef = useRef(null);
+
+  // Auto-scroll chat to bottom
+  const scrollToBottom = () => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
     }
   };
 
-  if (imgSrc && !failed) {
-    return (
-      <img
-        src={imgSrc}
-        alt=""
-        referrerPolicy="no-referrer"
-        crossOrigin="anonymous"
-        onError={handleError}
-        style={{
-          width: size,
-          height: size,
-          borderRadius: 8,
-          objectFit: "cover",
-          flexShrink: 0,
-        }}
-      />
-    );
-  }
+  useEffect(() => {
+    scrollToBottom();
+  }, [selectedItemId]);
 
-  return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        borderRadius: 8,
-        background: "rgba(20,20,19,0.06)",
-        display: "grid",
-        placeItems: "center",
-        flexShrink: 0,
-      }}
-    >
-      <img
-        src={getPlatformIcon(platform)}
-        style={{ width: size * 0.45, height: size * 0.45 }}
-        alt=""
-      />
-    </div>
-  );
-}
-
-export default function SocialInboxPage() {
-  const { user } = useAuth();
-  const clientCacheKey = user?.id || user?.userId || "anonymous";
-  const cachedInbox = inboxClientCache.get(clientCacheKey);
-  const [selectedPlatform, setSelectedPlatform] = useState("all");
-  const [selectedAccount, setSelectedAccount] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all"); // all, unread, replied, starred
-  const [searchQuery, setSearchQuery] = useState("");
-  const [items, setItems] = useState(() => cachedInbox?.items || []);
-  const [platformStatuses, setPlatformStatuses] = useState(() => cachedInbox?.platformStatuses || {});
-  const [loading, setLoading] = useState(() => !cachedInbox);
-  const [refreshing, setRefreshing] = useState(false);
-  const [selectedItemId, setSelectedItemId] = useState(null);
-  const [threadLoadingId, setThreadLoadingId] = useState(null);
-  const selectedItemRef = useRef(null);
-
-  // Session-only states (Stateless requirements)
-  const [repliedIds, setRepliedIds] = useState(new Set());
-  const [starredIds, setStarredIds] = useState(new Set());
-  const [unreadIds, setUnreadIds] = useState(() => new Set(
-    (cachedInbox?.items || []).filter((item) => item.unread).map((item) => item.id)
-  ));
-
-  // Reply Composer state
-  const [replyText, setReplyText] = useState("");
-  const [sendingReply, setSendingReply] = useState(false);
-  const [replySuccessMsg, setReplySuccessMsg] = useState(null);
-  const [replyErrorMsg, setReplyErrorMsg] = useState(null);
-  const [generatingAi, setGeneratingAi] = useState(false);
-
-  // Load Inbox Stream from API
-  const loadInboxStream = useCallback(async (isRefresh = false) => {
+  // Load conversations list from backend
+  const loadInboxStream = useCallback(async (isRefresh = false, isSilent = false) => {
     if (isRefresh) setRefreshing(true);
-    else if (!inboxClientCache.has(clientCacheKey)) setLoading(true);
+    else if (!isSilent && items.length === 0) setLoading(true);
 
     try {
       let res;
@@ -215,99 +180,141 @@ export default function SocialInboxPage() {
         try {
           res = await apiClient.get("/api/inbox/conversations", { params: { limit: 50 } });
           if (!(res.data?.items || []).length) {
-            res = await apiClient.get("/api/inbox/stream", { params: { refresh: 1 } });
+            res = await apiClient.get("/api/inbox/stream");
           }
-        } catch (databaseError) {
+        } catch {
           res = await apiClient.get("/api/inbox/stream");
         }
       }
+
       if (res.data?.success) {
         const aggregatedItems = res.data.items || [];
         setPlatformStatuses(res.data.platformStatuses || {});
         setItems((currentItems) => {
           const currentById = new Map(currentItems.map((item) => [item.id, item]));
-          const mergedItems = aggregatedItems.map((item) => {
+          return aggregatedItems.map((item) => {
             const current = currentById.get(item.id);
-            return current?.threadLoaded
-              ? { ...item, replies: current.replies || [], threadLoaded: true }
-              : item;
+            return {
+              ...item,
+              authorAvatar: item.authorAvatar || current?.authorAvatar || null,
+              authorName: item.authorName || current?.authorName || "User",
+              replies: current?.threadLoaded ? (current.replies || []) : item.replies,
+              threadLoaded: Boolean(current?.threadLoaded),
+            };
           });
-          inboxClientCache.set(clientCacheKey, {
-            items: mergedItems,
-            platformStatuses: res.data.platformStatuses || {},
-            cachedAt: Date.now(),
-          });
-          return mergedItems;
         });
-
-        // Initialize unread IDs for items marked unread
-        const initialUnread = new Set(
-          aggregatedItems.filter((i) => i.unread).map((i) => i.id)
-        );
-        setUnreadIds(initialUnread);
       }
     } catch (err) {
       console.error("Failed to load inbox stream:", err);
-      if (!inboxClientCache.has(clientCacheKey)) setItems([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [clientCacheKey]);
+  }, [items.length]);
 
+  // Initial load on mount
   useEffect(() => {
-    const cached = inboxClientCache.get(clientCacheKey);
-    if (!cached || Date.now() - cached.cachedAt >= INBOX_CLIENT_CACHE_TTL_MS) {
-      loadInboxStream();
-    }
-  }, [clientCacheKey, loadInboxStream]);
+    loadInboxStream();
+  }, [loadInboxStream]);
 
-  // Unique Accounts list based on current platform selection
-  const availableAccounts = useMemo(() => {
-    const pool = selectedPlatform === "all" ? items : items.filter((i) => i.platform === selectedPlatform);
-    const accMap = new Map();
-    for (const item of pool) {
-      const key = item.accountId || item.accountName;
-      if (key && !accMap.has(key)) {
-        accMap.set(key, {
-          id: key,
-          name: item.accountName || key,
-          platform: item.platform,
-        });
-      }
-    }
-    return Array.from(accMap.values());
-  }, [items, selectedPlatform]);
+  // Fetch thread messages for active conversation
+  const fetchThreadForConversation = useCallback(async (item, isBackground = false) => {
+    if (!item) return;
+    if (!isBackground && !(item.replies || []).length) setThreadLoading(true);
 
-  // Filtered dataset
-  const filteredItems = useMemo(() => {
-    return items.filter((item) => {
-      // Platform filter
-      if (selectedPlatform !== "all" && item.platform !== selectedPlatform) {
-        return false;
+    try {
+      let threadReplies = [];
+      const conversationId = String(item.commentId || item.id).replace(/^(ig|fb):/, "");
+
+      if (["instagram", "facebook"].includes(item.platform)) {
+        try {
+          const response = await apiClient.get("/api/inbox/thread", {
+            params: {
+              platform: item.platform,
+              accountId: item.accountId,
+              conversationId,
+              externalConversationId: item.externalConversationId,
+            },
+          });
+          if (response.data?.success && response.data?.replies?.length) {
+            threadReplies = response.data.replies;
+          }
+        } catch (threadErr) {
+          console.warn("Live thread fetch fallback to database:", threadErr.message);
+        }
       }
-      // Account filter
-      if (selectedAccount !== "all" && item.accountId !== selectedAccount && item.accountName !== selectedAccount) {
-        return false;
+
+      if (!threadReplies.length && item.databaseId) {
+        try {
+          const response = await apiClient.get(`/api/inbox/conversations/${item.databaseId}/messages`, {
+            params: { limit: 50 },
+          });
+          if (response.data?.success && response.data?.messages?.length) {
+            threadReplies = response.data.messages;
+          }
+        } catch {}
       }
-      // Status filter
-      if (statusFilter === "unread" && !unreadIds.has(item.id)) return false;
-      if (statusFilter === "starred" && !starredIds.has(item.id)) return false;
-      if (statusFilter === "replied" && !repliedIds.has(item.id) && !item.replied) {
-        return false;
+
+      if (item.databaseId) {
+        void apiClient.post(`/api/inbox/conversations/${item.databaseId}/read`).catch(() => {});
       }
-      // Search query
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const textMatch = item.text?.toLowerCase().includes(q);
-        const authorMatch = item.authorName?.toLowerCase().includes(q) || item.authorHandle?.toLowerCase().includes(q);
-        const titleMatch = item.postTitle?.toLowerCase().includes(q);
-        if (!textMatch && !authorMatch && !titleMatch) return false;
+
+      if (threadReplies.length > 0) {
+        setItems((currentItems) =>
+          currentItems.map((currentItem) => {
+            if (currentItem.id !== item.id) return currentItem;
+            return {
+              ...currentItem,
+              replies: threadReplies,
+              threadLoaded: true,
+            };
+          })
+        );
+        setTimeout(scrollToBottom, 50);
       }
-      return true;
+    } catch (error) {
+      console.error("Failed to load conversation thread:", error);
+    } finally {
+      setThreadLoading(false);
+    }
+  }, []);
+
+  // Handle selecting a conversation
+  const handleSelectItem = (item) => {
+    setSelectedItemId(item.id);
+    setReplyErrorMsg(null);
+    setReplyText("");
+    setUnreadIds((current) => {
+      const next = new Set(current);
+      next.delete(item.id);
+      return next;
     });
-  }, [items, selectedPlatform, selectedAccount, statusFilter, searchQuery, unreadIds, starredIds, repliedIds]);
+    fetchThreadForConversation(item, false);
+  };
 
+  // Real-time SSE listener
+  useEffect(() => {
+    let eventSource;
+    try {
+      eventSource = new EventSource("/api/instapilot/stream");
+      eventSource.onmessage = (event) => {
+        if (event.data === "refresh") {
+          void loadInboxStream(false, true);
+          if (selectedItemRef.current) {
+            void fetchThreadForConversation(selectedItemRef.current, true);
+          }
+        }
+      };
+    } catch (e) {
+      console.warn("SSE stream connection warning:", e);
+    }
+
+    return () => {
+      if (eventSource) eventSource.close();
+    };
+  }, [loadInboxStream, fetchThreadForConversation]);
+
+  // Derived selected item
   const selectedItem = useMemo(() => {
     return items.find((i) => i.id === selectedItemId) || null;
   }, [items, selectedItemId]);
@@ -316,137 +323,52 @@ export default function SocialInboxPage() {
     selectedItemRef.current = selectedItem;
   }, [selectedItem]);
 
-  useEffect(() => {
-    const realtimeUserId = user?.id || user?.userId;
-    if (!realtimeUserId) return undefined;
-
-    let refreshTimer;
-    const changedConversationIds = new Set();
-
-    const refreshFromDatabase = async () => {
-      await loadInboxStream();
-      const selected = selectedItemRef.current;
-      const selectedChanged = selected?.databaseId && changedConversationIds.has(selected.databaseId);
-      changedConversationIds.clear();
-      if (!selected?.threadLoaded || !selectedChanged) return;
-      try {
-        const { data } = await apiClient.get(`/api/inbox/conversations/${selected.databaseId}/messages`, {
-          params: { limit: 50 },
-        });
-        if (data?.success) {
-          setItems((currentItems) => currentItems.map((item) =>
-            item.databaseId === selected.databaseId
-              ? { ...item, replies: data.messages || [], threadLoaded: true }
-              : item
-          ));
-          void apiClient.post(`/api/inbox/conversations/${selected.databaseId}/read`).catch(() => {});
+  // Filtered dataset
+  const filteredItems = useMemo(() => {
+    return items
+      .filter((item) => {
+        if (selectedPlatform !== "all" && item.platform !== selectedPlatform) return false;
+        if (selectedAccount !== "all" && item.accountId !== selectedAccount && item.accountName !== selectedAccount) return false;
+        if (statusFilter === "unread" && !unreadIds.has(item.id)) return false;
+        if (statusFilter === "starred" && !starredIds.has(item.id)) return false;
+        if (statusFilter === "replied" && !item.replied) return false;
+        if (searchQuery.trim()) {
+          const q = searchQuery.toLowerCase();
+          const match = item.text?.toLowerCase().includes(q) ||
+            item.authorName?.toLowerCase().includes(q) ||
+            item.authorHandle?.toLowerCase().includes(q);
+          if (!match) return false;
         }
-      } catch (error) {
-        console.warn("Failed to refresh active inbox thread:", error);
+        return true;
+      })
+      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  }, [items, selectedPlatform, selectedAccount, statusFilter, searchQuery, unreadIds, starredIds]);
+
+  // Unique Accounts list
+  const availableAccounts = useMemo(() => {
+    const pool = selectedPlatform === "all" ? items : items.filter((i) => i.platform === selectedPlatform);
+    const accMap = new Map();
+    for (const item of pool) {
+      const key = item.accountId || item.accountName;
+      if (key && !accMap.has(key)) {
+        accMap.set(key, { id: key, name: item.accountName || key, platform: item.platform });
       }
-    };
-
-    const scheduleRefresh = (payload) => {
-      const changedId = payload.new?.id || payload.old?.id;
-      if (changedId) changedConversationIds.add(changedId);
-      window.clearTimeout(refreshTimer);
-      refreshTimer = window.setTimeout(() => void refreshFromDatabase(), 250);
-    };
-
-    const channel = supabase
-      .channel(`social-inbox-${realtimeUserId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "inbox_conversations",
-          filter: `user_id=eq.${realtimeUserId}`,
-        },
-        scheduleRefresh
-      )
-      .subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          console.info("[INBOX-REALTIME] Connected");
-        }
-        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          console.warn(`[INBOX-REALTIME] Subscription status: ${status}`);
-        }
-      });
-
-    const refreshIfVisible = () => {
-      if (document.visibilityState === "visible") void loadInboxStream();
-    };
-    const fallbackPoll = window.setInterval(refreshIfVisible, 15_000);
-    document.addEventListener("visibilitychange", refreshIfVisible);
-    window.addEventListener("focus", refreshIfVisible);
-
-    return () => {
-      window.clearTimeout(refreshTimer);
-      window.clearInterval(fallbackPoll);
-      document.removeEventListener("visibilitychange", refreshIfVisible);
-      window.removeEventListener("focus", refreshIfVisible);
-      void supabase.removeChannel(channel);
-    };
-  }, [loadInboxStream, user?.id, user?.userId]);
-
-  const handleSelectItem = useCallback(async (item) => {
-    setSelectedItemId(item.id);
-    setUnreadIds((current) => {
-      const next = new Set(current);
-      next.delete(item.id);
-      return next;
-    });
-    if (item.threadLoaded) return;
-
-    setThreadLoadingId(item.id);
-    try {
-      let data;
-      if (item.persisted && item.databaseId) {
-        const response = await apiClient.get(`/api/inbox/conversations/${item.databaseId}/messages`, {
-          params: { limit: 50 },
-        });
-        data = { success: response.data?.success, replies: response.data?.messages || [] };
-        void apiClient.post(`/api/inbox/conversations/${item.databaseId}/read`).catch(() => {});
-      }
-      if (["instagram", "facebook"].includes(item.platform) && (!item.threadComplete || !data?.replies?.length)) {
-        const conversationId = String(item.commentId || item.id).replace(/^(ig|fb):/, "");
-        const response = await apiClient.get("/api/inbox/thread", {
-          params: {
-            platform: item.platform,
-            accountId: item.accountId,
-            conversationId,
-            externalConversationId: item.externalConversationId,
-          },
-        });
-        data = response.data;
-      }
-      if (data?.success) {
-        setItems((currentItems) => currentItems.map((currentItem) =>
-          currentItem.id === item.id
-            ? { ...currentItem, replies: data.replies || [], threadLoaded: true }
-            : currentItem
-        ));
-      }
-    } catch (error) {
-      console.error("Failed to load conversation thread:", error);
-    } finally {
-      setThreadLoadingId((currentId) => currentId === item.id ? null : currentId);
     }
-  }, []);
+    return Array.from(accMap.values());
+  }, [items, selectedPlatform]);
 
-  // Reply Progress Calculation (Replied X / Y)
-  const totalY = items.length;
-  const confirmedX = useMemo(() => {
-    return items.filter((i) => i.replied || repliedIds.has(i.id)).length;
-  }, [items, repliedIds]);
-  const progressPercent = totalY > 0 ? Math.round((confirmedX / totalY) * 100) : 0;
+  // Disconnected state
+  const isAccountDisconnected = useMemo(() => {
+    if (!selectedItem) return false;
+    if (selectedItem.accountConnected === false) return true;
+    const plat = selectedItem.platform;
+    return Boolean(connectedAccounts?.[plat] && connectedAccounts[plat].connected === false);
+  }, [selectedItem, connectedAccounts]);
 
-  // Handle Reply Submission
+  // Send reply
   const handleSendReply = async () => {
     if (!selectedItem || !replyText.trim() || sendingReply) return;
     setSendingReply(true);
-    setReplySuccessMsg(null);
     setReplyErrorMsg(null);
 
     try {
@@ -461,11 +383,8 @@ export default function SocialInboxPage() {
 
       const res = await apiClient.post("/api/inbox/reply", payload);
       if (res.data?.success) {
-        // Increment confirmed reply count safely in session state
-        setRepliedIds((prev) => new Set(prev).add(selectedItem.id));
+        const textSent = replyText.trim();
         setReplyText("");
-
-        // Append to local replies list
         setItems((prevItems) =>
           prevItems.map((item) => {
             if (item.id === selectedItem.id) {
@@ -473,14 +392,14 @@ export default function SocialInboxPage() {
                 ...item,
                 replied: true,
                 replies: [
-                  ...item.replies,
+                  ...(item.replies || []),
                   {
                     id: res.data.replyId || `rep_${Date.now()}`,
                     authorName: user?.name || "You",
                     authorAvatar: user?.profilePicture || null,
-                    text: payload.text,
+                    text: textSent,
                     createdAt: new Date().toISOString(),
-                    isSelf: true
+                    isSelf: true,
                   },
                 ],
               };
@@ -488,17 +407,24 @@ export default function SocialInboxPage() {
             return item;
           })
         );
+        setTimeout(scrollToBottom, 50);
       } else {
-        setReplyErrorMsg(res.data?.message || "Failed to post reply");
+        const rawMsg = res.data?.message || "Failed to post reply";
+        const isWindow = res.data?.code === "OUTSIDE_24H_WINDOW" || /24-hour|allowed window/i.test(rawMsg);
+        setReplyErrorMsg(isWindow ? "Meta 24-Hour Policy: Replies can only be sent within 24 hours of the user's last message." : rawMsg);
+        if (isWindow) setShowWindowPolicyModal(true);
       }
     } catch (err) {
-      setReplyErrorMsg(err.response?.data?.message || err.message || "Failed to send reply");
+      const rawMsg = err.response?.data?.message || err.message || "Failed to send reply";
+      const isWindow = /24-hour|allowed window/i.test(rawMsg);
+      setReplyErrorMsg(isWindow ? "Meta 24-Hour Policy: Replies can only be sent within 24 hours of the user's last message." : rawMsg);
+      if (isWindow) setShowWindowPolicyModal(true);
     } finally {
       setSendingReply(false);
     }
   };
 
-  // Handle AI Copilot Suggestions
+  // AI Copilot
   const handleAiCopilot = async (style) => {
     if (!selectedItem || generatingAi) return;
     setGeneratingAi(true);
@@ -507,9 +433,7 @@ export default function SocialInboxPage() {
         commentText: selectedItem.text,
         style,
       });
-      if (res.data?.suggestion) {
-        setReplyText(res.data.suggestion);
-      }
+      if (res.data?.suggestion) setReplyText(res.data.suggestion);
     } catch (err) {
       console.warn("AI Copilot error:", err.message);
     } finally {
@@ -517,19 +441,11 @@ export default function SocialInboxPage() {
     }
   };
 
-  // Toggle Star / Unread
-  const toggleStar = (id) => {
-    setStarredIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
+  const confirmedCount = items.filter((i) => i.replied).length;
+  const progressPercent = items.length > 0 ? Math.round((confirmedCount / items.length) * 100) : 0;
 
   return (
     <div
-      className={selectedItem ? "max-md:fixed max-md:inset-0 max-md:z-[60] max-md:!h-[100dvh]" : ""}
       style={{
         display: "flex",
         flexDirection: "column",
@@ -540,89 +456,37 @@ export default function SocialInboxPage() {
         overflow: "hidden",
       }}
     >
-      {/* ── Compact Page Header ── */}
-      <div
-        className={selectedItem ? "max-md:hidden" : ""}
-        style={{
-          background: "#ffffff",
-          borderBottom: "1px solid #d3cec6",
-          display: "flex",
-          flexDirection: "column",
-          flexShrink: 0,
-        }}
-      >
-        <div
-          style={{
-            padding: "10px 24px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 16,
-          }}
-        >
-          <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0, letterSpacing: "-0.02em", color: "var(--ink, #111111)", display: "inline-flex", alignItems: "center", gap: 8 }}>
+      {/* ── Top Header & Navigation ── */}
+      <div style={{ background: "#ffffff", borderBottom: "1px solid #d3cec6", flexShrink: 0 }}>
+        <div style={{ padding: "10px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0, display: "inline-flex", alignItems: "center", gap: 8 }}>
             Social Inbox
             <InfoHelp text="Unified inbox consolidating incoming comments and direct messages across all connected social channels" />
           </h1>
 
-          {/* Replied Status & Actions */}
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, background: "var(--canvas, #f5f1ec)", padding: "6px 12px", borderRadius: 8 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase", letterSpacing: "0.04em", display: "inline-flex", alignItems: "center", gap: 4 }}>
-                Replied
-                <InfoHelp text="Tracks the ratio of conversations and audience comments that have received replies" />
-              </span>
-              <span style={{ fontSize: 14, fontWeight: 800, color: "var(--ink)" }}>{confirmedX} <span style={{ color: "var(--slate)", fontWeight: 500 }}>/ {totalY}</span></span>
-              <div style={{ width: 80, height: 6, background: "rgba(0,0,0,0.06)", borderRadius: 3, overflow: "hidden" }}>
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${progressPercent}%` }}
-                  transition={{ duration: 0.4 }}
-                  style={{ height: "100%", background: "var(--arc, #ff5600)" }}
-                />
+            <div style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--canvas, #f5f1ec)", padding: "6px 12px", borderRadius: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--slate)", textTransform: "uppercase" }}>Replied</span>
+              <span style={{ fontSize: 14, fontWeight: 800 }}>{confirmedCount} <span style={{ color: "var(--slate)", fontWeight: 500 }}>/ {items.length}</span></span>
+              <div style={{ width: 70, height: 6, background: "rgba(0,0,0,0.06)", borderRadius: 3, overflow: "hidden" }}>
+                <div style={{ width: `${progressPercent}%`, height: "100%", background: "var(--arc, #ff5600)" }} />
               </div>
             </div>
             <button
               onClick={() => loadInboxStream(true)}
               disabled={refreshing}
-              style={{
-                padding: "8px",
-                borderRadius: 8,
-                border: "1px solid #d3cec6",
-                background: "#ffffff",
-                cursor: refreshing ? "default" : "pointer",
-                color: refreshing ? "var(--slate)" : "var(--ink)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                transition: "all 0.2s"
-              }}
+              style={{ padding: "8px", borderRadius: 8, border: "1px solid #d3cec6", background: "#ffffff", cursor: "pointer" }}
               title="Refresh Inbox"
             >
-              <RefreshCw size={16} className={refreshing ? "spin" : ""} />
+              <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
             </button>
           </div>
         </div>
 
-        {/* Divider Line */}
-        <div style={{ height: 1, background: "#d3cec6", width: "100%", opacity: 0.8 }} />
-
-        {/* Bottom Row: Integrated Platform Filter Navigation Bar */}
-        <div
-          className="no-scrollbar"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            overflowX: "auto",
-            paddingTop: 4,
-          }}
-        >
+        {/* Platform tabs */}
+        <div className="no-scrollbar" style={{ display: "flex", alignItems: "center", gap: 8, overflowX: "auto", padding: "0 24px 10px" }}>
           {PLATFORMS.map((plat) => {
             const isActive = selectedPlatform === plat.id;
-            const status = platformStatuses[plat.id];
-            const isConnected = plat.id === "all" || status?.connected;
-
             return (
               <button
                 key={plat.id}
@@ -630,29 +494,19 @@ export default function SocialInboxPage() {
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
-                  gap: 8,
-                  padding: "8px 20px",
-                  borderRadius: 24,
-                  fontSize: 13,
+                  gap: 6,
+                  padding: "6px 14px",
+                  borderRadius: 20,
+                  fontSize: 12.5,
                   fontWeight: isActive ? 750 : 600,
                   border: isActive ? "1px solid var(--arc, #ff5600)" : "1px solid rgba(20,20,19,0.12)",
                   background: isActive ? "rgba(255, 86, 0, 0.08)" : "#ffffff",
-                  color: isActive ? "var(--arc, #ff5600)" : isConnected ? "var(--ink)" : "var(--slate)",
-                  opacity: isConnected ? 1 : 0.5,
+                  color: isActive ? "var(--arc, #ff5600)" : "var(--ink)",
                   cursor: "pointer",
                   whiteSpace: "nowrap",
-                  flexShrink: 0,
-                  boxSizing: "border-box",
-                  lineHeight: 1,
-                  transition: "all 0.2s",
-                  boxShadow: isActive ? "0 2px 10px rgba(255,86,0,0.15)" : "none",
                 }}
               >
-                {plat.id === "all" ? (
-                  <Layers size={16} style={{ color: isActive ? "var(--arc, #ff5600)" : "var(--slate)" }} />
-                ) : (
-                  <img src={plat.icon} style={{ width: 18, height: 18, objectFit: "contain" }} alt="" />
-                )}
+                {plat.id === "all" ? <Layers size={14} /> : <img src={plat.icon} style={{ width: 14, height: 14 }} alt="" />}
                 <span>{plat.label}</span>
               </button>
             );
@@ -660,183 +514,84 @@ export default function SocialInboxPage() {
         </div>
       </div>
 
-      {/* ── Main Buffer-Style 2-Pane Content Area ── */}
+      {/* ── 2-Pane Main View ── */}
       <div style={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden" }}>
-        {/* ── Left Pane: Comment & Thread List ── */}
-        <div
-          className={`w-full md:w-[320px] md:max-w-[320px] flex-shrink-0 border-r border-[#d3cec6] bg-white min-h-0 ${selectedItem ? "hidden md:flex" : "flex"} flex-col`}
-        >
-          {/* Controls: Search, Account & Status Filter */}
-          <div style={{ padding: "12px 16px", borderBottom: "1px solid rgba(20,20,19,0.06)", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <div style={{ position: "relative", flex: 1, minWidth: 120 }}>
-              <Search size={14} style={{ position: "absolute", left: 10, top: 10, color: "var(--slate)" }} />
+        {/* Left Column: Conversations List */}
+        <div style={{ width: 340, borderRight: "1px solid #d3cec6", background: "#ffffff", display: "flex", flexDirection: "column" }}>
+          <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(0,0,0,0.06)", display: "flex", gap: 6 }}>
+            <div style={{ position: "relative", flex: 1 }}>
+              <Search size={14} style={{ position: "absolute", left: 10, top: 9, color: "var(--slate)" }} />
               <input
                 type="text"
                 placeholder="Search..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "6px 10px 6px 30px",
-                  borderRadius: 6,
-                  border: "1px solid #d3cec6",
-                  fontSize: 12,
-                  outline: "none",
-                  boxSizing: "border-box",
-                }}
+                style={{ width: "100%", padding: "5px 8px 5px 30px", borderRadius: 6, border: "1px solid #d3cec6", fontSize: 12, outline: "none" }}
               />
             </div>
             {availableAccounts.length > 1 && (
               <select
                 value={selectedAccount}
                 onChange={(e) => setSelectedAccount(e.target.value)}
-                style={{
-                  padding: "6px 8px",
-                  borderRadius: 6,
-                  border: "1px solid #d3cec6",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  background: "#ffffff",
-                  color: "var(--ink)",
-                  outline: "none",
-                  cursor: "pointer",
-                  flexShrink: 0,
-                  maxWidth: 130,
-                  textOverflow: "ellipsis",
-                }}
-                title="Filter by connected account"
+                style={{ padding: "4px 6px", borderRadius: 6, border: "1px solid #d3cec6", fontSize: 11.5, background: "#fff", maxWidth: 100 }}
               >
-                <option value="all">All Accounts ({availableAccounts.length})</option>
+                <option value="all">Accounts</option>
                 {availableAccounts.map((acc) => (
-                  <option key={acc.id} value={acc.id}>
-                    {acc.name}
-                  </option>
+                  <option key={acc.id} value={acc.id}>{acc.name}</option>
                 ))}
               </select>
             )}
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              style={{
-                padding: "6px 8px",
-                borderRadius: 6,
-                border: "1px solid #d3cec6",
-                fontSize: 12,
-                background: "#ffffff",
-                color: "var(--ink)",
-                outline: "none",
-                cursor: "pointer",
-                flexShrink: 0,
-              }}
+              style={{ padding: "4px 6px", borderRadius: 6, border: "1px solid #d3cec6", fontSize: 11.5, background: "#fff" }}
             >
-              <option value="all">All Status</option>
+              <option value="all">All</option>
               <option value="unread">Unread</option>
               <option value="replied">Replied</option>
-              <option value="starred">Starred</option>
             </select>
           </div>
 
-          {/* Comment List */}
-          <div className="no-scrollbar" style={{ flex: 1, overflowY: "auto", msOverflowStyle: "none", scrollbarWidth: "none" }}>
+          <div style={{ flex: 1, overflowY: "auto" }}>
             {loading ? (
               <div style={{ padding: 24, textAlign: "center", color: "var(--slate)" }}>
-                <Loader2 size={24} className="animate-spin" style={{ margin: "0 auto 8px" }} />
-                <div style={{ fontSize: 13 }}>Loading conversations...</div>
+                <Loader2 size={20} className="animate-spin" style={{ margin: "0 auto 8px" }} />
+                <div style={{ fontSize: 12 }}>Loading inbox...</div>
               </div>
             ) : filteredItems.length === 0 ? (
               <div style={{ padding: 32, textAlign: "center", color: "var(--slate)" }}>
-                <MessageCircle size={32} style={{ margin: "0 auto 12px", opacity: 0.4 }} />
-                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>No conversations found</div>
-                <div style={{ fontSize: 12, marginTop: 4 }}>Try selecting another platform or clearing search</div>
+                <MessageCircle size={28} style={{ margin: "0 auto 8px", opacity: 0.4 }} />
+                <div style={{ fontSize: 13, fontWeight: 600 }}>No conversations found</div>
               </div>
             ) : (
               filteredItems.map((item) => {
                 const isSelected = item.id === selectedItem?.id;
-                const isReplied = item.replied || repliedIds.has(item.id);
-                const isStarred = starredIds.has(item.id);
-                const showHandle = item.authorHandle && item.authorHandle.toLowerCase() !== item.authorName.toLowerCase() && `@${item.authorName.toLowerCase()}` !== item.authorHandle.toLowerCase();
-
                 return (
                   <div
                     key={item.id}
                     onClick={() => handleSelectItem(item)}
                     style={{
-                      padding: "14px 16px",
-                      borderBottom: "1px solid rgba(20,20,19,0.06)",
-                      background: isSelected ? "rgba(255, 86, 0, 0.04)" : "#ffffff",
+                      padding: "12px 14px",
+                      borderBottom: "1px solid rgba(0,0,0,0.06)",
+                      background: isSelected ? "rgba(255, 86, 0, 0.05)" : "#ffffff",
                       borderLeft: isSelected ? "3px solid var(--arc, #ff5600)" : "3px solid transparent",
                       cursor: "pointer",
-                      transition: "all 0.15s",
-                      boxSizing: "border-box",
                     }}
                   >
-                    {/* Header: Platform icon + Author + Timestamp */}
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1, overflow: "hidden" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                         <div style={{ position: "relative" }}>
-                          {item.authorAvatar ? (
-                            <img src={item.authorAvatar} style={{ width: 32, height: 32, borderRadius: "50%", objectFit: "cover" }} alt="" />
-                          ) : (
-                            <div style={{ width: 32, height: 32, borderRadius: "50%", background: getAvatarColor(item.authorName), color: "#fff", display: "grid", placeItems: "center", fontWeight: 700, fontSize: 13 }}>
-                              {item.authorName?.[0]?.toUpperCase() || "U"}
-                            </div>
-                          )}
-                          <img src={getPlatformIcon(item.platform)} style={{ width: 14, height: 14, position: "absolute", bottom: -2, right: -2, border: "2px solid #fff", borderRadius: "50%" }} alt="" />
+                          <AuthorAvatar src={item.authorAvatar} name={item.authorName} size={30} />
+                          <img src={getPlatformIcon(item.platform)} style={{ width: 12, height: 12, position: "absolute", bottom: -2, right: -2, borderRadius: "50%", background: "#fff" }} alt="" />
                         </div>
-                        <div style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {item.authorName}
-                          </span>
-                          {showHandle && (
-                            <span style={{ fontSize: 11, color: "var(--slate)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                              {item.authorHandle}
-                            </span>
-                          )}
-                        </div>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {item.authorName}
+                        </span>
                       </div>
-                      <span style={{ fontSize: 11, color: "var(--slate)", flexShrink: 0, whiteSpace: "nowrap" }}>
-                        {timeAgo(item.createdAt)}
-                      </span>
+                      <span style={{ fontSize: 11, color: "var(--slate)" }}>{timeAgo(item.createdAt)}</span>
                     </div>
-
-                    {/* Comment text preview */}
-                    <p
-                      style={{
-                        fontSize: 13,
-                        color: "var(--ink)",
-                        margin: "0 0 8px",
-                        lineHeight: 1.4,
-                        display: "-webkit-box",
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: "vertical",
-                        overflow: "hidden",
-                      }}
-                    >
-                      {item.text}
-                    </p>
-
-                    {/* Footer Badges & Star button */}
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        {isReplied ? (
-                          <span style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", background: "#f0fdf4", padding: "2px 8px", borderRadius: 10 }}>
-                            Replied
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: 10, fontWeight: 700, color: "#d97706", background: "#fffbeb", padding: "2px 8px", borderRadius: 10 }}>
-                            Unanswered
-                          </span>
-                        )}
-                      </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleStar(item.id);
-                        }}
-                        style={{ border: "none", background: "transparent", cursor: "pointer", color: isStarred ? "#eab308" : "var(--slate)" }}
-                      >
-                        <Star size={14} fill={isStarred ? "#eab308" : "none"} />
-                      </button>
+                    <div style={{ fontSize: 12.5, color: "var(--slate)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.text || "Direct message"}
                     </div>
                   </div>
                 );
@@ -845,184 +600,329 @@ export default function SocialInboxPage() {
           </div>
         </div>
 
-        {/* ── Right Pane: Thread Detail & Reply Composer ── */}
-        <div className={`${!selectedItem ? "hidden md:flex" : "flex"} flex-1 flex-col h-full overflow-hidden`} style={{ background: "#ffffff" }}>
+        {/* Right Column: Active Conversation */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#fafafa" }}>
           {selectedItem ? (
-            <div style={{ display: "flex", flexDirection: "column", flex: 1, width: "100%", maxWidth: 900, margin: "0 auto", height: "100%", overflow: "hidden", background: "#ffffff", borderLeft: "1px solid rgba(0,0,0,0.06)", borderRight: "1px solid rgba(0,0,0,0.06)" }}>
-              
-              {/* ── Instagram-Style Header ── */}
-              <div style={{ background: "#ffffff", padding: "12px 16px", borderBottom: "1px solid rgba(0,0,0,0.08)", display: "flex", alignItems: "center", gap: 12, flexShrink: 0, zIndex: 10 }}>
-                <button onClick={() => setSelectedItemId(null)} className="md:hidden flex items-center justify-center p-2 -ml-2 rounded-full hover:bg-slate-100" style={{ color: "var(--ink)", border: "none", background: "transparent", cursor: "pointer" }}>
-                  <ArrowLeft size={24} strokeWidth={2} />
-                </button>
-                <AuthorAvatar src={selectedItem.authorAvatar} name={selectedItem.authorName} size={40} />
-                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: "1.2" }}>
-                    {selectedItem.authorName}
-                  </div>
-                  <div style={{ fontSize: 13, color: "var(--slate)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
-                    {selectedItem.authorHandle} • <img src={getPlatformIcon(selectedItem.platform)} style={{ width: 12, height: 12 }} alt="" title={selectedItem.platform} />
+            <>
+              {/* Active Conversation Header */}
+              <div style={{ padding: "12px 20px", background: "#ffffff", borderBottom: "1px solid #d3cec6", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <AuthorAvatar src={selectedItem.authorAvatar} name={selectedItem.authorName} size={36} />
+                  <div>
+                    <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--ink)" }}>{selectedItem.authorName}</div>
+                    <div style={{ fontSize: 11.5, color: "var(--slate)" }}>{selectedItem.authorHandle || selectedItem.platform}</div>
                   </div>
                 </div>
               </div>
 
-              {/* ── Chat Messages Area ── */}
-              <div className="no-scrollbar" style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
-                <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 6, marginTop: "auto" }}>
-                  
-                  {/* Post Context Embedded Card */}
-                  <div style={{ alignSelf: "center", maxWidth: "85%", width: "100%", background: "#f8f9fa", borderRadius: 16, padding: 12, marginBottom: 24, border: "1px solid rgba(0,0,0,0.05)", display: "flex", gap: 12, alignItems: "center" }}>
-                    <PostThumbnailImage src={selectedItem.postThumbnail} platform={selectedItem.platform} postId={selectedItem.postId} size={56} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--slate)", textTransform: "capitalize", marginBottom: 2 }}>Replying to {selectedItem.platform} Post</div>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{selectedItem.postTitle}</div>
-                    </div>
+              {/* Chat Thread Messages */}
+              <div ref={chatScrollRef} style={{ flex: 1, padding: "20px 28px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 16, background: "#ffffff" }}>
+                {threadLoading ? (
+                  <div style={{ display: "flex", justifyContent: "center", padding: 24, color: "var(--slate)" }}>
+                    <Loader2 size={20} className="animate-spin" />
                   </div>
-
-                  {/* Original Message and Replies */}
-                  {threadLoadingId === selectedItem.id ? (
-                    <div style={{ display: "flex", justifyContent: "center", padding: 24, color: "var(--slate)" }}>
-                      <Loader2 size={22} className="animate-spin" />
+                ) : (
+                  <>
+                    {/* Date separator chip */}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", margin: "4px 0 12px", position: "relative" }}>
+                      <div style={{ position: "absolute", left: 0, right: 0, height: 1, background: "#f1f5f9", zIndex: 0 }} />
+                      <span style={{ position: "relative", zIndex: 1, background: "#ffffff", padding: "3px 14px", border: "1px solid #e2e8f0", borderRadius: 14, fontSize: 11.5, fontWeight: 600, color: "#64748b", boxShadow: "0 1px 2px rgba(0,0,0,0.02)" }}>
+                        {formatDateHeader(selectedItem.createdAt)}
+                      </span>
                     </div>
-                  ) : (selectedItem.replies?.length > 0 ? selectedItem.replies : [selectedItem]).map((msg, idx, arr) => {
-                    const isSelf = msg.isSelf || false;
-                    const rawText = msg.text || selectedItem.text || "";
-                    const msgText = rawText.trim() === "" ? "[📸 Media Attachment]" : rawText;
-                    const nextMsg = arr[idx + 1];
-                    const isLastInGroup = !nextMsg || nextMsg.isSelf !== isSelf;
 
-                    return (
-                      <div key={msg.id || idx} style={{ display: "flex", gap: 8, alignItems: "flex-end", flexDirection: isSelf ? "row-reverse" : "row", width: "100%", marginBottom: isLastInGroup ? 16 : 2 }}>
-                        {!isSelf && (
-                          <div style={{ flexShrink: 0, width: 28, height: 28 }}>
-                            {isLastInGroup && (
-                              <AuthorAvatar src={selectedItem.authorAvatar} name={selectedItem.authorName} size={28} />
-                            )}
-                          </div>
-                        )}
-                        <div style={{ display: "flex", flexDirection: "column", alignItems: isSelf ? "flex-end" : "flex-start", maxWidth: "75%" }}>
+                    {(selectedItem.replies?.length > 0 ? selectedItem.replies : [selectedItem]).map((msg, idx) => {
+                      const isSelf = msg.isSelf || false;
+                      let text = (msg.text !== undefined && msg.text !== null ? msg.text : (msg.body || "")).trim();
+                      let imageUrl = msg.imageUrl || msg.mediaUrl || msg.rawPayload?.imageUrl || msg.rawPayload?.image_url || null;
+                      let buttons = (msg.buttons && msg.buttons.length) ? msg.buttons : (msg.rawPayload?.buttons || []);
+
+                      // Extract template card properties if JSON string
+                      if (text && text.startsWith("{")) {
+                        try {
+                          const parsed = JSON.parse(text);
+                          const el = parsed.elements?.[0] || {};
+                          text = el.title || "";
+                          if (el.subtitle) text += "\n" + el.subtitle;
+                          if (el.image_url && !imageUrl) imageUrl = el.image_url;
+                          if (el.buttons && el.buttons.length && !buttons.length) buttons = el.buttons;
+                        } catch {}
+                      }
+
+                      // Extract Cloudinary image link from text if present
+                      if (!imageUrl && text) {
+                        const match = text.match(/(https?:\/\/[^\s]+(?:\.(?:png|jpg|jpeg|webp|gif)|res\.cloudinary\.com\/[^\s]+)[^\s]*)/i);
+                        if (match) {
+                          imageUrl = match[0];
+                          text = text.split(imageUrl).join("").trim();
+                        }
+                      }
+
+                      // Never render phantom messages with no content
+                      if (!text && !imageUrl && buttons.length === 0) {
+                        return null;
+                      }
+
+                      // Special handling for subtle automation system notice
+                      const isAttributionNotice = text && /^⚡\s*Automation is/i.test(text);
+                      if (isAttributionNotice) {
+                        return (
                           <div
+                            key={msg.id || idx}
                             style={{
-                              background: isSelf ? "var(--arc, #ff5600)" : "#efefef",
-                              color: isSelf ? "#ffffff" : "var(--ink)",
-                              padding: "10px 16px",
-                              borderRadius: 22,
-                              borderBottomRightRadius: isSelf && isLastInGroup ? 4 : 22,
-                              borderBottomLeftRadius: !isSelf && isLastInGroup ? 4 : 22,
-                              fontSize: 15,
-                              lineHeight: 1.4,
-                              wordBreak: "break-word"
+                              alignSelf: "center",
+                              margin: "2px 0",
+                              padding: "3px 12px",
+                              background: "#f8fafc",
+                              border: "1px solid #e2e8f0",
+                              borderRadius: 12,
+                              fontSize: 11,
+                              fontWeight: 600,
+                              color: "#64748b",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4,
                             }}
                           >
-                            {msgText}
+                            {text}
+                          </div>
+                        );
+                      }
+
+                      const authorAvatarUrl = isSelf ? (user?.profilePicture || null) : selectedItem.authorAvatar;
+                      const msgTimeStr = formatMsgTime(msg.createdAt || selectedItem.createdAt);
+
+                      return (
+                        <div
+                          key={msg.id || idx}
+                          style={{
+                            display: "flex",
+                            flexDirection: isSelf ? "row-reverse" : "row",
+                            gap: 8,
+                            alignItems: "flex-end",
+                            maxWidth: "75%",
+                            alignSelf: isSelf ? "flex-end" : "flex-start",
+                          }}
+                        >
+                          {!isSelf && <AuthorAvatar src={authorAvatarUrl} name={selectedItem.authorName} size={28} />}
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: isSelf ? "flex-end" : "flex-start" }}>
+                            {/* Minimal Message Bubble */}
+                            <div
+                              style={{
+                                background: isSelf ? "#f1f3fd" : "#f3f4f6",
+                                color: "#1e293b",
+                                padding: "12px 16px",
+                                borderRadius: 16,
+                                borderBottomRightRadius: isSelf ? 4 : 16,
+                                borderBottomLeftRadius: !isSelf ? 4 : 16,
+                                fontSize: 13.5,
+                                lineHeight: 1.5,
+                                wordBreak: "break-word",
+                                boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+                              }}
+                            >
+                              {/* Cloudinary or Attached Image */}
+                              {imageUrl && (
+                                <a href={imageUrl} target="_blank" rel="noreferrer" style={{ display: "block", marginBottom: text ? 8 : 0 }}>
+                                  <img
+                                    src={imageUrl}
+                                    alt="Attachment"
+                                    referrerPolicy="no-referrer"
+                                    style={{
+                                      width: "100%",
+                                      maxWidth: 320,
+                                      maxHeight: 220,
+                                      borderRadius: 10,
+                                      objectFit: "cover",
+                                      display: "block",
+                                    }}
+                                  />
+                                </a>
+                              )}
+
+                              {/* Message Text */}
+                              {text && <div style={{ whiteSpace: "pre-wrap" }}>{text}</div>}
+
+                              {/* Interactive Buttons */}
+                              {buttons.length > 0 && (
+                                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
+                                  {buttons.map((btn, bIdx) => (
+                                    <div
+                                      key={bIdx}
+                                      style={{
+                                        background: "#ffffff",
+                                        border: "1px solid #dcdfe4",
+                                        padding: "7px 14px",
+                                        borderRadius: 8,
+                                        fontSize: 12.5,
+                                        fontWeight: 600,
+                                        textAlign: "center",
+                                        color: "#2563eb",
+                                        boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+                                      }}
+                                    >
+                                      {btn.title || btn.payload || "Interactive Button"}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Optional subtle timestamp */}
+                            {msgTimeStr && (
+                              <span style={{ fontSize: 10.5, color: "#94a3b8", marginTop: 3, paddingLeft: 4, paddingRight: 4 }}>
+                                {msgTimeStr}
+                              </span>
+                            )}
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* ── Composer Area ── */}
-              <div style={{ background: "#ffffff", padding: "12px 16px 24px", flexShrink: 0, zIndex: 10, borderTop: "1px solid rgba(0,0,0,0.06)" }}>
-                
-                {/* Copilot Suggestions */}
-                <div className="no-scrollbar" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, overflowX: "auto", paddingBottom: 4 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--arc)", display: "flex", alignItems: "center", gap: 4, flexShrink: 0, paddingRight: 4 }}>
-                    <Sparkles size={14} /> AI
-                  </div>
-                  {["Friendly", "Professional", "Quick Thanks"].map(mood => (
-                    <button
-                      key={mood}
-                      onClick={() => handleAiCopilot(mood.toLowerCase().replace(" ", "_"))}
-                      disabled={generatingAi}
-                      style={{
-                        padding: "6px 14px",
-                        borderRadius: 20,
-                        background: "#f1f5f9",
-                        border: "none",
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: "var(--ink)",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 6,
-                        flexShrink: 0,
-                        transition: "background 0.2s"
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = "#e2e8f0"}
-                      onMouseLeave={(e) => e.currentTarget.style.background = "#f1f5f9"}
-                    >
-                      {generatingAi ? <Loader2 size={12} className="animate-spin" /> : mood}
-                    </button>
-                  ))}
-                </div>
-
-                {replyErrorMsg && (
-                  <div style={{ color: "#dc2626", fontSize: 12, marginBottom: 8, display: "flex", alignItems: "center", gap: 4 }}>
-                    <AlertCircle size={14} /> {replyErrorMsg}
-                  </div>
+                      );
+                    })}
+                  </>
                 )}
-
-                <div style={{ display: "flex", alignItems: "flex-end", gap: 10, background: "#f1f5f9", padding: "10px 16px", borderRadius: 24 }}>
-                  <textarea
-                    rows={1}
-                    placeholder="Message..."
-                    value={replyText}
-                    onChange={(e) => {
-                      setReplyText(e.target.value);
-                      e.target.style.height = "auto";
-                      e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
-                    }}
-                    style={{
-                      flex: 1,
-                      border: "none",
-                      outline: "none",
-                      resize: "none",
-                      fontSize: 15,
-                      fontFamily: "inherit",
-                      background: "transparent",
-                      padding: "4px 0",
-                      maxHeight: 120,
-                      color: "var(--ink)",
-                      lineHeight: 1.4
-                    }}
-                  />
-                  {replyText.trim() ? (
-                    <button
-                      onClick={handleSendReply}
-                      disabled={sendingReply}
-                      style={{
-                        background: "transparent",
-                        border: "none",
-                        color: "var(--link, #0095f6)",
-                        fontSize: 15,
-                        fontWeight: 700,
-                        cursor: sendingReply ? "default" : "pointer",
-                        padding: "4px 4px 4px 12px",
-                        flexShrink: 0,
-                        transition: "opacity 0.2s",
-                        opacity: sendingReply ? 0.5 : 1
-                      }}
-                    >
-                      {sendingReply ? <Loader2 size={18} className="animate-spin" /> : "Send"}
-                    </button>
-                  ) : null}
-                </div>
               </div>
-            </div>
+
+              {/* ── Reply Composer ── */}
+              <div style={{ background: "#ffffff", padding: "12px 20px 20px", borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+                {isAccountDisconnected ? (
+                  <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 12, padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#9a3412", fontWeight: 600 }}>
+                      <AlertCircle size={16} color="#ea580c" />
+                      Account Disconnected (Read-only)
+                    </div>
+                    <Link to="/connect" style={{ background: "#ea580c", color: "#fff", padding: "6px 12px", borderRadius: 6, fontSize: 12, fontWeight: 700, textDecoration: "none" }}>
+                      Reconnect
+                    </Link>
+                  </div>
+                ) : (
+                  <>
+                    {/* Quick AI Suggestions */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--arc)", display: "flex", alignItems: "center", gap: 4 }}>
+                        <Sparkles size={13} /> AI:
+                      </span>
+                      {["Friendly", "Professional", "Quick Thanks"].map((mood) => (
+                        <button
+                          key={mood}
+                          onClick={() => handleAiCopilot(mood.toLowerCase().replace(" ", "_"))}
+                          disabled={generatingAi}
+                          style={{
+                            padding: "4px 10px",
+                            borderRadius: 14,
+                            background: "#f1f5f9",
+                            border: "none",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {generatingAi ? <Loader2 size={10} className="animate-spin" /> : mood}
+                        </button>
+                      ))}
+                    </div>
+
+                    {replyErrorMsg && (
+                      <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", color: "#c2410c", padding: "6px 12px", borderRadius: 8, fontSize: 12, marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <span>{replyErrorMsg}</span>
+                        <button type="button" onClick={() => setReplyErrorMsg(null)} style={{ background: "transparent", border: "none", cursor: "pointer", color: "#c2410c" }}>
+                          <X size={13} />
+                        </button>
+                      </div>
+                    )}
+
+                    <div style={{ display: "flex", alignItems: "flex-end", gap: 8, background: "#f1f5f9", padding: "8px 14px", borderRadius: 20 }}>
+                      <textarea
+                        rows={1}
+                        placeholder="Write a message..."
+                        value={replyText}
+                        onChange={(e) => {
+                          setReplyText(e.target.value);
+                          e.target.style.height = "auto";
+                          e.target.style.height = `${Math.min(e.target.scrollHeight, 100)}px`;
+                        }}
+                        style={{ flex: 1, border: "none", outline: "none", resize: "none", fontSize: 14, background: "transparent", color: "var(--ink)", lineHeight: 1.4 }}
+                      />
+                      {replyText.trim() && (
+                        <button
+                          onClick={handleSendReply}
+                          disabled={sendingReply}
+                          style={{ background: "transparent", border: "none", color: "var(--arc, #ff5600)", fontWeight: 700, fontSize: 14, cursor: "pointer" }}
+                        >
+                          {sendingReply ? <Loader2 size={16} className="animate-spin" /> : "Send"}
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            </>
           ) : (
             <div style={{ height: "100%", display: "grid", placeItems: "center", color: "var(--slate)" }}>
               <div style={{ textAlign: "center" }}>
-                <MessagesSquare size={64} strokeWidth={1} style={{ margin: "0 auto 16px", color: "var(--ink)" }} />
-                <div style={{ fontSize: 20, fontWeight: 700, color: "var(--ink)" }}>Your Messages</div>
-                <div style={{ fontSize: 14, marginTop: 8 }}>Select a conversation to start chatting</div>
+                <MessagesSquare size={48} strokeWidth={1.5} style={{ margin: "0 auto 12px", color: "var(--ink)" }} />
+                <div style={{ fontSize: 17, fontWeight: 700, color: "var(--ink)" }}>Your Messages</div>
+                <div style={{ fontSize: 13, marginTop: 4 }}>Select a conversation to view chat history</div>
               </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* ── Meta 24-Hour Policy Modal ── */}
+      <AnimatePresence>
+        {showWindowPolicyModal && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 100,
+              display: "grid",
+              placeItems: "center",
+              padding: 16,
+              background: "rgba(0, 0, 0, 0.45)",
+              backdropFilter: "blur(4px)",
+            }}
+            onClick={() => setShowWindowPolicyModal(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: "#ffffff",
+                borderRadius: 16,
+                maxWidth: 440,
+                width: "100%",
+                padding: "20px",
+                boxShadow: "0 20px 40px rgba(0,0,0,0.15)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 14,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 15, fontWeight: 700 }}>
+                  <Clock size={18} color="#ea580c" /> Meta 24-Hour Policy
+                </div>
+                <button type="button" onClick={() => setShowWindowPolicyModal(false)} style={{ background: "transparent", border: "none", cursor: "pointer" }}>
+                  <X size={16} />
+                </button>
+              </div>
+              <div style={{ fontSize: 13, color: "#4b5563", lineHeight: 1.5 }}>
+                Meta allows API responses only within <strong>24 hours</strong> of the customer&apos;s latest message. To resume chatting, the user can message your account again.
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowWindowPolicyModal(false)}
+                style={{ background: "#ea580c", color: "#ffffff", border: "none", padding: "8px 16px", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}
+              >
+                Got it
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

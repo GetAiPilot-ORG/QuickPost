@@ -222,8 +222,9 @@ export default function ImageCropperModal({ isOpen, onClose, file, onSave, defau
       canvas.toBlob(
         (blob) => {
           if (blob) {
-            const croppedFile = new File([blob], file.name, {
-              type: file.type || "image/jpeg",
+            const fileName = typeof file?.name === "string" ? file.name : "cover.jpg";
+            const croppedFile = new File([blob], fileName, {
+              type: file?.type || "image/jpeg",
               lastModified: Date.now(),
             });
             onSave(croppedFile);

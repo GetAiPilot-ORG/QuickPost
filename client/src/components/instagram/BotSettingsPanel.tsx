@@ -17,7 +17,7 @@ export default function BotSettingsPanel({ analytics }: { analytics?: any }) {
           <BarChart3 className="h-5 w-5 text-[var(--ink)]" />
         </span>
         <div>
-          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[var(--arc)]">Analytics</p>
+          <p className="text-xs font-semibold text-[var(--arc)]">Analytics</p>
           <h2 className="text-lg font-semibold text-[var(--ink)]">Last 30 days</h2>
         </div>
       </div>
@@ -25,7 +25,7 @@ export default function BotSettingsPanel({ analytics }: { analytics?: any }) {
         {stats.map(([label, value]) => (
           <div key={label} className="rounded-lg border border-black/10 bg-[#f8f6f3] p-3">
             <div className="text-xl font-semibold text-[var(--ink)]">{value}</div>
-            <div className="mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-[var(--slate)]">{label}</div>
+            <div className="mt-1 text-xs font-medium text-[var(--slate)]">{label}</div>
           </div>
         ))}
       </div>

@@ -412,6 +412,13 @@ router.get('/broadcasts', authenticateUser, async (req, res) => {
       console.warn('[BROADCASTS] Live Meta API sync error:', metaErr.message);
     }
 
+    // ── Strictly sort newest-first so freshly published posts are at the top ──
+    broadcasts.sort((a, b) => {
+      const timeA = new Date(a.posted_at || a.created_at || a.scheduled_for || 0).getTime();
+      const timeB = new Date(b.posted_at || b.created_at || b.scheduled_for || 0).getTime();
+      return timeB - timeA;
+    });
+
     res.json({
       success: true,
       broadcasts,

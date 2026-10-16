@@ -23,7 +23,12 @@ function SSOPage() {
     const controller = new AbortController();
 
     const processSSO = async () => {
-      const token = new URLSearchParams(window.location.search).get('token');
+      const searchParams = new URLSearchParams(window.location.search);
+      const token = searchParams.get('token');
+      const requestedReturnTo = searchParams.get('returnTo');
+      const returnTo = requestedReturnTo && /^\/dashboard(?:\/|$)/.test(requestedReturnTo)
+        ? requestedReturnTo
+        : '/dashboard';
 
       if (token) {
         try {
@@ -34,7 +39,7 @@ function SSOPage() {
 
           const { data: { session } } = await supabase.auth.getSession();
           if (session && session.user?.email === ssoEmail) {
-            navigate('/dashboard', { replace: true });
+            navigate(returnTo, { replace: true });
             return;
           }
 
@@ -47,7 +52,7 @@ function SSOPage() {
       } else {
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
-          navigate('/dashboard', { replace: true });
+          navigate(returnTo, { replace: true });
           return;
         }
 
@@ -76,6 +81,7 @@ function SSOPage() {
           return;
         }
 
+        sessionStorage.setItem('qp_sso_return_to', returnTo);
         setMessage('Redirecting to your workspace…');
         window.location.href = data.magic_link_url;
 
