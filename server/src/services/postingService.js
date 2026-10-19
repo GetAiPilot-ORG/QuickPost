@@ -62,16 +62,18 @@ export async function executeBroadcast(broadcastId, userId, caption, mediaUrls, 
     for (const account of resolveSocialPublishChannels('pinterest', channels, tokens.pinterestAccounts || [])) {
       const resolvedCaption = resolveMentions(platData?.pinterest?.title || caption, 'pinterest', account);
       const targetAccountId = account.accountId || account.account_id || account.id;
+      const pinterestMediaUrl = (isVideo && coverImageUrl) ? coverImageUrl : primaryMediaUrl;
       platformPromises.push(
         (async () => {
           try {
-            const validTokenInfo = await pinterestOAuth.getValidAccessToken(user.userId, targetAccountId);
+            const validTokenInfo = await pinterestOAuth.getValidAccessToken(userId, targetAccountId);
+            const chosenBoard = (platData?.pinterest?.boardId && platData?.pinterest?.boardId !== 'default' ? platData.pinterest.boardId : null) || validTokenInfo.boardId || account.boardId;
             const activeAccount = {
               ...account,
               accessToken: validTokenInfo.accessToken,
-              boardId: platData?.pinterest?.boardId || validTokenInfo.boardId || account.boardId
+              boardId: chosenBoard
             };
-            const result = await postToPinterest(primaryMediaUrl, resolvedCaption, activeAccount, platData?.pinterest?.link, activeAccount.boardId, options?.broadcastId || null);
+            const result = await postToPinterest(pinterestMediaUrl, resolvedCaption, activeAccount, platData?.pinterest?.link, activeAccount.boardId, broadcastId || null);
             return { platform: account.channel, result };
           } catch (err) {
             return {

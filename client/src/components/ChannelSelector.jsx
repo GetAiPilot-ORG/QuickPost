@@ -32,7 +32,6 @@ const PLATFORMS = [
   {
     id: 'pinterest', name: 'Pinterest', borderColor: 'border-red-600',
     icon: <img src="/icons/pinterest-round-color-icon.svg" className="w-8 h-8 object-contain" alt="Pinterest" />,
-    comingSoon: true,
   },
   {
     id: 'bluesky', name: 'Bluesky', borderColor: 'border-blue-500',

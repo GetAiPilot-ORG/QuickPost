@@ -1,6 +1,7 @@
 import express from "express";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
+import fs from "fs";
 
 import googleOAuth from "../services/googleOAuth.js";
 import googleBusinessOAuth from "../services/googleBusinessOAuth.js";
@@ -536,11 +537,19 @@ router.get("/pinterest", async (req, res) => {
 });
 
 router.get("/pinterest/callback", async (req, res) => {
-  const { code, error, state } = req.query;
+  const { code, error, state, error_description } = req.query;
 
-  if (error) return res.redirect(`${CLIENT_URL}/dashboard?error=access_denied`);
-  if (!code || !state)
+  if (error) {
+    const errorMsg = error_description || error;
+    console.error("❌ [PINTEREST-OAUTH] Provider returned error:", errorMsg);
+    try {
+      fs.appendFileSync('/tmp/pinterest_oauth.log', `[${new Date().toISOString()}] Provider error: ${errorMsg}\n`);
+    } catch (e) {}
+    return res.redirect(`${CLIENT_URL}/dashboard?error=access_denied&details=${encodeURIComponent(errorMsg)}`);
+  }
+  if (!code || !state) {
     return res.redirect(`${CLIENT_URL}/dashboard?error=invalid_callback`);
+  }
 
   const parsed = decodeState(state);
 
@@ -553,6 +562,9 @@ router.get("/pinterest/callback", async (req, res) => {
     Date.now() - parsed.ts > FIFTEEN_MINUTES_MS
   ) {
     console.error("❌ [PINTEREST-OAUTH] State validation failed (expired state, invalid provider, or user mismatch)");
+    try {
+      fs.appendFileSync('/tmp/pinterest_oauth.log', `[${new Date().toISOString()}] State validation failed: ${JSON.stringify(parsed)}\n`);
+    } catch (e) {}
     return res.redirect(`${CLIENT_URL}/dashboard?error=invalid_state`);
   }
 
@@ -560,11 +572,18 @@ router.get("/pinterest/callback", async (req, res) => {
     const tokenData = await pinterestOAuth.exchangeCodeForToken(code);
     await pinterestOAuth.storeTokens(parsed.userId, tokenData);
     notifyAccountConnected(parsed.userId, "Pinterest", tokenData.username);
+    try {
+      fs.appendFileSync('/tmp/pinterest_oauth.log', `[${new Date().toISOString()}] Success for user ${parsed.userId} (@${tokenData.username})\n`);
+    } catch (e) {}
 
     res.redirect(`${CLIENT_URL}/dashboard?success=pinterest_connected`);
   } catch (err) {
-    console.error("❌ [PINTEREST-OAUTH] Callback error:", err.message || err);
-    res.redirect(`${CLIENT_URL}/dashboard?error=pinterest_connection_failed`);
+    const details = err.message || String(err);
+    console.error("❌ [PINTEREST-OAUTH] Callback error:", details);
+    try {
+      fs.appendFileSync('/tmp/pinterest_oauth.log', `[${new Date().toISOString()}] Callback error: ${details}\n`);
+    } catch (e) {}
+    res.redirect(`${CLIENT_URL}/dashboard?error=pinterest_connection_failed&details=${encodeURIComponent(details)}`);
   }
 });
 
@@ -1073,99 +1092,55 @@ router.post("/linkedin/connect", authenticateUser, async (req, res) => {
   }
 });
 
-/* ---------------- PINTEREST MANUAL CONNECT ---------------- */
+/* ---------------- PINTEREST BOARDS ---------------- */
 
-// Pinterest manual connection with access token
-router.post("/pinterest/connect", authenticateUser, async (req, res) => {
+// Fetch live Pinterest boards for the authenticated user
+router.get("/pinterest/boards", authenticateUser, async (req, res) => {
   try {
-    const isManualAllowed = process.env.NODE_ENV !== 'production' || process.env.ALLOW_MANUAL_PINTEREST_TOKEN === 'true';
-    if (!isManualAllowed) {
-      return res.status(403).json({
-        success: false,
-        error: "Manual token connection is disabled in production. Please use official Pinterest OAuth.",
-      });
+    const { accountId } = req.query;
+    const validTokenInfo = await pinterestOAuth.getValidAccessToken(req.user.userId, accountId);
+    if (!validTokenInfo || !validTokenInfo.accessToken) {
+      return res.status(400).json({ success: false, error: "Pinterest account not connected" });
     }
 
-    const { accessToken, boardId } = req.body;
-    const userId = req.user.userId;
-
-    if (!accessToken) {
-      return res.status(400).json({
-        success: false,
-        error: "Pinterest access token is required",
-      });
-    }
-
-    console.log("\n📌 Pinterest: Connecting account with manual token...");
-    console.log("User ID:", userId);
-    console.log("Token preview:", accessToken.substring(0, 20) + "...");
-
-    // Get user info from Pinterest API
-    const userInfo = await pinterestOAuth.getUserInfo(accessToken);
-
-    // Get boards
-    let boards = [];
-    try {
-      boards = await pinterestOAuth.getBoards(accessToken);
-    } catch (boardError) {
-      console.warn(
-        "⚠️ Could not fetch Pinterest boards during connect:",
-        boardError.message,
-      );
-    }
-
-    // Use provided boardId or first board
-    let targetBoardId = boardId;
-    let targetBoardName = null;
-
-    if (!targetBoardId && boards && boards.length > 0) {
-      targetBoardId = boards[0].id;
-      targetBoardName = boards[0].name;
-    } else if (targetBoardId && boards && boards.length > 0) {
-      const foundBoard = boards.find((b) => b.id === targetBoardId);
-      targetBoardName = foundBoard?.name || null;
-    }
-
-    // Store tokens
-    await pinterestOAuth.storeTokens(userId, {
-      accessToken,
-      refreshToken: null, // Manual tokens don't have refresh
-      boardId: targetBoardId,
-      boardName: targetBoardName,
-      userInfo: {
-        username: userInfo.username || userInfo.account_type || "User",
-        profileImage:
-          userInfo.profile_image || userInfo.profile_image_url || null,
-      },
-    });
-
+    const boards = await pinterestOAuth.getBoards(validTokenInfo.accessToken);
     res.json({
       success: true,
-      message: "Pinterest account connected successfully",
-      username: userInfo.username,
-      boardId: targetBoardId,
-      boardName: targetBoardName,
+      boards: boards.map((b) => ({ id: b.id, name: b.name })),
+      defaultBoardId: validTokenInfo.boardId || (boards[0] ? boards[0].id : null),
     });
   } catch (error) {
-    console.error("❌ Pinterest connect error:", error);
-    console.error("Full error response:", error.response?.data);
-
-    // Provide more detailed error messages
-    let errorMessage = error.message || "Failed to connect Pinterest account";
-
-    if (error.response?.data?.message) {
-      errorMessage = error.response.data.message;
-    }
-
-    if (error.response?.data?.code === 1) {
-      errorMessage =
-        "Consumer app type not supported. Please create a Business or Creator+Advertiser app on Pinterest Developers Console and regenerate your access token.";
-    }
-
+    console.error("❌ [PINTEREST] Error fetching boards:", error.message);
     res.status(500).json({
       success: false,
-      error: errorMessage,
-      details: error.response?.data,
+      error: error.message || "Failed to fetch Pinterest boards",
+    });
+  }
+});
+
+// Create a new board on Pinterest
+router.post("/pinterest/boards", authenticateUser, async (req, res) => {
+  try {
+    const { name, description, accountId } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, error: "Board name is required" });
+    }
+
+    const validTokenInfo = await pinterestOAuth.getValidAccessToken(req.user.userId, accountId);
+    if (!validTokenInfo || !validTokenInfo.accessToken) {
+      return res.status(400).json({ success: false, error: "Pinterest account not connected" });
+    }
+
+    const newBoard = await pinterestOAuth.createBoard(validTokenInfo.accessToken, name.trim(), description || "");
+    res.json({
+      success: true,
+      board: { id: newBoard.id, name: newBoard.name },
+    });
+  } catch (error) {
+    console.error("❌ [PINTEREST] Error creating board:", error.message);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to create Pinterest board",
     });
   }
 });

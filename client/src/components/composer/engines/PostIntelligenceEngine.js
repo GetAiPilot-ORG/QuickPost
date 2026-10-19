@@ -58,6 +58,7 @@ export function PostIntelligenceEngine(ctx) {
     mediaFiles = [],
     platformData = {},
     youtubeThumbnail = null,
+    instagramCover = null,
     postType = "post",
     caption = "",
     scheduledAt = "",
@@ -175,20 +176,34 @@ export function PostIntelligenceEngine(ctx) {
      PINTEREST RULES
      ──────────────────────────────────────────────────────────── */
   if (hasPlatform("pinterest")) {
-    if (!platformData?.pinterest?.title?.trim()) {
+    if (!platformData?.pinterest?.title?.trim() && !caption.trim()) {
       warnings.push({
         id: RULE.PINTEREST_TITLE,
         platform: "pinterest",
         title: "Pinterest title required",
-        message: "Pinterest par Pin ke liye ek descriptive title add karna zaroori hai.",
+        message: "Pinterest par Pin ke liye title ya caption add karna zaroori hai.",
       });
     }
-    if (!platformData?.pinterest?.boardId) {
+    const hasPinterestDefault = Boolean(
+      platformData?.pinterest?.boardId ||
+      connectedAccounts?.pinterestAccounts?.[0]?.boardId ||
+      connectedAccounts?.pinterestAccounts?.[0]?.profileData?.boardId ||
+      connectedAccounts?.pinterestAccounts?.[0]?.profile_data?.boardId
+    );
+    if (!hasPinterestDefault) {
       warnings.push({
         id: RULE.PINTEREST_BOARD,
         platform: "pinterest",
         title: "Pinterest board not selected",
         message: "Pinterest board select karna required hai. Platform Customization mein board choose karein.",
+      });
+    }
+    if (hasVideo && !hasImage && !youtubeThumbnail && !instagramCover) {
+      warnings.push({
+        id: "pinterest_media_format",
+        platform: "pinterest",
+        title: "Pinterest image required",
+        message: "Pinterest Pin ke liye ek image ya cover thumbnail zaroori hai.",
       });
     }
   }

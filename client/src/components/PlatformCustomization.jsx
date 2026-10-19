@@ -1,7 +1,9 @@
-import React, { useState } from "react";
-import { ChevronDown, ChevronUp, Hash, Crop, ExternalLink } from "lucide-react";
+import React, { useState, useEffect, useCallback } from "react";
+import { ChevronDown, ChevronUp, Hash, Crop, ExternalLink, RefreshCw, Plus } from "lucide-react";
 import { PLATFORM_META } from "./composer/data/platforms.js";
 import ImageCropperModal from "./composer/components/ImageCropperModal";
+import { useAuth } from "../context/AuthContext";
+import apiClient from "../utils/apiClient";
 
 function PlatformCustomization({
   selectedChannels,
@@ -15,8 +17,14 @@ function PlatformCustomization({
   onInstagramCoverChange,
   postType,
 }) {
+  const { connectedAccounts } = useAuth();
   const [isCropOpen, setIsCropOpen] = useState(false);
   const [isIgCropOpen, setIsIgCropOpen] = useState(false);
+  const [pinterestBoards, setPinterestBoards] = useState([]);
+  const [loadingBoards, setLoadingBoards] = useState(false);
+  const [newBoardName, setNewBoardName] = useState("");
+  const [isCreatingBoard, setIsCreatingBoard] = useState(false);
+  const [showCreateBoardInput, setShowCreateBoardInput] = useState(false);
 
   const thumbnailPreviewUrl = React.useMemo(() => {
     if (!youtubeThumbnail) return "";
@@ -57,11 +65,12 @@ function PlatformCustomization({
     return ytType === "short" ? "0.5625" : "1.777";
   }, [platformData.youtube?.type]);
 
-  if (selectedChannels.length === 0) return null;
+  const hasPlatform = useCallback(
+    (platform) => (selectedChannels || []).some(ch => String(ch || "").split(":")[0] === platform),
+    [selectedChannels]
+  );
 
-  const hasPlatform = (platform) => selectedChannels.some(ch => String(ch || "").split(":")[0] === platform);
-
-  const handleChange = (platform, field, value) => {
+  const handleChange = useCallback((platform, field, value) => {
     onPlatformDataChange({
       ...platformData,
       [platform]: {
@@ -69,6 +78,60 @@ function PlatformCustomization({
         [field]: value,
       },
     });
+  }, [platformData, onPlatformDataChange]);
+
+  const fetchPinterestBoards = useCallback(async () => {
+    setLoadingBoards(true);
+    try {
+      const res = await apiClient.get('/api/auth/pinterest/boards');
+      if (res.data?.success && Array.isArray(res.data.boards)) {
+        setPinterestBoards(res.data.boards);
+        if (!platformData.pinterest?.boardId && res.data.defaultBoardId) {
+          handleChange("pinterest", "boardId", res.data.defaultBoardId);
+        } else if (!platformData.pinterest?.boardId && res.data.boards[0]) {
+          handleChange("pinterest", "boardId", res.data.boards[0].id);
+        }
+      }
+    } catch (e) {
+      console.warn("Could not fetch live Pinterest boards:", e.message);
+      const cachedBoards = connectedAccounts?.pinterestAccounts?.[0]?.profileData?.boards ||
+                           connectedAccounts?.pinterestAccounts?.[0]?.profile_data?.boards || [];
+      if (cachedBoards.length > 0) {
+        setPinterestBoards(cachedBoards);
+        if (!platformData.pinterest?.boardId) {
+          const defId = connectedAccounts?.pinterestAccounts?.[0]?.boardId || cachedBoards[0]?.id;
+          if (defId) handleChange("pinterest", "boardId", defId);
+        }
+      }
+    } finally {
+      setLoadingBoards(false);
+    }
+  }, [connectedAccounts, platformData.pinterest?.boardId, handleChange]);
+
+  useEffect(() => {
+    if (hasPlatform("pinterest") && pinterestBoards.length === 0) {
+      fetchPinterestBoards();
+    }
+  }, [hasPlatform, fetchPinterestBoards, pinterestBoards.length]);
+
+  if (!selectedChannels || selectedChannels.length === 0) return null;
+
+  const handleCreateBoard = async () => {
+    if (!newBoardName.trim()) return;
+    setIsCreatingBoard(true);
+    try {
+      const res = await apiClient.post('/api/auth/pinterest/boards', { name: newBoardName.trim() });
+      if (res.data?.success && res.data.board) {
+        setPinterestBoards(prev => [...prev, res.data.board]);
+        handleChange("pinterest", "boardId", res.data.board.id);
+        setNewBoardName("");
+        setShowCreateBoardInput(false);
+      }
+    } catch (err) {
+      alert(err.response?.data?.error || err.message || "Failed to create board");
+    } finally {
+      setIsCreatingBoard(false);
+    }
   };
 
   const handleThumbnailChange = (e) => {
@@ -161,9 +224,60 @@ function PlatformCustomization({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Board <span className="text-red-500">*</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Board <span className="text-red-500">*</span>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => fetchPinterestBoards()}
+                        disabled={loadingBoards}
+                        title="Refresh boards from Pinterest"
+                        className="text-xs text-indigo-600 hover:text-indigo-700 font-medium inline-flex items-center gap-1 hover:underline disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${loadingBoards ? 'animate-spin' : ''}`} />
+                        Refresh
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowCreateBoardInput(!showCreateBoardInput)}
+                        className="text-xs text-gray-500 hover:text-gray-700 font-medium inline-flex items-center gap-0.5 hover:underline"
+                      >
+                        <Plus className="w-3 h-3" />
+                        New board
+                      </button>
+                    </div>
+                  </div>
+
+                  {showCreateBoardInput && (
+                    <div className="flex items-center gap-2 mb-2 p-2 bg-gray-50 rounded-lg border border-gray-200">
+                      <input
+                        type="text"
+                        placeholder="New board name..."
+                        value={newBoardName}
+                        onChange={(e) => setNewBoardName(e.target.value)}
+                        className="flex-1 px-2.5 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-indigo-500 bg-white"
+                        disabled={isCreatingBoard}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleCreateBoard}
+                        disabled={isCreatingBoard || !newBoardName.trim()}
+                        className="px-3 py-1.5 bg-[#E60023] hover:bg-[#cc001f] text-white text-xs font-semibold rounded-md disabled:opacity-50"
+                      >
+                        {isCreatingBoard ? "Creating..." : "Create"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowCreateBoardInput(false)}
+                        className="px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+
                   <select
                     value={platformData.pinterest?.boardId || ""}
                     onChange={(e) =>
@@ -172,9 +286,17 @@ function PlatformCustomization({
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-link/20 focus:border-link text-sm"
                   >
                     <option value="">Select a board</option>
-                    <option value="default">Default Board</option>
-                    {/* Additional boards can be fetched from Pinterest API */}
+                    {pinterestBoards.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
                   </select>
+                  {pinterestBoards.length === 0 && !loadingBoards && (
+                    <p className="text-[11px] text-amber-600 mt-1">
+                      No boards found on your Pinterest account. Create one above or on Pinterest.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

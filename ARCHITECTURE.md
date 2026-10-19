@@ -6,6 +6,7 @@
 - `pgvector` is enabled now, with `embedding vector(1536)` reserved for later personalization/tag similarity.
 
 ## Execution
+- Pinterest Trial publishing uses `PINTEREST_API_BASE_URL=https://api-sandbox.pinterest.com/v5`; OAuth exchange, refresh, boards, and Pins must use the same environment. Reconnect after changing environments because production tokens do not authenticate in Sandbox. Standard access is required for production Pin creation.
 - Phase work follows `TODO.md` order.
 - Paid APIs, scraping/ToS risk, Supabase data deletion, or architecture conflicts must stop in `BLOCKERS.md`.
 - Trend source credentials stay server-side in `server/.env`; the frontend only receives Supabase anon config and API base URLs.
