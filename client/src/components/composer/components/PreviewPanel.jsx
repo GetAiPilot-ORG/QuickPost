@@ -526,6 +526,7 @@ const YouTubePreview = memo(
     platformUsername,
     selectedRatio,
     selectedSizePreset,
+    platformData,
   }) => {
     const thumbUrl = useBlobUrl(thumbnailFile);
     const metrics = usePlatformMetrics(caption);
@@ -570,7 +571,7 @@ const YouTubePreview = memo(
               <button style={{ background: "white", color: "black", fontSize: 12, fontWeight: 700, padding: "6px 14px", borderRadius: 20 }}>Subscribe</button>
             </div>
             <p style={{ color: "white", fontSize: 14, margin: 0, lineHeight: 1.4, maxWidth: "80%", fontWeight: 500 }}>
-              {caption || "This is a YouTube Short #shorts"}
+              {platformData?.youtube?.title || caption || "This is a YouTube Short #shorts"}
             </p>
           </div>
           <div style={{ position: "absolute", right: 10, bottom: 60, display: "flex", flexDirection: "column", gap: 24, alignItems: "center" }}>
@@ -638,7 +639,7 @@ const YouTubePreview = memo(
                 lineHeight: 1.4,
               }}
             >
-              {caption || "Video Title"}
+              {platformData?.youtube?.title || caption || "Video Title"}
             </p>
             <p style={{ fontSize: 11, color: "#606060", margin: "4px 0 0" }}>
               {username} • {metrics.views.toLocaleString()} views •{" "}
@@ -1068,6 +1069,7 @@ const PreviewPanel = memo(function PreviewPanel({
   user,
   selectedChannels,
   caption,
+  platformData,
   mediaFiles,
   selectedRatio,
   selectedSizePreset,
@@ -1262,6 +1264,7 @@ const PreviewPanel = memo(function PreviewPanel({
                 platformPicture={platformPicture}
                 selectedRatio={selectedRatio}
                 selectedSizePreset={selectedSizePreset}
+                platformData={platformData}
               />
 
               <p

@@ -408,9 +408,9 @@ export async function startAutoDMInstagramOAuth(user, frontendUrl, authHeader, f
   if (!response.ok) {
     throw new Error(
       payload.details ||
-        payload.error ||
-        payload.message ||
-        `AutoDM OAuth function failed with status ${response.status}`
+      payload.error ||
+      payload.message ||
+      `AutoDM OAuth function failed with status ${response.status}`
     );
   }
 
@@ -678,16 +678,16 @@ export async function getAutoDMStatus(user) {
 
   const activeInstagramIds = validSocialTokens.map(t => t.instagram_business_id || t.page_id);
   const hasSocialInstagramConnection = activeInstagramIds.length > 0;
-  
+
   // Filter removed so all connected accounts are returned
 
   // Auto-sync existing Social Pilot Instagram connection to AutoDM if not already imported
   for (const token of validSocialTokens) {
     const igId = token.instagram_business_id || token.page_id;
-    const isImported = accounts.some(a => 
+    const isImported = accounts.some(a =>
       a.instagram_user_id === igId || a.instagram_business_account_id === igId || a.page_id === igId
     );
-    
+
     if (!isImported && token.access_token) {
       try {
         console.log(`🔄 [AUTODM-AUTO-SYNC] Auto-importing connected Instagram account ${igId} for user ${user.userId}...`);
@@ -705,7 +705,7 @@ export async function getAutoDMStatus(user) {
     .in('user_id', userIds)
     .eq('is_connected', true)
     .order('created_at', { ascending: false });
-    
+
   if (!refreshError && refreshedAccounts) {
     accounts = refreshedAccounts;
   }
@@ -721,7 +721,7 @@ export async function getAutoDMStatus(user) {
       const primaryToken = validSocialTokens[0];
       if (primaryToken) {
         await importInstagramAccountToAutoDM(user, primaryToken.instagram_business_id || primaryToken.page_id);
-        
+
         const { data: repairedAccounts, error: repairError } = await autoDMSupabase
           .from('instagram_accounts')
           .select('*')
@@ -769,12 +769,12 @@ function cleanAutomationPayload(payload = {}, user, { includeUserId = true } = {
 
   const normalizedKeywords = Array.isArray(rest.keywords)
     ? [
-        ...new Set(
-          rest.keywords
-            .map((keyword) => String(keyword || '').trim())
-            .filter(Boolean)
-        ),
-      ]
+      ...new Set(
+        rest.keywords
+          .map((keyword) => String(keyword || '').trim())
+          .filter(Boolean)
+      ),
+    ]
     : undefined;
   const triggerType = String(rest.trigger_type || 'comment_on_post').trim();
   const mediaId = rest.media_id ? String(rest.media_id).trim() : null;
@@ -792,11 +792,11 @@ function cleanAutomationPayload(payload = {}, user, { includeUserId = true } = {
       : {}),
     ...(Object.prototype.hasOwnProperty.call(rest, 'response_flow')
       ? {
-          response_flow:
-            rest.response_flow && typeof rest.response_flow === 'object'
-              ? rest.response_flow
-              : { nodes: [], opening_message_enabled: false, opening_message: '' },
-        }
+        response_flow:
+          rest.response_flow && typeof rest.response_flow === 'object'
+            ? rest.response_flow
+            : { nodes: [], opening_message_enabled: false, opening_message: '' },
+      }
       : {}),
     ...(Object.prototype.hasOwnProperty.call(rest, 'require_follow')
       ? { require_follow: Boolean(rest.require_follow) }
@@ -884,18 +884,18 @@ async function hydrateAutomationMetrics(autoDMSupabase, data) {
   const automationIds = data.map((a) => a.id);
   const mediaIds = data.map((a) => a.media_id).filter(Boolean);
 
-  const [ { data: messages }, { data: webhooks } ] = await Promise.all([
+  const [{ data: messages }, { data: webhooks }] = await Promise.all([
     autoDMSupabase
       .from('messages')
       .select('automation_id, direction')
       .in('automation_id', automationIds),
-    mediaIds.length > 0 
+    mediaIds.length > 0
       ? autoDMSupabase
-          .from('webhook_logs')
-          .select('payload')
-          .eq('event_type', 'comments')
-          .in('payload->value->media->>id', mediaIds)
-          .limit(1000)
+        .from('webhook_logs')
+        .select('payload')
+        .eq('event_type', 'comments')
+        .in('payload->value->media->>id', mediaIds)
+        .limit(1000)
       : { data: [] }
   ]);
 
@@ -1115,7 +1115,7 @@ export async function fetchInstagramMediaForUser(user, limit = 30, targetInstagr
       matchedAccount?.page_id ||
       targetInstagramAccountId;
   }
-  
+
   let accessToken, instagramBusinessId, profileData, originalTokenData;
   try {
     const res = await getDecryptedInstagramToken(userIds, resolvedTargetInstagramAccountId);
@@ -1210,11 +1210,11 @@ export async function fetchInstagramMediaForUser(user, limit = 30, targetInstagr
 
     const mediaUrls = directToken
       ? [
-          `${IG_GRAPH_BASE}/${instagramBusinessId}/media`,
-          `${IG_GRAPH_ROOT}/${instagramBusinessId}/media`,
-          `${IG_GRAPH_BASE}/me/media`,
-          `${IG_GRAPH_ROOT}/me/media`
-        ]
+        `${IG_GRAPH_BASE}/${instagramBusinessId}/media`,
+        `${IG_GRAPH_ROOT}/${instagramBusinessId}/media`,
+        `${IG_GRAPH_BASE}/me/media`,
+        `${IG_GRAPH_ROOT}/me/media`
+      ]
       : [`${getGraphBaseForToken(accessToken)}/${instagramBusinessId}/media`];
     const json = await fetchFirstInstagramGraphJson({
       urls: mediaUrls,
@@ -1728,11 +1728,11 @@ export async function getAutomationAnalytics(user, automationId) {
       .eq('automation_id', automationId),
     automation.media_id
       ? autoDMSupabase
-          .from('webhook_logs')
-          .select('payload, sender_id, ig_id, processing_error, message_text, created_at')
-          .eq('event_type', 'comments')
-          .order('created_at', { ascending: false })
-          .limit(300)
+        .from('webhook_logs')
+        .select('payload, sender_id, ig_id, processing_error, message_text, created_at')
+        .eq('event_type', 'comments')
+        .order('created_at', { ascending: false })
+        .limit(300)
       : { data: [] },
   ]);
 
@@ -1740,11 +1740,11 @@ export async function getAutomationAnalytics(user, automationId) {
   const { data: contactRows } =
     contactIds.length > 0
       ? await autoDMSupabase
-          .from('contacts')
-          .select('id, username, full_name, total_messages_sent, total_messages_received')
-          .in('id', contactIds)
-          .order('updated_at', { ascending: false })
-          .limit(8)
+        .from('contacts')
+        .select('id, username, full_name, total_messages_sent, total_messages_received')
+        .in('id', contactIds)
+        .order('updated_at', { ascending: false })
+        .limit(8)
       : { data: [] };
 
   let webhookCommentCount = 0;

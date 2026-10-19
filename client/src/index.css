@@ -263,7 +263,6 @@ body {
   color: #fff !important;
 }
 
-.qp-sidebar-nav-item > span:first-child,
 .qp-sidebar-connected-item > div:first-child > div,
 .qp-sidebar-channel-button {
   border: 1px solid var(--side-hairline) !important;
@@ -273,19 +272,27 @@ body {
 }
 
 .qp-sidebar-nav-item > span:first-child {
-  width: 26px !important;
-  height: 26px !important;
-  color: var(--side-ink);
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  width: 22px !important;
+  height: 22px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: currentColor !important;
+  padding: 0 !important;
 }
 
 .qp-sidebar svg {
-  stroke-width: 2;
+  stroke-width: 1.8;
 }
 
 .qp-sidebar-nav-item.is-active > span:first-child {
-  border-color: rgba(255, 255, 255, 0.2) !important;
-  background: rgba(255, 255, 255, 0.1) !important;
-  color: #fff;
+  border: none !important;
+  background: transparent !important;
+  color: #fff !important;
 }
 
 .qp-sidebar .sidebar-subnav {
@@ -3292,7 +3299,7 @@ body {
 .autodm-caption-box,
 .autodm-followers-box {
   border: 1px solid #e2e2e2;
-  border-radius: 10px;
+  border-radius: 8px;
   background: white;
 }
 
@@ -4982,7 +4989,7 @@ body {
 .card.autodm-profile-panel,
 .card.autodm-media-card {
   border: 1px solid var(--autodm-hairline);
-  border-radius: 16px;
+  border-radius: 8px;
   background: var(--autodm-surface);
   box-shadow: none;
 }
@@ -5388,7 +5395,7 @@ body {
 .autodm-analytics-card {
   min-height: 108px;
   padding: 18px 20px;
-  border-radius: 12px;
+  border-radius: 8px;
 }
 
 .autodm-analytics-card strong {
@@ -5898,7 +5905,7 @@ textarea:not(.bare-input):focus-visible {
   background-color: #ebe7e1 !important;
 }
 
-[class*="bg-white"] {
+[class*="bg-white"]:not([class*="/"]) {
   background-color: var(--white) !important;
 }
 

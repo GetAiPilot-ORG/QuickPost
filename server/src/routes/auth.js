@@ -233,6 +233,9 @@ router.get("/google/callback", async (req, res) => {
         "YouTube",
         tokenData.userInfo?.username || tokenData.userInfo?.name,
       );
+      if (tokenData.userInfo?.hasChannel === false) {
+        return res.redirect(`${CLIENT_URL}/dashboard?warning=youtube_no_channel`);
+      }
       return res.redirect(`${CLIENT_URL}/dashboard?success=youtube`);
     }
 

@@ -1905,11 +1905,16 @@ export const processAutomationEvent = async (payload: AutomationInput) => {
     logInfo("No automation match", {
       requestId: payload.requestId,
       text: payload.messageText,
+      triggerType: payload.triggerType,
     });
-    await supabase
-      .from("webhook_logs")
-      .update({ processed: true })
-      .eq("dedupe_key", payload.dedupeKey);
+    // For comments that don't match any keyword, mark as processed to close the log.
+    // For DMs, leave processed=false so the InstaPilot AI bot can generate a conversational reply.
+    if (payload.triggerType !== 'dm') {
+      await supabase
+        .from("webhook_logs")
+        .update({ processed: true })
+        .eq("dedupe_key", payload.dedupeKey);
+    }
     return { status: "no_match" as const };
   }
 

@@ -1,6 +1,11 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
-import { CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import {
+  CancelCircleIcon,
+  CheckmarkCircle02Icon,
+  Loading03Icon,
+} from '@hugeicons/core-free-icons';
 
 function AccountCard({ platform, connected, onConnect, onDisconnect, loading }) {
   const platformInfo = {
@@ -46,12 +51,12 @@ function AccountCard({ platform, connected, onConnect, onDisconnect, loading }) 
         <div>
           {connected ? (
             <span className="badge badge-success flex items-center gap-1">
-              <CheckCircle2 className="w-3 h-3" />
+              <HugeiconsIcon icon={CheckmarkCircle02Icon} size={14} strokeWidth={1.8} />
               Connected
             </span>
           ) : (
             <span className="badge badge-error flex items-center gap-1">
-              <XCircle className="w-3 h-3" />
+              <HugeiconsIcon icon={CancelCircleIcon} size={14} strokeWidth={1.8} />
               Not Connected
             </span>
           )}
@@ -71,7 +76,7 @@ function AccountCard({ platform, connected, onConnect, onDisconnect, loading }) 
         >
           {loading ? (
             <span className="flex items-center justify-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <HugeiconsIcon icon={Loading03Icon} size={16} strokeWidth={1.8} className="animate-spin" />
               Disconnecting...
             </span>
           ) : (
@@ -86,7 +91,7 @@ function AccountCard({ platform, connected, onConnect, onDisconnect, loading }) 
         >
           {loading ? (
             <span className="flex items-center justify-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <HugeiconsIcon icon={Loading03Icon} size={16} strokeWidth={1.8} className="animate-spin" />
               Connecting...
             </span>
           ) : (

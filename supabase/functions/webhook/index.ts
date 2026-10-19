@@ -332,13 +332,14 @@ Deno.serve(async (request: Request) => {
             stack: automationError instanceof Error ? automationError.stack : undefined,
           });
 
-          // Ensure processed: true even on error to prevent stuck state, and log the ERROR to DB
+          // Log error to DB. Only mark processed: true for comments to prevent preempting DM AI chatbot
+          const updatePayload: Record<string, unknown> = { processing_error: errorMessage };
+          if (event.triggerType === 'comment') {
+            updatePayload.processed = true;
+          }
           await supabase
             .from('webhook_logs')
-            .update({ 
-              processed: true, 
-              processing_error: errorMessage,
-            })
+            .update(updatePayload)
             .eq('dedupe_key', dedupeKey);
         }
       }

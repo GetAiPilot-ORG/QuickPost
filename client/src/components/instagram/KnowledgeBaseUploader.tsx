@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Database, FileText, Globe2, Layers3, Pencil, Plus, Trash2, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,11 @@ export default function KnowledgeBaseUploader({ botId }: { botId?: string }) {
   const [saving, setSaving] = useState(false);
   const [editingSource, setEditingSource] = useState<any>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const wordCount = useMemo(() => {
+    if (!text || !text.trim()) return 0;
+    return text.trim().split(/\s+/).filter(Boolean).length;
+  }, [text]);
 
   const loadSources = async () => {
     if (!botId) return;
@@ -164,7 +169,28 @@ export default function KnowledgeBaseUploader({ botId }: { botId?: string }) {
           {sourceType === "website" ? (
             <input value={url} onChange={(e) => setUrl(e.target.value)} className="instapilot-input" placeholder="https://example.com/pricing" />
           ) : (
-            <textarea value={text} onChange={(e) => setText(e.target.value)} rows={8} className="instapilot-input" placeholder="Paste FAQs, product data, pricing, booking rules, refund policy, or service details." />
+            <div className="space-y-1.5">
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                rows={9}
+                className={`instapilot-input font-mono text-[13px] leading-5 ${
+                  wordCount > 5000 ? "border-red-400 focus:border-red-500" : ""
+                }`}
+                placeholder="Paste FAQs, product data, pricing, booking rules, refund policy, or service details."
+              />
+              <div className="flex items-center justify-between px-1 text-xs">
+                <span className={wordCount > 5000 ? "font-bold text-red-600" : "text-[var(--slate)]"}>
+                  📝 {wordCount.toLocaleString()} / 5,000 words
+                  {text.length > 0 ? ` (${text.length.toLocaleString()} characters · ~${Math.ceil(text.length / 1200)} chunks)` : ""}
+                </span>
+                {wordCount > 5000 ? (
+                  <span className="font-semibold text-red-600">Exceeds 5,000 words limit</span>
+                ) : (
+                  <span className="text-emerald-700">✓ Optimized for fast RAG</span>
+                )}
+              </div>
+            </div>
           )}
           {!botId ? (
             <div className="rounded-lg border border-dashed border-black/20 bg-[#f8f6f3] p-4 text-sm text-[var(--slate)]">
@@ -172,7 +198,12 @@ export default function KnowledgeBaseUploader({ botId }: { botId?: string }) {
             </div>
           ) : null}
           <div className="flex flex-wrap gap-2">
-          <Button type="button" onClick={saveSource} disabled={saving} className="gap-2 bg-[var(--arc)] text-white hover:bg-[#d95f27]">
+          <Button
+            type="button"
+            onClick={saveSource}
+            disabled={saving || wordCount > 5000}
+            className="gap-2 bg-[var(--arc)] text-white hover:bg-[#d95f27]"
+          >
             <Plus className="h-4 w-4" />
             {saving ? "Processing..." : botId ? (editingSource ? "Update Knowledge" : "Add Knowledge") : "Save Bot First"}
           </Button>

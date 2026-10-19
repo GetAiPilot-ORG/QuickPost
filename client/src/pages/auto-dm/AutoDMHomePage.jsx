@@ -3,28 +3,28 @@ import { useNavigate } from 'react-router-dom';
 import { useAutoDM } from '../../context/AutoDMContext';
 import { useAuth } from '../../context/AuthContext';
 import InfoHelp from '../../components/InfoHelp';
+import { HugeiconsIcon } from '@hugeicons/react';
 import {
-  AlertCircle,
-  ArrowRight,
-  Calendar,
-  ChevronDown,
-  Eye,
-  MessageSquare,
-  MousePointer,
-  Plus,
-  Reply,
-  Send,
-  ShieldCheck,
-  TrendingUp,
-  Users,
-  Zap,
-} from 'lucide-react';
+  Add01Icon,
+  AlertCircleIcon,
+  ArrowRight02Icon,
+  Calendar03Icon,
+  ChevronDownIcon,
+  Comment01Icon,
+  CursorPointer01Icon,
+  EyeIcon,
+  ReplyIcon,
+  SentIcon,
+  ShieldCheckIcon,
+  TradeUpIcon,
+  UserGroupIcon,
+} from '@hugeicons/core-free-icons';
 
 const quickActions = [
-  { title: 'Auto DM from Comments', description: 'Send DMs to users who comment on your posts', icon: MessageSquare, href: '/dashboard/auto-dm/automations/new?trigger=comment_on_post', badge: 'POPULAR' },
-  { title: 'Grow Followers', description: 'Increase followers with automated engagement', icon: TrendingUp, href: '/dashboard/auto-dm/automations/new?trigger=dm_received', badge: 'TRENDING' },
-  { title: 'Generate Leads', description: 'Capture leads from your Instagram DMs', icon: Users, href: '/dashboard/auto-dm/automations/new?type=lead' },
-  { title: 'Auto-reply DMs', description: 'Never miss a message with auto responses', icon: Reply, href: '/dashboard/auto-dm/automations/new?trigger=dm_received' },
+  { title: 'Auto DM from Comments', description: 'Send DMs to users who comment on your posts', icon: Comment01Icon, href: '/dashboard/auto-dm/automations/new?trigger=comment_on_post', badge: 'POPULAR' },
+  { title: 'Grow Followers', description: 'Increase followers with automated engagement', icon: TradeUpIcon, href: '/dashboard/auto-dm/automations/new?trigger=dm_received', badge: 'TRENDING' },
+  { title: 'Generate Leads', description: 'Capture leads from your Instagram DMs', icon: UserGroupIcon, href: '/dashboard/auto-dm/automations/new?type=lead' },
+  { title: 'Auto-reply DMs', description: 'Never miss a message with auto responses', icon: ReplyIcon, href: '/dashboard/auto-dm/automations/new?trigger=dm_received' },
 ];
 
 const dateOptions = [
@@ -33,10 +33,10 @@ const dateOptions = [
   { value: '90', label: 'Last 90 days' },
 ];
 
-function Metric({ label, value, icon: Icon, loading, info }) {
+function Metric({ label, value, icon, loading, info }) {
   return (
     <div className="autodm-home-metric">
-      <Icon size={20} />
+      <HugeiconsIcon icon={icon} size={20} strokeWidth={1.8} />
       <p className="inline-flex items-center gap-1">
         {label}
         {info && <InfoHelp text={info} />}
@@ -112,7 +112,7 @@ export default function AutoDMHomePage() {
         <h1>Set Up GAP AutoDM</h1>
         <p>Link Instagram once from Social Pilot. The same official connection powers AutoDM, autoposting, and InstaPilot.</p>
         {importError || autoDMStorageError ? (
-          <div className="autodm-warning"><AlertCircle size={16} />{importError || autoDMStorageError}</div>
+          <div className="autodm-warning"><HugeiconsIcon icon={AlertCircleIcon} size={16} strokeWidth={1.8} />{importError || autoDMStorageError}</div>
         ) : null}
         <button
           onClick={hasSocialInstagramConnection ? handleImport : () => navigate('/dashboard')}
@@ -120,7 +120,7 @@ export default function AutoDMHomePage() {
           className="btn-arc"
         >
           {importing ? 'Syncing Instagram...' : hasSocialInstagramConnection ? 'Sync Instagram from Social Pilot' : 'Connect Instagram in Social Pilot'}
-          <ArrowRight size={16} />
+          <HugeiconsIcon icon={ArrowRight02Icon} size={16} strokeWidth={1.8} />
         </button>
       </section>
     );
@@ -138,16 +138,16 @@ export default function AutoDMHomePage() {
         </div>
 
         <button className="autodm-create-btn relative z-10" onClick={() => navigate('/dashboard/auto-dm/automations/new')}>
-          <Plus size={16} /> Create New
+          <HugeiconsIcon icon={Add01Icon} size={16} strokeWidth={1.8} /> Create New
         </button>
       </header>
 
       <section>
         <h2 className="autodm-section-heading">Quick Actions</h2>
         <div className="autodm-quick-grid">
-          {quickActions.map(({ title, description, icon: Icon, href, badge }) => (
+          {quickActions.map(({ title, description, icon, href, badge }) => (
             <button key={title} className="autodm-quick-card" onClick={() => navigate(href)}>
-              <span><Icon size={20} /></span>
+              <span><HugeiconsIcon icon={icon} size={20} strokeWidth={1.8} /></span>
               {badge ? <em>{badge}</em> : null}
               <strong>{title}</strong>
               <p>{description}</p>
@@ -161,7 +161,7 @@ export default function AutoDMHomePage() {
           <h2 className="autodm-section-heading">Metrics</h2>
           <div className="autodm-date-menu">
             <button className="btn-ghost" onClick={() => setDateOpen((open) => !open)}>
-              <Calendar size={15} /> {dateOptions.find((option) => option.value === days)?.label} <ChevronDown size={14} />
+              <HugeiconsIcon icon={Calendar03Icon} size={15} strokeWidth={1.8} /> {dateOptions.find((option) => option.value === days)?.label} <HugeiconsIcon icon={ChevronDownIcon} size={14} strokeWidth={1.8} />
             </button>
             {dateOpen ? (
               <div>
@@ -173,10 +173,10 @@ export default function AutoDMHomePage() {
           </div>
         </div>
         <div className="autodm-metrics-card">
-          <Metric label="Messages Sent" value={metrics.messages_sent} icon={Send} loading={metricsLoading} info="Total automated direct messages successfully delivered to users" />
-          <Metric label="Messages Seen" value={metrics.messages_seen} icon={Eye} loading={metricsLoading} info="Direct messages confirmed opened or read by recipients" />
-          <Metric label="Total Clicks" value={metrics.total_clicks} icon={MousePointer} loading={metricsLoading} info="Total link clicks and button taps on cards sent inside AutoDM conversations" />
-          <Metric label="Followers Gained" value={metrics.followers_gained} icon={Users} loading={metricsLoading} info="New Instagram followers acquired directly through follow-gate DM flows" />
+          <Metric label="Messages Sent" value={metrics.messages_sent} icon={SentIcon} loading={metricsLoading} info="Total automated direct messages successfully delivered to users" />
+          <Metric label="Messages Seen" value={metrics.messages_seen} icon={EyeIcon} loading={metricsLoading} info="Direct messages confirmed opened or read by recipients" />
+          <Metric label="Total Clicks" value={metrics.total_clicks} icon={CursorPointer01Icon} loading={metricsLoading} info="Total link clicks and button taps on cards sent inside AutoDM conversations" />
+          <Metric label="Followers Gained" value={metrics.followers_gained} icon={UserGroupIcon} loading={metricsLoading} info="New Instagram followers acquired directly through follow-gate DM flows" />
         </div>
       </section>
 
@@ -208,7 +208,7 @@ export default function AutoDMHomePage() {
               <p><strong>{title}</strong><small>{text}</small></p>
             </div>
           ))}
-          <div className="autodm-good-box"><ShieldCheck size={15} /> Official Meta APIs only.</div>
+          <div className="autodm-good-box"><HugeiconsIcon icon={ShieldCheckIcon} size={15} strokeWidth={1.8} /> Official Meta APIs only.</div>
         </div>
       </section>
     </div>
