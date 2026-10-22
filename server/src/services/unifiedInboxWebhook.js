@@ -2,6 +2,7 @@ import supabase from './supabase.js';
 import { persistInboxItems } from './unifiedInbox.js';
 import { decryptToken as decryptTokenEncryption } from './tokenEncryption.js';
 import { decryptToken as decryptInstaPilotToken } from './instapilot.js';
+import { invalidateInboxCache } from '../routes/inbox.js';
 
 const GRAPH_VERSION = process.env.IG_GRAPH_VERSION || process.env.META_GRAPH_VERSION || 'v24.0';
 
@@ -83,7 +84,7 @@ export async function ensureInstagramWebhookSubscription(tokenRow) {
 async function findSocialInboxAccount(recipientId) {
   const { data: direct, error: directError } = await supabase
     .from('social_tokens')
-    .select('user_id,account_id,page_id,instagram_business_id,username,account_name,access_token,access_token_encrypted')
+    .select('user_id,account_id,page_id,instagram_business_id,username,account_name,access_token')
     .eq('provider', 'instagram')
     .or(`account_id.eq.${recipientId},page_id.eq.${recipientId},instagram_business_id.eq.${recipientId}`)
     .order('updated_at', { ascending: false })
@@ -264,6 +265,8 @@ export async function persistInstagramWebhookToUnifiedInbox(payload) {
         replied: isEcho,
         replies: [{ id: messageId, text, imageUrl, videoUrl, shareUrl, createdAt, isSelf: isEcho }],
       }]);
+
+      await invalidateInboxCache(account.user_id).catch(() => {});
 
       results.push({ persisted: true, userId: account.user_id, accountId, contactTargetId, isEcho });
     }
