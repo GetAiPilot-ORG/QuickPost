@@ -83,7 +83,7 @@ export async function ensureInstagramWebhookSubscription(tokenRow) {
 async function findSocialInboxAccount(recipientId) {
   const { data: direct, error: directError } = await supabase
     .from('social_tokens')
-    .select('user_id,account_id,page_id,instagram_business_id,username,account_name')
+    .select('user_id,account_id,page_id,instagram_business_id,username,account_name,access_token,access_token_encrypted')
     .eq('provider', 'instagram')
     .or(`account_id.eq.${recipientId},page_id.eq.${recipientId},instagram_business_id.eq.${recipientId}`)
     .order('updated_at', { ascending: false })
@@ -96,7 +96,7 @@ async function findSocialInboxAccount(recipientId) {
   // recipient id here. Inbox persistence itself does not depend on a bot.
   const { data: legacy, error: legacyError } = await supabase
     .from('instagram_accounts')
-    .select('user_id,instagram_business_account_id,instagram_username,page_id')
+    .select('user_id,instagram_business_account_id,instagram_username,page_id,access_token_encrypted')
     .eq('is_connected', true)
     .or(`webhook_instagram_user_id.eq.${recipientId},instagram_business_account_id.eq.${recipientId},page_id.eq.${recipientId}`)
     .order('updated_at', { ascending: false })
@@ -112,6 +112,7 @@ async function findSocialInboxAccount(recipientId) {
     instagram_business_id: legacy.instagram_business_account_id,
     username: legacy.instagram_username,
     account_name: legacy.instagram_username,
+    access_token_encrypted: legacy.access_token_encrypted,
   };
 }
 
@@ -211,6 +212,34 @@ export async function persistInstagramWebhookToUnifiedInbox(payload) {
             if (existingConv.contact_avatar_url) {
               authorAvatar = existingConv.contact_avatar_url;
             }
+          }
+        }
+        if (!authorAvatar || !authorHandle || authorName.startsWith('Instagram user')) {
+          // Attempt on-demand resolution from Instagram Graph API
+          const rawToken = account.access_token || account.access_token_encrypted;
+          const token = safeDecrypt(rawToken) || rawToken;
+          if (token && contactTargetId) {
+            const isIgToken = typeof token === 'string' && token.startsWith('IG');
+            const graphBase = isIgToken ? 'https://graph.instagram.com/v24.0' : 'https://graph.facebook.com/v18.0';
+            try {
+              const res = await fetch(`${graphBase}/${contactTargetId}?fields=id,username,name,profile_pic&access_token=${token}`);
+              if (res.ok) {
+                const igUser = await res.json();
+                if (igUser.name) authorName = igUser.name;
+                else if (igUser.username) authorName = igUser.username;
+                if (igUser.username) authorHandle = `@${igUser.username.replace(/^@/, '')}`;
+                if (igUser.profile_pic) authorAvatar = igUser.profile_pic;
+
+                // Persist into contacts directory for future instant hits
+                void supabase.from('contacts').upsert({
+                  user_id: account.user_id,
+                  username: igUser.username || null,
+                  full_name: igUser.name || igUser.username || null,
+                  profile_picture_url: igUser.profile_pic || null,
+                  instagram_user_id: String(contactTargetId),
+                }, { onConflict: 'user_id,instagram_user_id' }).catch(() => {});
+              }
+            } catch {}
           }
         }
       } catch (e) {

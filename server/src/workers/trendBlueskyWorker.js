@@ -13,6 +13,14 @@ function toPositiveInt(value, fallback) {
 
 export function startBlueskyTrendWorker(options = {}) {
   const logger = options.logger || console;
+  if (process.env.TREND_BLUESKY_ENABLED !== "true") {
+    logger.log("[TREND-BLUESKY] Worker is disabled by default. Set TREND_BLUESKY_ENABLED=true to run.");
+    return {
+      socket: null,
+      flush: async () => {},
+      stop: () => {},
+    };
+  }
   const insertPosts = options.insertPosts || insertNewTrendPosts;
   const batchSize = toPositiveInt(options.batchSize || process.env.TREND_BLUESKY_BATCH_SIZE, DEFAULT_BATCH_SIZE);
   const flushMs = toPositiveInt(options.flushMs || process.env.TREND_BLUESKY_FLUSH_MS, DEFAULT_FLUSH_MS);

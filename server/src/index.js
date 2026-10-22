@@ -502,7 +502,7 @@ if (enableLocalWorker) {
       console.log(`📡 [SUPABASE] webhook_logs listener status: ${status}`);
     });
 
-  // Resilient fallback sweeper (ensures 100% at-least-once message processing if Realtime drops an event)
+  // Resilient fallback sweeper (runs every 60s as a safety net if Realtime drops an event)
   const webhookSweeper = setInterval(async () => {
     try {
       const { data, error } = await supabase
@@ -523,7 +523,7 @@ if (enableLocalWorker) {
     } catch (err) {
       // Silent suppression in background loop
     }
-  }, 4000);
+  }, 60000);
 
   if (webhookSweeper?.unref) webhookSweeper.unref();
 } else {

@@ -153,7 +153,11 @@ router.post('/sso', async (req, res) => {
     // ── Generate Supabase Project B magic-link ───────────────────────────
     // This creates the user in auth.users if they don't exist yet,
     // and produces a one-time login URL the browser can visit.
-    const redirectTo = (process.env.CLIENT_URL || 'http://localhost:5173') + '/auth/callback';
+    let clientUrl = process.env.CLIENT_URL || (process.env.NODE_ENV === 'production' ? 'https://social.getaipilot.in' : 'http://localhost:5173');
+    if (clientUrl.includes('getaipilot.in') && !clientUrl.includes('social.')) {
+      clientUrl = 'https://social.getaipilot.in';
+    }
+    const redirectTo = clientUrl.replace(/\/+$/, '') + '/auth/callback';
 
     const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
       type: 'magiclink',

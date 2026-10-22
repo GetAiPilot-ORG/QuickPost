@@ -324,16 +324,23 @@ export async function executeBroadcast(broadcastId, userId, caption, mediaUrls, 
         !(platform === 'instagram' && results.instagramAccounts) &&
         result?.success === false
       )
-      .map(([platform, result]) => ({
-        platform,
-        error: result.error || 'Unknown error',
-      }));
+      .map(([platform, result]) => {
+        const cleanPlatform = platform.includes(':') ? platform.split(':')[0] : platform;
+        let cleanErr = String(result.error || 'Unknown error');
+        cleanErr = cleanErr.replace(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g, '').trim();
+        return {
+          platform: cleanPlatform,
+          rawPlatform: platform,
+          error: cleanErr || 'Unknown error',
+          rawError: result.error,
+        };
+      });
     const failedPlatforms = failedPlatformEntries.map((failure) => `${failure.platform}: ${failure.error}`);
 
     if (failedPlatforms.length > 0) {
       await updateBroadcastResults(broadcastId, results, 'failed');
       const requiresReconnect = failedPlatformEntries.some((failure) =>
-        (failure.platform === 'instagram' || failure.platform.startsWith('instagram:')) && isInstagramAuthError(failure.error)
+        (failure.platform === 'instagram' || failure.rawPlatform?.startsWith('instagram:')) && isInstagramAuthError(failure.rawError || failure.error)
       );
       const error = new Error(
         `${requiresReconnect ? 'REAUTH_REQUIRED: ' : ''}Platform publishing failed - ${failedPlatforms.join(' | ')}`
