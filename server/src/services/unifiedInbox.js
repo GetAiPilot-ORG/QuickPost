@@ -247,7 +247,7 @@ export async function listInboxConversations(userId, params = {}) {
     if (s.instagram_business_id) activeAccountSet.add(String(s.instagram_business_id));
   });
 
-  const [{ data, error }, { data: userContacts }, { data: globalContacts }] = await Promise.all([
+  const [{ data, error }, { data: userContacts }] = await Promise.all([
     (() => {
       let q = supabase
         .from('inbox_conversations')
@@ -267,22 +267,14 @@ export async function listInboxConversations(userId, params = {}) {
       .from('contacts')
       .select('username, full_name, profile_picture_url, instagram_user_id')
       .eq('user_id', userId),
-    supabase
-      .from('contacts')
-      .select('username, full_name, profile_picture_url, instagram_user_id')
-      .not('profile_picture_url', 'is', null)
   ]);
 
   if (error) throw error;
 
   const contactMap = new Map();
-  (globalContacts || []).forEach(c => {
-    if (c.username) contactMap.set(c.username.toLowerCase().replace(/^@/, ''), c);
-    if (c.instagram_user_id) contactMap.set(String(c.instagram_user_id), c);
-  });
   (userContacts || []).forEach(c => {
-    if (c.username) contactMap.set(c.username.toLowerCase().replace(/^@/, ''), c);
     if (c.instagram_user_id) contactMap.set(String(c.instagram_user_id), c);
+    if (c.username) contactMap.set(c.username.toLowerCase().replace(/^@/, ''), c);
   });
 
   const hasMore = (data || []).length > limit;
