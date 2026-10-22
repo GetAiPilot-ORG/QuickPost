@@ -754,30 +754,52 @@ export default function SocialInboxPage() {
                       </span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                      <div style={{ fontSize: 12.5, fontWeight: unreadCount > 0 ? 600 : 400, color: unreadCount > 0 ? "var(--ink)" : "var(--slate)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
-                        {item.text || "Direct message"}
+                      <div
+                        style={{
+                          fontSize: 12.5,
+                          fontWeight: unreadCount > 0 ? 700 : 400,
+                          color: unreadCount > 0 ? "#0f172a" : "var(--slate)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          flex: 1,
+                        }}
+                      >
+                        {unreadCount > 1
+                          ? `${unreadCount >= 4 ? "4+" : unreadCount} new messages`
+                          : (item.text || "Direct message")}
                       </div>
                       {unreadCount > 0 && (
-                        <span
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            minWidth: 19,
-                            height: 19,
-                            padding: "0 5px",
-                            borderRadius: 10,
-                            background: "var(--arc, #ff5600)",
-                            color: "#ffffff",
-                            fontSize: 10.5,
-                            fontWeight: 800,
-                            lineHeight: 1,
-                            flexShrink: 0,
-                            boxShadow: "0 1px 3px rgba(255, 86, 0, 0.4)",
-                          }}
-                        >
-                          {unreadCount > 99 ? "99+" : unreadCount}
-                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              minWidth: 20,
+                              height: 20,
+                              padding: "0 6px",
+                              borderRadius: 10,
+                              background: "#0095f6",
+                              color: "#ffffff",
+                              fontSize: 11,
+                              fontWeight: 800,
+                              lineHeight: 1,
+                              boxShadow: "0 1px 4px rgba(0, 149, 246, 0.35)",
+                            }}
+                          >
+                            {unreadCount > 99 ? "99+" : unreadCount}
+                          </span>
+                          <span
+                            style={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: "50%",
+                              background: "#0095f6",
+                              flexShrink: 0,
+                            }}
+                          />
+                        </div>
                       )}
                     </div>
                   </div>
