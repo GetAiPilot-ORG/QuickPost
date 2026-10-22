@@ -1103,7 +1103,31 @@ router.get("/pinterest/boards", authenticateUser, async (req, res) => {
       return res.status(400).json({ success: false, error: "Pinterest account not connected" });
     }
 
-    const boards = await pinterestOAuth.getBoards(validTokenInfo.accessToken);
+    let boards = [];
+    try {
+      boards = await pinterestOAuth.getBoards(validTokenInfo.accessToken);
+    } catch (boardErr) {
+      console.warn("⚠️ [PINTEREST] getBoards failed, checking stored boards in DB:", boardErr.message);
+      const { data: tokenRow } = await supabase
+        .from("social_tokens")
+        .select("pinterest_board_id, profile_data")
+        .eq("user_id", req.user.userId)
+        .eq("provider", "pinterest")
+        .maybeSingle();
+
+      const storedBoards = tokenRow?.profile_data?.boards || [];
+      if (storedBoards.length > 0) {
+        boards = storedBoards;
+      } else if (tokenRow?.pinterest_board_id) {
+        boards = [
+          {
+            id: tokenRow.pinterest_board_id,
+            name: tokenRow.profile_data?.boardName || "Default Board",
+          },
+        ];
+      }
+    }
+
     res.json({
       success: true,
       boards: boards.map((b) => ({ id: b.id, name: b.name })),
@@ -1132,6 +1156,36 @@ router.post("/pinterest/boards", authenticateUser, async (req, res) => {
     }
 
     const newBoard = await pinterestOAuth.createBoard(validTokenInfo.accessToken, name.trim(), description || "");
+
+    // Persist new board into database profile_data so it is immediately available
+    try {
+      const { data: currentToken } = await supabase
+        .from("social_tokens")
+        .select("id, profile_data")
+        .eq("user_id", req.user.userId)
+        .eq("provider", "pinterest")
+        .maybeSingle();
+
+      if (currentToken) {
+        const existingBoards = currentToken.profile_data?.boards || [];
+        const updatedBoards = [...existingBoards.filter((b) => b.id !== newBoard.id), { id: newBoard.id, name: newBoard.name }];
+        await supabase
+          .from("social_tokens")
+          .update({
+            pinterest_board_id: newBoard.id,
+            profile_data: {
+              ...(currentToken.profile_data || {}),
+              boardId: newBoard.id,
+              boardName: newBoard.name,
+              boards: updatedBoards,
+            },
+          })
+          .eq("id", currentToken.id);
+      }
+    } catch (persistErr) {
+      console.warn("⚠️ [PINTEREST] Could not cache new board into DB:", persistErr.message);
+    }
+
     res.json({
       success: true,
       board: { id: newBoard.id, name: newBoard.name },

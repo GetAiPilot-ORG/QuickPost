@@ -10,7 +10,7 @@ import {
 const STALE_PROCESSING_MINUTES = Number(process.env.SCHEDULER_STALE_PROCESSING_MINUTES || 15);
 const SCHEDULER_BATCH_SIZE = Number(process.env.SCHEDULER_BATCH_SIZE || 25);
 const FALLBACK_DIRECT_CONCURRENCY = Number(process.env.SCHEDULER_DIRECT_CONCURRENCY || 3);
-const SCHEDULER_CRON = process.env.SCHEDULER_CRON || '*/15 * * * * *';
+const SCHEDULER_CRON = process.env.SCHEDULER_CRON || '* * * * *';
 
 function log(level, broadcastId, msg, meta = {}) {
   const idStr = broadcastId ? `[${String(broadcastId).slice(0, 8)}]` : '';

@@ -96,6 +96,32 @@ export async function persistInboxItems(userId, items) {
   for (const item of items) {
     if (!item?.platform || !item?.accountId || !externalConversationId(item)) continue;
     const payload = conversationPayload(userId, item);
+
+    // Guard: Do not overwrite an existing real name/handle/avatar with generic or null values
+    const isGeneric = !payload.contact_name || payload.contact_name.toLowerCase().startsWith('instagram user') || payload.contact_name.toLowerCase().startsWith('facebook user');
+    if (isGeneric || !payload.contact_avatar_url || !payload.contact_handle) {
+      const { data: existing } = await supabase
+        .from('inbox_conversations')
+        .select('contact_name, contact_handle, contact_avatar_url')
+        .eq('user_id', userId)
+        .eq('platform', item.platform)
+        .eq('account_id', String(item.accountId))
+        .eq('external_conversation_id', payload.external_conversation_id)
+        .maybeSingle();
+
+      if (existing) {
+        if (isGeneric && existing.contact_name && !existing.contact_name.toLowerCase().startsWith('instagram user') && !existing.contact_name.toLowerCase().startsWith('facebook user')) {
+          payload.contact_name = existing.contact_name;
+        }
+        if (!payload.contact_handle && existing.contact_handle) {
+          payload.contact_handle = existing.contact_handle;
+        }
+        if (!payload.contact_avatar_url && existing.contact_avatar_url) {
+          payload.contact_avatar_url = existing.contact_avatar_url;
+        }
+      }
+    }
+
     const { data: conversation, error } = await supabase
       .from('inbox_conversations')
       .upsert(payload, { onConflict: 'user_id,platform,account_id,external_conversation_id' })
@@ -268,7 +294,12 @@ export async function listInboxConversations(userId, params = {}) {
       const contact = contactMap.get(handle) || contactMap.get(extId);
       if (contact) {
         if (!r.contact_avatar_url && contact.profile_picture_url) r.contact_avatar_url = contact.profile_picture_url;
-        if ((!r.contact_name || r.contact_name === r.contact_handle) && contact.full_name) r.contact_name = contact.full_name;
+        if ((!r.contact_name || r.contact_name.toLowerCase().startsWith('instagram user') || r.contact_name === r.contact_handle) && (contact.full_name || contact.username)) {
+          r.contact_name = contact.full_name || contact.username;
+        }
+        if ((!r.contact_handle || r.contact_handle.toLowerCase().startsWith('@instagram user')) && contact.username) {
+          r.contact_handle = `@${contact.username.replace(/^@/, '')}`;
+        }
       }
       const item = toInboxItem(r);
       const isConnected = activeAccountSet.has(String(r.account_id));
