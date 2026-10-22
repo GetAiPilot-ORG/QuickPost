@@ -984,7 +984,6 @@ router.get('/inbox/stream', authenticateUser, async (req, res) => {
     };
 
     await writeInboxCache(cacheKey, payload);
-    void persistInboxItems(req.user.userId, allItems).catch(() => {});
     res.setHeader('X-Inbox-Cache', 'MISS');
     return res.json(payload);
   } catch (err) {

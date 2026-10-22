@@ -218,7 +218,7 @@ export default function SocialInboxPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [items.length]);
+  }, []);
 
   // Initial load on mount
   useEffect(() => {
@@ -419,35 +419,12 @@ export default function SocialInboxPage() {
           }
         }
       )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "inbox_conversations",
-          filter: `user_id=eq.${currentUserId}`,
-        },
-        () => {
-          void loadInboxStream(false, true);
-        }
-      )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.id, user?.userId, loadInboxStream]);
-
-  // Active chat background heartbeat (fetches updates every 6s while a conversation is open)
-  useEffect(() => {
-    if (!selectedItemId) return;
-    const interval = setInterval(() => {
-      if (selectedItemRef.current) {
-        void fetchThreadForConversation(selectedItemRef.current, true);
-      }
-    }, 6000);
-    return () => clearInterval(interval);
-  }, [selectedItemId, fetchThreadForConversation]);
+  }, [user?.id, user?.userId]);
 
   // Real-time SSE listener fallback
   useEffect(() => {
