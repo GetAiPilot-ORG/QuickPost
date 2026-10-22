@@ -37,6 +37,9 @@ function getInboxRedis() {
   return inboxRedis;
 }
 
+const CONV_CACHE_TTL_SECONDS = 120;
+const THREAD_CACHE_TTL_SECONDS = 300;
+
 function inboxCacheKey(userIds) {
   const tenantHash = crypto
     .createHash('sha256')
@@ -44,6 +47,19 @@ function inboxCacheKey(userIds) {
     .digest('hex')
     .slice(0, 24);
   return `inbox:stream:v1:${tenantHash}`;
+}
+
+function conversationsCacheKey(userId, query = {}) {
+  const platform = query.platform || 'all';
+  const limit = query.limit || 50;
+  const cursor = query.cursor || 'root';
+  return `inbox:convs:${userId}:${platform}:${limit}:${cursor}`;
+}
+
+function threadCacheKey(userId, conversationId, query = {}) {
+  const limit = query.limit || 50;
+  const before = query.before || 'latest';
+  return `inbox:thread:${userId}:${conversationId}:${limit}:${before}`;
 }
 
 async function readInboxCache(key) {
@@ -55,15 +71,36 @@ async function readInboxCache(key) {
   }
 }
 
-async function writeInboxCache(key, payload) {
+async function writeInboxCache(key, payload, ttl = INBOX_CACHE_TTL_SECONDS) {
   try {
-    await getInboxRedis()?.set(key, JSON.stringify(payload), 'EX', INBOX_CACHE_TTL_SECONDS);
+    await getInboxRedis()?.set(key, JSON.stringify(payload), 'EX', ttl);
+  } catch {}
+}
+
+export async function invalidateConversationCache(userId, conversationId = null) {
+  try {
+    const redis = getInboxRedis();
+    if (!redis) return;
+    const keys = await redis.keys(`inbox:convs:${userId}:*`);
+    if (conversationId) {
+      const threadKeys = await redis.keys(`inbox:thread:${userId}:${conversationId}:*`);
+      keys.push(...threadKeys);
+    }
+    if (keys.length > 0) {
+      await redis.del(...keys);
+    }
   } catch {}
 }
 
 export async function invalidateInboxCache(userIds) {
   try {
-    await getInboxRedis()?.del(inboxCacheKey(userIds));
+    const redis = getInboxRedis();
+    if (!redis) return;
+    const list = Array.isArray(userIds) ? userIds : [userIds];
+    for (const uid of list) {
+      await redis.del(inboxCacheKey([uid]));
+      await invalidateConversationCache(uid);
+    }
   } catch {}
 }
 
@@ -957,7 +994,16 @@ router.get('/inbox/stream', authenticateUser, async (req, res) => {
 
 router.get('/inbox/conversations', authenticateUser, async (req, res) => {
   try {
+    const cacheKey = conversationsCacheKey(req.user.userId, req.query);
+    const cached = await readInboxCache(cacheKey);
+    if (cached) {
+      res.setHeader('X-Inbox-Cache', 'HIT');
+      return res.json({ success: true, ...cached });
+    }
+
     const result = await listInboxConversations(req.user.userId, req.query);
+    await writeInboxCache(cacheKey, result, CONV_CACHE_TTL_SECONDS);
+    res.setHeader('X-Inbox-Cache', 'MISS');
     return res.json({ success: true, ...result });
   } catch (error) {
     const missingSchema = error.code === '42P01' || error.code === 'PGRST205';
@@ -970,7 +1016,16 @@ router.get('/inbox/conversations', authenticateUser, async (req, res) => {
 
 router.get('/inbox/conversations/:id/messages', authenticateUser, async (req, res) => {
   try {
+    const cacheKey = threadCacheKey(req.user.userId, req.params.id, req.query);
+    const cached = await readInboxCache(cacheKey);
+    if (cached) {
+      res.setHeader('X-Inbox-Cache', 'HIT');
+      return res.json({ success: true, ...cached });
+    }
+
     const result = await listInboxMessages(req.user.userId, req.params.id, req.query);
+    await writeInboxCache(cacheKey, result, THREAD_CACHE_TTL_SECONDS);
+    res.setHeader('X-Inbox-Cache', 'MISS');
     return res.json({ success: true, ...result });
   } catch (error) {
     const missingSchema = error.code === '42P01' || error.code === 'PGRST205';
@@ -984,6 +1039,7 @@ router.get('/inbox/conversations/:id/messages', authenticateUser, async (req, re
 const handleMarkRead = async (req, res) => {
   try {
     const conversation = await markInboxConversationRead(req.user.userId, req.params.id);
+    await invalidateConversationCache(req.user.userId, req.params.id);
     return res.json({ success: true, conversation });
   } catch {
     return res.status(500).json({ success: false, error: 'Failed to mark conversation as read' });

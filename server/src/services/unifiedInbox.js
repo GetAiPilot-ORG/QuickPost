@@ -403,17 +403,23 @@ export async function recordInboxOutboundMessage(userId, details) {
 }
 
 export async function recordInboxSyncState(userId, platform, accountId, result) {
+  return batchRecordInboxSyncStates([{ userId, platform, accountId, result }]);
+}
+
+export async function batchRecordInboxSyncStates(records) {
+  if (!Array.isArray(records) || records.length === 0) return;
   const now = new Date().toISOString();
-  const payload = {
+  const payloads = records.map(({ userId, platform, accountId, result }) => ({
     user_id: userId,
     platform,
     account_id: String(accountId),
     last_attempt_at: now,
-    last_success_at: result.ok ? now : null,
-    last_error: result.ok ? null : String(result.error || 'Unknown synchronization error').slice(0, 1000),
-  };
+    last_success_at: result?.ok ? now : null,
+    last_error: result?.ok ? null : String(result?.error || 'Unknown synchronization error').slice(0, 1000),
+  }));
+
   const { error } = await supabase
     .from('inbox_sync_state')
-    .upsert(payload, { onConflict: 'user_id,platform,account_id' });
-  if (error) throw error;
+    .upsert(payloads, { onConflict: 'user_id,platform,account_id' });
+  if (error) console.error('[INBOX] batchRecordInboxSyncStates error:', error.message);
 }

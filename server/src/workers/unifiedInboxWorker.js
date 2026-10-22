@@ -1,6 +1,6 @@
 import cron from 'node-cron';
 import supabase from '../services/supabase.js';
-import { persistInboxItems, recordInboxSyncState } from '../services/unifiedInbox.js';
+import { persistInboxItems, batchRecordInboxSyncStates } from '../services/unifiedInbox.js';
 import { ensureInstagramWebhookSubscription } from '../services/unifiedInboxWebhook.js';
 import {
   fetchBlueskyComments,
@@ -50,31 +50,39 @@ function shouldCoolDown(row, state) {
 
 async function syncAccount(row) {
   const provider = String(row.provider || '').toLowerCase();
-  const adapter = adapters[provider];
-  if (!adapter) return;
-  if (isMetaTokenExpired(row) || shouldCoolDown(row, row._syncState)) return;
-
-  if (provider === 'instagram' && row.access_token) {
-    const subscriptionKey = `${row.user_id}:${accountId(row)}:${row.updated_at || row.token_expiry || ''}`;
-    if (!webhookSubscriptionCredentials.has(subscriptionKey)) {
-      webhookSubscriptionCredentials.add(subscriptionKey);
-      const subscription = await ensureInstagramWebhookSubscription(row);
-      if (!subscription.ok && !subscription.skipped) {
-        console.warn(`⚠️ [INBOX-IG] Webhook subscription unavailable for @${row.username || accountId(row)}: ${subscription.reason}`);
-      }
-    }
+  
+  // Webhook-First: Instagram & Facebook are pushed via real-time webhooks.
+  // We skip passive polling unless explicitly forced via INBOX_POLL_META=true.
+  if (['instagram', 'facebook'].includes(provider) && process.env.INBOX_POLL_META !== 'true') {
+    return null;
   }
+
+  const adapter = adapters[provider];
+  if (!adapter) return null;
+  if (isMetaTokenExpired(row) || shouldCoolDown(row, row._syncState)) return null;
+
+  const targetPlatform = provider === 'google' ? 'youtube' : provider;
+  const targetAccountId = accountId(row);
 
   try {
     const result = await adapter(row);
     if (result.status === 'ok') await persistInboxItems(row.user_id, result.items || []);
-    await recordInboxSyncState(row.user_id, provider === 'google' ? 'youtube' : provider, accountId(row), {
-      ok: result.status === 'ok',
-      error: result.error,
-    });
+    return {
+      userId: row.user_id,
+      platform: targetPlatform,
+      accountId: targetAccountId,
+      result: {
+        ok: result.status === 'ok',
+        error: result.error,
+      },
+    };
   } catch (error) {
-    await recordInboxSyncState(row.user_id, provider, accountId(row), { ok: false, error: error.message })
-      .catch(() => {});
+    return {
+      userId: row.user_id,
+      platform: targetPlatform,
+      accountId: targetAccountId,
+      result: { ok: false, error: error.message },
+    };
   }
 }
 
@@ -119,8 +127,20 @@ export async function runUnifiedInboxSync() {
         _syncState: statesByAccount.get(`${account.user_id}:${normalizedProvider}:${accountId(account)}`),
       }];
     })).values()];
+
+    const syncResults = [];
     for (let index = 0; index < uniqueAccounts.length; index += 5) {
-      await Promise.allSettled(uniqueAccounts.slice(index, index + 5).map(syncAccount));
+      const settled = await Promise.allSettled(uniqueAccounts.slice(index, index + 5).map(syncAccount));
+      settled.forEach((item) => {
+        if (item.status === 'fulfilled' && item.value) {
+          syncResults.push(item.value);
+        }
+      });
+    }
+
+    // Single Batch Upsert (1 query instead of 63 individual queries)
+    if (syncResults.length > 0) {
+      await batchRecordInboxSyncStates(syncResults);
     }
   } finally {
     running = false;
