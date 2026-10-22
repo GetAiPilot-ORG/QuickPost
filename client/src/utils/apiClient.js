@@ -20,19 +20,29 @@ const isUsableAuthToken = (token) => {
   return trimmed !== 'null' && trimmed !== 'undefined' && trimmed.split('.').length === 3;
 };
 
-// Singleton in-flight session refresh promise to prevent duplicate concurrent refresh requests
+// In-memory token cache to avoid hammering Supabase Auth on every HTTP request
+let cachedToken = null;
+let cachedExpiresAt = 0;
 let refreshPromise = null;
 
 async function getOrRefreshValidToken() {
+  const now = Math.floor(Date.now() / 1000);
+
+  // Return cached token if it has at least 60 seconds of valid life left
+  if (cachedToken && cachedExpiresAt - now > 60) {
+    return cachedToken;
+  }
+
   try {
     const { data: { session } } = await supabase.auth.getSession();
     
     if (!session) {
       const localToken = localStorage.getItem('quickpost_token');
-      return isUsableAuthToken(localToken) ? localToken : null;
+      cachedToken = isUsableAuthToken(localToken) ? localToken : null;
+      cachedExpiresAt = now + 300; // cache for 5 minutes
+      return cachedToken;
     }
 
-    const now = Math.floor(Date.now() / 1000);
     // If token is expired or within 60 seconds of expiring, refresh proactively
     if (session.expires_at && session.expires_at - now < 60) {
       if (!refreshPromise) {
@@ -42,13 +52,18 @@ async function getOrRefreshValidToken() {
       }
       const { data: refreshed, error: refreshError } = await refreshPromise;
       if (!refreshError && refreshed?.session?.access_token) {
-        localStorage.setItem('quickpost_token', refreshed.session.access_token);
-        return refreshed.session.access_token;
+        const token = refreshed.session.access_token;
+        localStorage.setItem('quickpost_token', token);
+        cachedToken = token;
+        cachedExpiresAt = refreshed.session.expires_at || (now + 3600);
+        return token;
       }
     }
 
     if (isUsableAuthToken(session.access_token)) {
       localStorage.setItem('quickpost_token', session.access_token);
+      cachedToken = session.access_token;
+      cachedExpiresAt = session.expires_at || (now + 3600);
       return session.access_token;
     }
   } catch (err) {
@@ -56,7 +71,9 @@ async function getOrRefreshValidToken() {
   }
 
   const fallback = localStorage.getItem('quickpost_token');
-  return isUsableAuthToken(fallback) ? fallback : null;
+  cachedToken = isUsableAuthToken(fallback) ? fallback : null;
+  cachedExpiresAt = now + 60;
+  return cachedToken;
 }
 
 // Request interceptor to add auth token dynamically from Supabase session
