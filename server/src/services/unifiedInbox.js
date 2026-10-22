@@ -54,7 +54,7 @@ function conversationPayload(userId, item) {
     last_message_at: createdAt,
     last_inbound_at: item.replied ? null : createdAt,
     last_outbound_at: item.replied ? createdAt : null,
-    unread_count: item.unread ? 1 : 0,
+    unread_count: item.unreadCount !== undefined ? item.unreadCount : (item.unread ? 1 : 0),
     is_replied: Boolean(item.replied),
     is_starred: Boolean(item.starred),
     metadata: {
@@ -97,28 +97,29 @@ export async function persistInboxItems(userId, items) {
     if (!item?.platform || !item?.accountId || !externalConversationId(item)) continue;
     const payload = conversationPayload(userId, item);
 
-    // Guard: Do not overwrite an existing real name/handle/avatar with generic or null values
-    const isGeneric = !payload.contact_name || payload.contact_name.toLowerCase().startsWith('instagram user') || payload.contact_name.toLowerCase().startsWith('facebook user');
-    if (isGeneric || !payload.contact_avatar_url || !payload.contact_handle) {
-      const { data: existing } = await supabase
-        .from('inbox_conversations')
-        .select('contact_name, contact_handle, contact_avatar_url')
-        .eq('user_id', userId)
-        .eq('platform', item.platform)
-        .eq('account_id', String(item.accountId))
-        .eq('external_conversation_id', payload.external_conversation_id)
-        .maybeSingle();
+    const { data: existing } = await supabase
+      .from('inbox_conversations')
+      .select('contact_name, contact_handle, contact_avatar_url, unread_count')
+      .eq('user_id', userId)
+      .eq('platform', item.platform)
+      .eq('account_id', String(item.accountId))
+      .eq('external_conversation_id', payload.external_conversation_id)
+      .maybeSingle();
 
-      if (existing) {
-        if (isGeneric && existing.contact_name && !existing.contact_name.toLowerCase().startsWith('instagram user') && !existing.contact_name.toLowerCase().startsWith('facebook user')) {
-          payload.contact_name = existing.contact_name;
-        }
-        if (!payload.contact_handle && existing.contact_handle) {
-          payload.contact_handle = existing.contact_handle;
-        }
-        if (!payload.contact_avatar_url && existing.contact_avatar_url) {
-          payload.contact_avatar_url = existing.contact_avatar_url;
-        }
+    if (existing) {
+      if (isGeneric && existing.contact_name && !existing.contact_name.toLowerCase().startsWith('instagram user') && !existing.contact_name.toLowerCase().startsWith('facebook user')) {
+        payload.contact_name = existing.contact_name;
+      }
+      if (!payload.contact_handle && existing.contact_handle) {
+        payload.contact_handle = existing.contact_handle;
+      }
+      if (!payload.contact_avatar_url && existing.contact_avatar_url) {
+        payload.contact_avatar_url = existing.contact_avatar_url;
+      }
+      if (item.replied) {
+        payload.unread_count = 0;
+      } else if (item.unread) {
+        payload.unread_count = (existing.unread_count || 0) + 1;
       }
     }
 
@@ -211,8 +212,9 @@ function toInboxItem(row) {
     createdAt: row.last_message_at,
     replied: row.is_replied,
     starred: row.is_starred,
-    unread: row.unread_count > 0,
-    replyCount: row.unread_count,
+    unread: (row.unread_count || 0) > 0,
+    unreadCount: row.unread_count || 0,
+    replyCount: row.unread_count || 0,
     replies: [],
     persisted: true,
   };

@@ -195,15 +195,22 @@ export default function SocialInboxPage() {
           const currentById = new Map(currentItems.map((item) => [item.id, item]));
           return aggregatedItems.map((item) => {
             const current = currentById.get(item.id);
+            const unreadCount = item.unreadCount !== undefined ? item.unreadCount : (item.unread ? 1 : 0);
             return {
               ...item,
               authorAvatar: item.authorAvatar || current?.authorAvatar || null,
               authorName: item.authorName || current?.authorName || "User",
               replies: current?.threadLoaded ? (current.replies || []) : item.replies,
               threadLoaded: Boolean(current?.threadLoaded),
+              unreadCount,
+              unread: unreadCount > 0,
             };
           });
         });
+        const initialUnread = new Set(
+          aggregatedItems.filter((i) => (i.unreadCount > 0) || i.unread).map((i) => i.id)
+        );
+        setUnreadIds((prev) => new Set([...prev, ...initialUnread]));
       }
     } catch (err) {
       console.error("Failed to load inbox stream:", err);
@@ -305,6 +312,9 @@ export default function SocialInboxPage() {
       next.delete(item.id);
       return next;
     });
+    setItems((current) =>
+      current.map((i) => (i.id === item.id ? { ...i, unreadCount: 0, unread: false } : i))
+    );
     fetchThreadForConversation(item, false);
   };
 
@@ -368,12 +378,23 @@ export default function SocialInboxPage() {
               );
               const nextReplies = exists ? existingReplies : [...existingReplies, formattedMessage];
 
+              const isCurrentlySelected = selectedItemRef.current && (
+                String(selectedItemRef.current.id) === String(item.id) ||
+                (selectedItemRef.current.databaseId && String(selectedItemRef.current.databaseId) === String(item.databaseId))
+              );
+
+              const nextUnreadCount = (newMsg.direction === "inbound" && !isCurrentlySelected)
+                ? (item.unreadCount || 0) + 1
+                : 0;
+
               return {
                 ...item,
                 text: newMsg.body || item.text,
                 createdAt: newMsg.sent_at || newMsg.created_at,
                 replies: nextReplies,
                 threadLoaded: true,
+                unreadCount: nextUnreadCount,
+                unread: nextUnreadCount > 0,
               };
             });
 
@@ -467,7 +488,7 @@ export default function SocialInboxPage() {
       .filter((item) => {
         if (selectedPlatform !== "all" && item.platform !== selectedPlatform) return false;
         if (selectedAccount !== "all" && item.accountId !== selectedAccount && item.accountName !== selectedAccount) return false;
-        if (statusFilter === "unread" && !unreadIds.has(item.id)) return false;
+        if (statusFilter === "unread" && !(item.unreadCount > 0) && !item.unread && !unreadIds.has(item.id)) return false;
         if (statusFilter === "starred" && !starredIds.has(item.id)) return false;
         if (statusFilter === "replied" && !item.replied) return false;
         if (searchQuery.trim()) {
@@ -704,6 +725,7 @@ export default function SocialInboxPage() {
             ) : (
               filteredItems.map((item) => {
                 const isSelected = item.id === selectedItem?.id;
+                const unreadCount = Number(item.unreadCount) || (unreadIds.has(item.id) || item.unread ? 1 : 0);
                 return (
                   <div
                     key={item.id}
@@ -711,25 +733,52 @@ export default function SocialInboxPage() {
                     style={{
                       padding: "12px 14px",
                       borderBottom: "1px solid rgba(0,0,0,0.06)",
-                      background: isSelected ? "rgba(255, 86, 0, 0.05)" : "#ffffff",
-                      borderLeft: isSelected ? "3px solid var(--arc, #ff5600)" : "3px solid transparent",
+                      background: isSelected ? "rgba(255, 86, 0, 0.05)" : unreadCount > 0 ? "rgba(255, 86, 0, 0.02)" : "#ffffff",
+                      borderLeft: isSelected ? "3px solid var(--arc, #ff5600)" : unreadCount > 0 ? "3px solid rgba(255, 86, 0, 0.5)" : "3px solid transparent",
                       cursor: "pointer",
+                      transition: "background 0.15s ease, border-color 0.15s ease",
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                        <div style={{ position: "relative" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
+                        <div style={{ position: "relative", flexShrink: 0 }}>
                           <AuthorAvatar src={item.authorAvatar} name={item.authorName} size={30} />
-                          <img src={getPlatformIcon(item.platform)} style={{ width: 12, height: 12, position: "absolute", bottom: -2, right: -2, borderRadius: "50%", background: "#fff" }} alt="" />
+                          <img src={getPlatformIcon(item.platform)} style={{ width: 12, height: 12, position: "absolute", bottom: -2, right: -2, borderRadius: "50%", background: "#fff", border: "1px solid #fff" }} alt="" />
                         </div>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <span style={{ fontSize: 13, fontWeight: unreadCount > 0 ? 800 : 600, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {item.authorName}
                         </span>
                       </div>
-                      <span style={{ fontSize: 11, color: "var(--slate)" }}>{timeAgo(item.createdAt)}</span>
+                      <span style={{ fontSize: 11, fontWeight: unreadCount > 0 ? 700 : 500, color: unreadCount > 0 ? "var(--arc, #ff5600)" : "var(--slate)", marginLeft: 6, flexShrink: 0 }}>
+                        {timeAgo(item.createdAt)}
+                      </span>
                     </div>
-                    <div style={{ fontSize: 12.5, color: "var(--slate)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {item.text || "Direct message"}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: unreadCount > 0 ? 600 : 400, color: unreadCount > 0 ? "var(--ink)" : "var(--slate)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                        {item.text || "Direct message"}
+                      </div>
+                      {unreadCount > 0 && (
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            minWidth: 19,
+                            height: 19,
+                            padding: "0 5px",
+                            borderRadius: 10,
+                            background: "var(--arc, #ff5600)",
+                            color: "#ffffff",
+                            fontSize: 10.5,
+                            fontWeight: 800,
+                            lineHeight: 1,
+                            flexShrink: 0,
+                            boxShadow: "0 1px 3px rgba(255, 86, 0, 0.4)",
+                          }}
+                        >
+                          {unreadCount > 99 ? "99+" : unreadCount}
+                        </span>
+                      )}
                     </div>
                   </div>
                 );

@@ -263,6 +263,7 @@ export async function persistInstagramWebhookToUnifiedInbox(payload) {
         videoUrl,
         shareUrl,
         replied: isEcho,
+        unread: !isEcho,
         replies: [{ id: messageId, text, imageUrl, videoUrl, shareUrl, createdAt, isSelf: isEcho }],
       }]);
 
