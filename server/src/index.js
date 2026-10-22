@@ -467,7 +467,7 @@ async function handleWebhookLogRecord(log) {
         
         await supabase
           .from('webhook_logs')
-          .update({ processed: true, updated_at: new Date().toISOString() })
+          .update({ processed: true })
           .eq('id', logId);
       }
     } catch (e) {

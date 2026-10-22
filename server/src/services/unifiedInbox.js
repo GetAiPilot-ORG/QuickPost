@@ -247,7 +247,7 @@ export async function listInboxConversations(userId, params = {}) {
     if (s.instagram_business_id) activeAccountSet.add(String(s.instagram_business_id));
   });
 
-  const [{ data, error }, { data: userContacts }, { data: globalContacts }] = await Promise.all([
+  const [{ data, error }, { data: userContacts }] = await Promise.all([
     (() => {
       let q = supabase
         .from('inbox_conversations')
@@ -267,22 +267,14 @@ export async function listInboxConversations(userId, params = {}) {
       .from('contacts')
       .select('username, full_name, profile_picture_url, instagram_user_id')
       .eq('user_id', userId),
-    supabase
-      .from('contacts')
-      .select('username, full_name, profile_picture_url, instagram_user_id')
-      .not('profile_picture_url', 'is', null)
   ]);
 
   if (error) throw error;
 
   const contactMap = new Map();
-  (globalContacts || []).forEach(c => {
-    if (c.username) contactMap.set(c.username.toLowerCase().replace(/^@/, ''), c);
-    if (c.instagram_user_id) contactMap.set(String(c.instagram_user_id), c);
-  });
   (userContacts || []).forEach(c => {
-    if (c.username) contactMap.set(c.username.toLowerCase().replace(/^@/, ''), c);
     if (c.instagram_user_id) contactMap.set(String(c.instagram_user_id), c);
+    if (c.username) contactMap.set(c.username.toLowerCase().replace(/^@/, ''), c);
   });
 
   const hasMore = (data || []).length > limit;
@@ -403,17 +395,23 @@ export async function recordInboxOutboundMessage(userId, details) {
 }
 
 export async function recordInboxSyncState(userId, platform, accountId, result) {
+  return batchRecordInboxSyncStates([{ userId, platform, accountId, result }]);
+}
+
+export async function batchRecordInboxSyncStates(records) {
+  if (!Array.isArray(records) || records.length === 0) return;
   const now = new Date().toISOString();
-  const payload = {
+  const payloads = records.map(({ userId, platform, accountId, result }) => ({
     user_id: userId,
     platform,
     account_id: String(accountId),
     last_attempt_at: now,
-    last_success_at: result.ok ? now : null,
-    last_error: result.ok ? null : String(result.error || 'Unknown synchronization error').slice(0, 1000),
-  };
+    last_success_at: result?.ok ? now : null,
+    last_error: result?.ok ? null : String(result?.error || 'Unknown synchronization error').slice(0, 1000),
+  }));
+
   const { error } = await supabase
     .from('inbox_sync_state')
-    .upsert(payload, { onConflict: 'user_id,platform,account_id' });
-  if (error) throw error;
+    .upsert(payloads, { onConflict: 'user_id,platform,account_id' });
+  if (error) console.error('[INBOX] batchRecordInboxSyncStates error:', error.message);
 }
