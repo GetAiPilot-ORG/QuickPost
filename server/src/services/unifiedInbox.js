@@ -97,9 +97,10 @@ export async function persistInboxItems(userId, items) {
     if (!item?.platform || !item?.accountId || !externalConversationId(item)) continue;
     const payload = conversationPayload(userId, item);
 
+    const isGeneric = !payload.contact_name || payload.contact_name.toLowerCase().startsWith('instagram user') || payload.contact_name.toLowerCase().startsWith('facebook user');
     const { data: existing } = await supabase
       .from('inbox_conversations')
-      .select('contact_name, contact_handle, contact_avatar_url, unread_count')
+      .select('contact_name, contact_handle, contact_avatar_url, unread_count, last_message_at, last_message_text, is_replied')
       .eq('user_id', userId)
       .eq('platform', item.platform)
       .eq('account_id', String(item.accountId))
@@ -107,6 +108,20 @@ export async function persistInboxItems(userId, items) {
       .maybeSingle();
 
     if (existing) {
+      // Guard: do not overwrite a newer message in DB with an older message from an external poll
+      if (existing.last_message_at && payload.last_message_at && new Date(existing.last_message_at) > new Date(payload.last_message_at)) {
+        payload.last_message_at = existing.last_message_at;
+        payload.last_message_text = existing.last_message_text;
+        payload.unread_count = existing.unread_count;
+        payload.is_replied = existing.is_replied;
+      } else {
+        if (item.replied) {
+          payload.unread_count = 0;
+        } else if (item.unread) {
+          payload.unread_count = (existing.unread_count || 0) + 1;
+        }
+      }
+
       if (isGeneric && existing.contact_name && !existing.contact_name.toLowerCase().startsWith('instagram user') && !existing.contact_name.toLowerCase().startsWith('facebook user')) {
         payload.contact_name = existing.contact_name;
       }
@@ -115,11 +130,6 @@ export async function persistInboxItems(userId, items) {
       }
       if (!payload.contact_avatar_url && existing.contact_avatar_url) {
         payload.contact_avatar_url = existing.contact_avatar_url;
-      }
-      if (item.replied) {
-        payload.unread_count = 0;
-      } else if (item.unread) {
-        payload.unread_count = (existing.unread_count || 0) + 1;
       }
     }
 
