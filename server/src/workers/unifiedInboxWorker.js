@@ -10,8 +10,9 @@ import {
   fetchYouTubeComments,
 } from '../routes/inbox.js';
 
-const schedule = process.env.INBOX_SYNC_CRON || '*/3 * * * *';
+const schedule = process.env.INBOX_SYNC_CRON || '*/15 * * * *';
 const authErrorCooldownMs = Number(process.env.INBOX_AUTH_ERROR_COOLDOWN_HOURS || 24) * 60 * 60 * 1000;
+const generalErrorCooldownMs = Number(process.env.INBOX_GENERAL_ERROR_COOLDOWN_MINUTES || 30) * 60 * 1000;
 let running = false;
 const webhookSubscriptionCredentials = new Set();
 
@@ -39,11 +40,12 @@ function isAuthorizationError(message) {
 }
 
 function shouldCoolDown(row, state) {
-  if (!state?.last_error || !isAuthorizationError(state.last_error)) return false;
+  if (!state?.last_error) return false;
   const attemptedAt = Date.parse(state.last_attempt_at || 0);
   const credentialsUpdatedAt = Date.parse(row.updated_at || row.created_at || 0);
   if (credentialsUpdatedAt > attemptedAt) return false;
-  return Date.now() - attemptedAt < authErrorCooldownMs;
+  const cooldown = isAuthorizationError(state.last_error) ? authErrorCooldownMs : generalErrorCooldownMs;
+  return Date.now() - attemptedAt < cooldown;
 }
 
 async function syncAccount(row) {
