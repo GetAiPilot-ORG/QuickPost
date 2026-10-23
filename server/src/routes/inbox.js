@@ -23,7 +23,7 @@ const INBOX_CACHE_TTL_SECONDS = Number(process.env.INBOX_CACHE_TTL_SECONDS || 60
 const externalApi = axios.create({ timeout: INBOX_PROVIDER_TIMEOUT_MS });
 let inboxRedis;
 
-function getInboxRedis() {
+export function getInboxRedis() {
   const url = process.env.REDIS_URL || process.env.BULLMQ_REDIS_URL;
   if (!url) return null;
   if (!inboxRedis) {
@@ -62,7 +62,7 @@ function threadCacheKey(userId, conversationId, query = {}) {
   return `inbox:thread:${userId}:${conversationId}:${limit}:${before}`;
 }
 
-async function readInboxCache(key) {
+export async function readInboxCache(key) {
   try {
     const cached = await getInboxRedis()?.get(key);
     return cached ? JSON.parse(cached) : null;
@@ -71,7 +71,7 @@ async function readInboxCache(key) {
   }
 }
 
-async function writeInboxCache(key, payload, ttl = INBOX_CACHE_TTL_SECONDS) {
+export async function writeInboxCache(key, payload, ttl = INBOX_CACHE_TTL_SECONDS) {
   try {
     await getInboxRedis()?.set(key, JSON.stringify(payload), 'EX', ttl);
   } catch {}
@@ -99,6 +99,7 @@ export async function invalidateInboxCache(userIds) {
     const list = Array.isArray(userIds) ? userIds : [userIds];
     for (const uid of list) {
       await redis.del(inboxCacheKey([uid]));
+      await redis.del(`inbox:instapilot:convs:${uid}`);
       await invalidateConversationCache(uid);
     }
   } catch {}
