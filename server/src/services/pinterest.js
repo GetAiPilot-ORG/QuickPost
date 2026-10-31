@@ -14,7 +14,13 @@ function getRedisClient() {
   const url = process.env.REDIS_URL || process.env.BULLMQ_REDIS_URL;
   if (!url) return null;
   if (!redisClient) {
-    redisClient = new IORedis(url, { maxRetriesPerRequest: null, enableReadyCheck: false });
+    redisClient = new IORedis(url, {
+      maxRetriesPerRequest: 1,
+      connectTimeout: 1000,
+      enableReadyCheck: false,
+      retryStrategy: () => null
+    });
+    redisClient.on('error', () => {});
   }
   return redisClient;
 }
@@ -116,10 +122,14 @@ export async function postToPinterest(imageUrl, title, tokens, link = '', boardI
     }
 
     const decryptedAccessToken = decryptToken(tokens.accessToken);
-    const targetBoardId = boardId || tokens.boardId;
+    const targetBoardId = (boardId && boardId !== 'default' ? boardId : null) || (tokens.boardId !== 'default' ? tokens.boardId : null);
 
     if (!targetBoardId) {
-      throw new Error('No Pinterest board selected');
+      throw new Error('No valid Pinterest board selected. Please choose a board in Platform Customization.');
+    }
+
+    if (!imageUrl || typeof imageUrl !== 'string') {
+      throw new Error('Pinterest requires a publicly accessible image URL to create a Pin.');
     }
 
     // Check if URL is publicly accessible
@@ -129,11 +139,11 @@ export async function postToPinterest(imageUrl, title, tokens, link = '', boardI
 
     console.log(`📌 [PINTEREST-PUBLISH] Publishing Pin to Board ID: ${targetBoardId}...`);
 
-    const baseUrl = 'https://api.pinterest.com/v5';
+    const baseUrl = process.env.PINTEREST_API_BASE_URL || 'https://api.pinterest.com/v5';
     const response = await axios.post(`${baseUrl}/pins`, {
       board_id: targetBoardId,
       title: (title || 'QuickPost Pin').substring(0, 100),
-      description: title || '',
+      description: (title || '').substring(0, 800),
       link: link || imageUrl,
       media_source: {
         source_type: 'image_url',

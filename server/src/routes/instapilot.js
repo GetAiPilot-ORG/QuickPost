@@ -26,7 +26,19 @@ import {
 } from '../services/instapilot.js';
 
 import { clearTokensCache } from '../services/supabase.js';
-import { invalidateInboxCache } from './inbox.js';
+import { invalidateInboxCache, readInboxCache, writeInboxCache, getInboxRedis } from './inbox.js';
+
+async function invalidateInstaPilotCache(userId, conversationId = null) {
+  try {
+    const redis = getInboxRedis();
+    if (!redis) return;
+    const keys = [`inbox:instapilot:convs:${userId}`];
+    if (conversationId) {
+      keys.push(`inbox:instapilot:thread:${userId}:${conversationId}`);
+    }
+    await redis.del(...keys);
+  } catch {}
+}
 
 const router = express.Router();
 
@@ -127,26 +139,47 @@ router.post('/bots/:id/test-reply', authenticateUser, asyncHandler(async (req, r
 }));
 
 router.get('/inbox/conversations', authenticateUser, asyncHandler(async (req, res) => {
+  const cacheKey = `inbox:instapilot:convs:${req.user.userId}`;
+  const cached = await readInboxCache(cacheKey);
+  if (cached) {
+    res.setHeader('X-Inbox-Cache', 'HIT');
+    return res.json({ success: true, conversations: cached });
+  }
+
   const conversations = await listConversations(req.user.userId);
+  await writeInboxCache(cacheKey, conversations, 120);
+  res.setHeader('X-Inbox-Cache', 'MISS');
   res.json({ success: true, conversations });
 }));
 
 router.post('/inbox/sync', authenticateUser, asyncHandler(async (req, res) => {
+  await invalidateInstaPilotCache(req.user.userId);
   const result = await syncInboxFromGraphAPI(req.user.userId);
   res.json({ success: true, ...result });
 }));
 
 router.get('/inbox/conversations/:id', authenticateUser, asyncHandler(async (req, res) => {
+  const cacheKey = `inbox:instapilot:thread:${req.user.userId}:${req.params.id}`;
+  const cached = await readInboxCache(cacheKey);
+  if (cached) {
+    res.setHeader('X-Inbox-Cache', 'HIT');
+    return res.json({ success: true, ...cached });
+  }
+
   const thread = await getConversation(req.user.userId, req.params.id);
+  await writeInboxCache(cacheKey, thread, 300);
+  res.setHeader('X-Inbox-Cache', 'MISS');
   res.json({ success: true, ...thread });
 }));
 
 router.patch('/inbox/conversations/:id', authenticateUser, asyncHandler(async (req, res) => {
+  await invalidateInstaPilotCache(req.user.userId, req.params.id);
   const conversation = await updateConversation(req.user.userId, req.params.id, req.body || {});
   res.json({ success: true, conversation });
 }));
 
 router.post('/inbox/conversations/:id/reply', authenticateUser, asyncHandler(async (req, res) => {
+  await invalidateInstaPilotCache(req.user.userId, req.params.id);
   const message = await manualReply(req.user.userId, req.params.id, req.body?.message || '');
   res.status(201).json({ success: true, message });
 }));

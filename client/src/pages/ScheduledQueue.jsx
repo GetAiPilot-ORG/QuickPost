@@ -132,9 +132,22 @@ function timeUntil(utcString) {
 
 function cleanError(errorMsg) {
   if (!errorMsg) return "";
-  return String(errorMsg)
+  let cleaned = String(errorMsg)
+    .replace(/^\[Attempt\s+\d+(?:\/\d+)?\]\s*/i, '')
+    .replace(/^Attempt\s+\d+:\s*/i, '')
+    .replace(/^REAUTH_REQUIRED:\s*/i, '')
+    .replace(/^Platform publishing failed\s*-\s*/i, '')
+    .replace(/(?:^|\s*\|\s*)([a-zA-Z0-9_-]+):[0-9a-fA-F-]{8,}(?::\s*|\s*-\s*)/gi, (_m, p) => `${p.charAt(0).toUpperCase() + p.slice(1)}: `)
+    .replace(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g, '')
     .replace(/(Failed\s*—\s*[a-z]+):[a-f0-9\-]+:/gi, '$1:')
+    .replace(/Instagram:\s*Instagram publishing failed:\s*/gi, 'Instagram: ')
     .trim();
+
+  const lower = cleaned.toLowerCase();
+  if (lower.includes('invalid access token') || lower.includes('session has expired') || lower.includes('session has been invalidated')) {
+    return 'Instagram session expired. Please reconnect in Settings / Channels.';
+  }
+  return cleaned || "Publishing encountered an issue. Please retry.";
 }
 
 // ─── Thumbnail ───────────────────────────────────────────────────────────────
@@ -179,9 +192,8 @@ function QueueCard({ post, onCancel, onRetry, onRefresh, autoEditId }) {
   const [saving, setSaving] = useState(false);
   const [actionLoading, setActionLoading] = useState("");
 
-  const channels = Array.isArray(post.selected_channels)
-    ? post.selected_channels
-    : [];
+  const channels = (Array.isArray(post.selected_channels) ? post.selected_channels : [])
+    .filter((c) => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(c).trim()));
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone; // Always show in local time for the user
   const until = timeUntil(post.scheduled_for);
 

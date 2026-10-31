@@ -62,7 +62,8 @@ const PLATFORM_META = [
     name: "Pinterest",
     icon: "/icons/pinterest-round-color-icon.svg",
     prerequisite: "Pinterest business/profile account aur board access required hai.",
-    connectLabel: "Open connector",
+    connectLabel: "Connect Pinterest",
+    oauth: true,
   },
   {
     id: "bluesky",

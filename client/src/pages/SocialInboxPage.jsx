@@ -16,6 +16,7 @@ import {
 import apiClient from "../utils/apiClient";
 import { useAuth } from "../context/AuthContext";
 import InfoHelp from "../components/InfoHelp";
+import { supabase } from "../lib/supabase";
 
 const PLATFORMS = [
   { id: "all", label: "All channels", icon: "/icons/share-icon.svg" },
@@ -194,15 +195,22 @@ export default function SocialInboxPage() {
           const currentById = new Map(currentItems.map((item) => [item.id, item]));
           return aggregatedItems.map((item) => {
             const current = currentById.get(item.id);
+            const unreadCount = item.unreadCount !== undefined ? item.unreadCount : (item.unread ? 1 : 0);
             return {
               ...item,
               authorAvatar: item.authorAvatar || current?.authorAvatar || null,
               authorName: item.authorName || current?.authorName || "User",
               replies: current?.threadLoaded ? (current.replies || []) : item.replies,
               threadLoaded: Boolean(current?.threadLoaded),
+              unreadCount,
+              unread: unreadCount > 0,
             };
           });
         });
+        const initialUnread = new Set(
+          aggregatedItems.filter((i) => (i.unreadCount > 0) || i.unread).map((i) => i.id)
+        );
+        setUnreadIds((prev) => new Set([...prev, ...initialUnread]));
       }
     } catch (err) {
       console.error("Failed to load inbox stream:", err);
@@ -210,7 +218,7 @@ export default function SocialInboxPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [items.length]);
+  }, []);
 
   // Initial load on mount
   useEffect(() => {
@@ -226,7 +234,20 @@ export default function SocialInboxPage() {
       let threadReplies = [];
       const conversationId = String(item.commentId || item.id).replace(/^(ig|fb):/, "");
 
-      if (["instagram", "facebook"].includes(item.platform)) {
+      // 1. Fetch from our fast database / Redis first (includes immediate incoming webhooks)
+      if (item.databaseId) {
+        try {
+          const response = await apiClient.get(`/api/inbox/conversations/${item.databaseId}/messages`, {
+            params: { limit: 50 },
+          });
+          if (response.data?.success && Array.isArray(response.data?.messages) && response.data.messages.length) {
+            threadReplies = response.data.messages;
+          }
+        } catch {}
+      }
+
+      // 2. If no database messages yet or live fallback needed, check platform live thread
+      if (!threadReplies.length && ["instagram", "facebook"].includes(item.platform)) {
         try {
           const response = await apiClient.get("/api/inbox/thread", {
             params: {
@@ -244,17 +265,6 @@ export default function SocialInboxPage() {
         }
       }
 
-      if (!threadReplies.length && item.databaseId) {
-        try {
-          const response = await apiClient.get(`/api/inbox/conversations/${item.databaseId}/messages`, {
-            params: { limit: 50 },
-          });
-          if (response.data?.success && response.data?.messages?.length) {
-            threadReplies = response.data.messages;
-          }
-        } catch {}
-      }
-
       if (item.databaseId) {
         void apiClient.post(`/api/inbox/conversations/${item.databaseId}/read`).catch(() => {});
       }
@@ -263,14 +273,27 @@ export default function SocialInboxPage() {
         setItems((currentItems) =>
           currentItems.map((currentItem) => {
             if (currentItem.id !== item.id) return currentItem;
+
+            // Merge seamlessly with any existing messages to avoid losing in-flight replies
+            const existingReplies = currentItem.replies || [];
+            const repliesMap = new Map();
+            existingReplies.forEach((r) => repliesMap.set(r.id || `${r.text}_${r.createdAt}`, r));
+            threadReplies.forEach((r) => repliesMap.set(r.id || `${r.text}_${r.createdAt}`, r));
+
+            const merged = Array.from(repliesMap.values()).sort(
+              (a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0)
+            );
+
             return {
               ...currentItem,
-              replies: threadReplies,
+              replies: merged,
               threadLoaded: true,
             };
           })
         );
-        setTimeout(scrollToBottom, 50);
+        if (!isBackground) {
+          setTimeout(scrollToBottom, 50);
+        }
       }
     } catch (error) {
       console.error("Failed to load conversation thread:", error);
@@ -289,14 +312,127 @@ export default function SocialInboxPage() {
       next.delete(item.id);
       return next;
     });
+    setItems((current) =>
+      current.map((i) => (i.id === item.id ? { ...i, unreadCount: 0, unread: false } : i))
+    );
     fetchThreadForConversation(item, false);
   };
 
-  // Real-time SSE listener
+  // Real-time Supabase WebSocket Listener: delivers incoming messages directly to UI in sub-second time
+  useEffect(() => {
+    const currentUserId = user?.id || user?.userId;
+    if (!currentUserId || !supabase) return;
+
+    const channel = supabase
+      .channel(`realtime-social-inbox-${currentUserId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "inbox_messages",
+          filter: `user_id=eq.${currentUserId}`,
+        },
+        (payload) => {
+          const newMsg = payload.new;
+          if (!newMsg) return;
+
+          let imageUrl = newMsg.raw_payload?.imageUrl || newMsg.raw_payload?.image_url || null;
+          if (!imageUrl && newMsg.body) {
+            const imgMatch = newMsg.body.match(
+              /(https?:\/\/[^\s]+(?:\.(?:png|jpg|jpeg|webp|gif)|res\.cloudinary\.com\/[^\s]+)[^\s]*)/i
+            );
+            if (imgMatch) imageUrl = imgMatch[0];
+          }
+
+          const formattedMessage = {
+            id: newMsg.external_message_id || newMsg.id,
+            text: newMsg.body,
+            imageUrl,
+            videoUrl: newMsg.raw_payload?.videoUrl || newMsg.raw_payload?.video_url || null,
+            shareUrl: newMsg.raw_payload?.shareUrl || newMsg.raw_payload?.share_url || null,
+            buttons: newMsg.raw_payload?.buttons || [],
+            isInteractiveCard: Boolean(newMsg.raw_payload?.isInteractiveCard),
+            createdAt: newMsg.sent_at || newMsg.created_at,
+            isSelf: newMsg.direction === "outbound",
+            status: newMsg.delivery_status,
+          };
+
+          setItems((prevItems) => {
+            let matched = false;
+            const updated = prevItems.map((item) => {
+              const isTarget =
+                (item.databaseId && String(item.databaseId) === String(newMsg.conversation_id)) ||
+                (newMsg.account_id &&
+                  String(item.accountId) === String(newMsg.account_id) &&
+                  String(item.id).endsWith(String(newMsg.conversation_id)));
+
+              if (!isTarget) return item;
+              matched = true;
+
+              const existingReplies = item.replies || [];
+              const exists = existingReplies.some(
+                (r) =>
+                  r.id === formattedMessage.id ||
+                  (r.text === formattedMessage.text && r.createdAt === formattedMessage.createdAt)
+              );
+              const nextReplies = exists ? existingReplies : [...existingReplies, formattedMessage];
+
+              const isCurrentlySelected = selectedItemRef.current && (
+                String(selectedItemRef.current.id) === String(item.id) ||
+                (selectedItemRef.current.databaseId && String(selectedItemRef.current.databaseId) === String(item.databaseId))
+              );
+
+              const nextUnreadCount = (newMsg.direction === "inbound" && !isCurrentlySelected)
+                ? (item.unreadCount || 0) + 1
+                : 0;
+
+              return {
+                ...item,
+                text: newMsg.body || item.text,
+                createdAt: newMsg.sent_at || newMsg.created_at,
+                replies: nextReplies,
+                threadLoaded: true,
+                unreadCount: nextUnreadCount,
+                unread: nextUnreadCount > 0,
+              };
+            });
+
+            // If incoming message belongs to a new conversation not yet listed, refresh sidebar silently
+            if (!matched) {
+              void loadInboxStream(false, true);
+            }
+            return updated;
+          });
+
+          // If currently viewing this chat, auto-scroll and mark read
+          const activeItem = selectedItemRef.current;
+          if (
+            activeItem &&
+            ((activeItem.databaseId && String(activeItem.databaseId) === String(newMsg.conversation_id)) ||
+              String(activeItem.id).endsWith(String(newMsg.conversation_id)))
+          ) {
+            setTimeout(scrollToBottom, 50);
+            if (newMsg.direction === "inbound") {
+              void apiClient.post(`/api/inbox/conversations/${newMsg.conversation_id}/read`).catch(() => {});
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, user?.userId]);
+
+  // Real-time SSE listener fallback
   useEffect(() => {
     let eventSource;
     try {
-      eventSource = new EventSource("/api/instapilot/stream");
+      const apiBase = apiClient.defaults?.baseURL || (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) || "";
+      const streamUrl = `${apiBase.replace(/\/+$/, "")}/api/instapilot/stream`;
+      eventSource = new EventSource(streamUrl);
       eventSource.onmessage = (event) => {
         if (event.data === "refresh") {
           void loadInboxStream(false, true);
@@ -329,7 +465,7 @@ export default function SocialInboxPage() {
       .filter((item) => {
         if (selectedPlatform !== "all" && item.platform !== selectedPlatform) return false;
         if (selectedAccount !== "all" && item.accountId !== selectedAccount && item.accountName !== selectedAccount) return false;
-        if (statusFilter === "unread" && !unreadIds.has(item.id)) return false;
+        if (statusFilter === "unread" && !(item.unreadCount > 0) && !item.unread && !unreadIds.has(item.id)) return false;
         if (statusFilter === "starred" && !starredIds.has(item.id)) return false;
         if (statusFilter === "replied" && !item.replied) return false;
         if (searchQuery.trim()) {
@@ -566,6 +702,7 @@ export default function SocialInboxPage() {
             ) : (
               filteredItems.map((item) => {
                 const isSelected = item.id === selectedItem?.id;
+                const unreadCount = Number(item.unreadCount) || (unreadIds.has(item.id) || item.unread ? 1 : 0);
                 return (
                   <div
                     key={item.id}
@@ -573,25 +710,74 @@ export default function SocialInboxPage() {
                     style={{
                       padding: "12px 14px",
                       borderBottom: "1px solid rgba(0,0,0,0.06)",
-                      background: isSelected ? "rgba(255, 86, 0, 0.05)" : "#ffffff",
-                      borderLeft: isSelected ? "3px solid var(--arc, #ff5600)" : "3px solid transparent",
+                      background: isSelected ? "rgba(255, 86, 0, 0.05)" : unreadCount > 0 ? "rgba(255, 86, 0, 0.02)" : "#ffffff",
+                      borderLeft: isSelected ? "3px solid var(--arc, #ff5600)" : unreadCount > 0 ? "3px solid rgba(255, 86, 0, 0.5)" : "3px solid transparent",
                       cursor: "pointer",
+                      transition: "background 0.15s ease, border-color 0.15s ease",
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                        <div style={{ position: "relative" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
+                        <div style={{ position: "relative", flexShrink: 0 }}>
                           <AuthorAvatar src={item.authorAvatar} name={item.authorName} size={30} />
-                          <img src={getPlatformIcon(item.platform)} style={{ width: 12, height: 12, position: "absolute", bottom: -2, right: -2, borderRadius: "50%", background: "#fff" }} alt="" />
+                          <img src={getPlatformIcon(item.platform)} style={{ width: 12, height: 12, position: "absolute", bottom: -2, right: -2, borderRadius: "50%", background: "#fff", border: "1px solid #fff" }} alt="" />
                         </div>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <span style={{ fontSize: 13, fontWeight: unreadCount > 0 ? 800 : 600, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {item.authorName}
                         </span>
                       </div>
-                      <span style={{ fontSize: 11, color: "var(--slate)" }}>{timeAgo(item.createdAt)}</span>
+                      <span style={{ fontSize: 11, fontWeight: unreadCount > 0 ? 700 : 500, color: unreadCount > 0 ? "var(--arc, #ff5600)" : "var(--slate)", marginLeft: 6, flexShrink: 0 }}>
+                        {timeAgo(item.createdAt)}
+                      </span>
                     </div>
-                    <div style={{ fontSize: 12.5, color: "var(--slate)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {item.text || "Direct message"}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <div
+                        style={{
+                          fontSize: 12.5,
+                          fontWeight: unreadCount > 0 ? 700 : 400,
+                          color: unreadCount > 0 ? "#0f172a" : "var(--slate)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          flex: 1,
+                        }}
+                      >
+                        {unreadCount > 1
+                          ? `${unreadCount >= 4 ? "4+" : unreadCount} new messages`
+                          : (item.text || "Direct message")}
+                      </div>
+                      {unreadCount > 0 && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              minWidth: 20,
+                              height: 20,
+                              padding: "0 6px",
+                              borderRadius: 10,
+                              background: "#0095f6",
+                              color: "#ffffff",
+                              fontSize: 11,
+                              fontWeight: 800,
+                              lineHeight: 1,
+                              boxShadow: "0 1px 4px rgba(0, 149, 246, 0.35)",
+                            }}
+                          >
+                            {unreadCount > 99 ? "99+" : unreadCount}
+                          </span>
+                          <span
+                            style={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: "50%",
+                              background: "#0095f6",
+                              flexShrink: 0,
+                            }}
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
                 );

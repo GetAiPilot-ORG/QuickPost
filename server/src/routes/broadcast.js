@@ -9,6 +9,7 @@ import {
 } from "../services/instagram.js";
 import { postToYouTube, setVideoThumbnail } from "../services/youtube.js";
 import { postToPinterest } from "../services/pinterest.js";
+import pinterestOAuth from "../services/pinterestOAuth.js";
 import { postFacebookReel, postFacebookStory, postToFacebook, postVideoToFacebook } from "../services/facebook.js";
 import { postToBluesky } from "../services/bluesky.js";
 import { postToLinkedIn } from "../services/linkedin.js";
@@ -622,29 +623,29 @@ async function processBroadcastJob({
   for (const account of resolveSocialPublishChannels("pinterest", channels, tokens.pinterestAccounts || [])) {
     const resolvedCaption = resolveMentions(platData?.pinterest?.title || caption, 'pinterest', account);
     const targetAccountId = account.accountId || account.account_id || account.id;
+    const pinterestMediaUrl = (isVideo && coverImageUrl) ? coverImageUrl : primaryMediaUrl;
     platformPromises.push(
       (async () => {
         try {
-          const validTokenInfo = await pinterestOAuth.getValidAccessToken(req.user.userId, targetAccountId);
+          const validTokenInfo = await pinterestOAuth.getValidAccessToken(userId, targetAccountId);
+          const chosenBoard = (platData?.pinterest?.boardId && platData?.pinterest?.boardId !== 'default' ? platData.pinterest.boardId : null) || validTokenInfo.boardId || account.boardId;
           const activeAccount = {
             ...account,
             accessToken: validTokenInfo.accessToken,
-            boardId: platData?.pinterest?.boardId || validTokenInfo.boardId || account.boardId
+            boardId: chosenBoard
           };
           const result = await postToPinterest(
-            primaryMediaUrl,
+            pinterestMediaUrl,
             resolvedCaption,
             activeAccount,
             platData?.pinterest?.link,
             activeAccount.boardId,
             broadcastId || null
           );
-          onChannelComplete(account.channel, result);
-          return result;
+          return onChannelComplete(account.channel, result);
         } catch (err) {
           const errRes = { success: false, platform: 'Pinterest', error: err.message };
-          onChannelComplete(account.channel, errRes);
-          return errRes;
+          return onChannelComplete(account.channel, errRes);
         }
       })()
     );

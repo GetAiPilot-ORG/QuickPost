@@ -54,7 +54,7 @@ function conversationPayload(userId, item) {
     last_message_at: createdAt,
     last_inbound_at: item.replied ? null : createdAt,
     last_outbound_at: item.replied ? createdAt : null,
-    unread_count: item.unread ? 1 : 0,
+    unread_count: item.unreadCount !== undefined ? item.unreadCount : (item.unread ? 1 : 0),
     is_replied: Boolean(item.replied),
     is_starred: Boolean(item.starred),
     metadata: {
@@ -96,6 +96,43 @@ export async function persistInboxItems(userId, items) {
   for (const item of items) {
     if (!item?.platform || !item?.accountId || !externalConversationId(item)) continue;
     const payload = conversationPayload(userId, item);
+
+    const isGeneric = !payload.contact_name || payload.contact_name.toLowerCase().startsWith('instagram user') || payload.contact_name.toLowerCase().startsWith('facebook user');
+    const { data: existing } = await supabase
+      .from('inbox_conversations')
+      .select('contact_name, contact_handle, contact_avatar_url, unread_count, last_message_at, last_message_text, is_replied')
+      .eq('user_id', userId)
+      .eq('platform', item.platform)
+      .eq('account_id', String(item.accountId))
+      .eq('external_conversation_id', payload.external_conversation_id)
+      .maybeSingle();
+
+    if (existing) {
+      // Guard: do not overwrite a newer message in DB with an older message from an external poll
+      if (existing.last_message_at && payload.last_message_at && new Date(existing.last_message_at) > new Date(payload.last_message_at)) {
+        payload.last_message_at = existing.last_message_at;
+        payload.last_message_text = existing.last_message_text;
+        payload.unread_count = existing.unread_count;
+        payload.is_replied = existing.is_replied;
+      } else {
+        if (item.replied) {
+          payload.unread_count = 0;
+        } else if (item.unread) {
+          payload.unread_count = (existing.unread_count || 0) + 1;
+        }
+      }
+
+      if (isGeneric && existing.contact_name && !existing.contact_name.toLowerCase().startsWith('instagram user') && !existing.contact_name.toLowerCase().startsWith('facebook user')) {
+        payload.contact_name = existing.contact_name;
+      }
+      if (!payload.contact_handle && existing.contact_handle) {
+        payload.contact_handle = existing.contact_handle;
+      }
+      if (!payload.contact_avatar_url && existing.contact_avatar_url) {
+        payload.contact_avatar_url = existing.contact_avatar_url;
+      }
+    }
+
     const { data: conversation, error } = await supabase
       .from('inbox_conversations')
       .upsert(payload, { onConflict: 'user_id,platform,account_id,external_conversation_id' })
@@ -185,8 +222,9 @@ function toInboxItem(row) {
     createdAt: row.last_message_at,
     replied: row.is_replied,
     starred: row.is_starred,
-    unread: row.unread_count > 0,
-    replyCount: row.unread_count,
+    unread: (row.unread_count || 0) > 0,
+    unreadCount: row.unread_count || 0,
+    replyCount: row.unread_count || 0,
     replies: [],
     persisted: true,
   };
@@ -221,7 +259,7 @@ export async function listInboxConversations(userId, params = {}) {
     if (s.instagram_business_id) activeAccountSet.add(String(s.instagram_business_id));
   });
 
-  const [{ data, error }, { data: userContacts }, { data: globalContacts }] = await Promise.all([
+  const [{ data, error }, { data: userContacts }] = await Promise.all([
     (() => {
       let q = supabase
         .from('inbox_conversations')
@@ -241,22 +279,14 @@ export async function listInboxConversations(userId, params = {}) {
       .from('contacts')
       .select('username, full_name, profile_picture_url, instagram_user_id')
       .eq('user_id', userId),
-    supabase
-      .from('contacts')
-      .select('username, full_name, profile_picture_url, instagram_user_id')
-      .not('profile_picture_url', 'is', null)
   ]);
 
   if (error) throw error;
 
   const contactMap = new Map();
-  (globalContacts || []).forEach(c => {
-    if (c.username) contactMap.set(c.username.toLowerCase().replace(/^@/, ''), c);
-    if (c.instagram_user_id) contactMap.set(String(c.instagram_user_id), c);
-  });
   (userContacts || []).forEach(c => {
-    if (c.username) contactMap.set(c.username.toLowerCase().replace(/^@/, ''), c);
     if (c.instagram_user_id) contactMap.set(String(c.instagram_user_id), c);
+    if (c.username) contactMap.set(c.username.toLowerCase().replace(/^@/, ''), c);
   });
 
   const hasMore = (data || []).length > limit;
@@ -268,7 +298,12 @@ export async function listInboxConversations(userId, params = {}) {
       const contact = contactMap.get(handle) || contactMap.get(extId);
       if (contact) {
         if (!r.contact_avatar_url && contact.profile_picture_url) r.contact_avatar_url = contact.profile_picture_url;
-        if ((!r.contact_name || r.contact_name === r.contact_handle) && contact.full_name) r.contact_name = contact.full_name;
+        if ((!r.contact_name || r.contact_name.toLowerCase().startsWith('instagram user') || r.contact_name === r.contact_handle) && (contact.full_name || contact.username)) {
+          r.contact_name = contact.full_name || contact.username;
+        }
+        if ((!r.contact_handle || r.contact_handle.toLowerCase().startsWith('@instagram user')) && contact.username) {
+          r.contact_handle = `@${contact.username.replace(/^@/, '')}`;
+        }
       }
       const item = toInboxItem(r);
       const isConnected = activeAccountSet.has(String(r.account_id));
@@ -372,17 +407,23 @@ export async function recordInboxOutboundMessage(userId, details) {
 }
 
 export async function recordInboxSyncState(userId, platform, accountId, result) {
+  return batchRecordInboxSyncStates([{ userId, platform, accountId, result }]);
+}
+
+export async function batchRecordInboxSyncStates(records) {
+  if (!Array.isArray(records) || records.length === 0) return;
   const now = new Date().toISOString();
-  const payload = {
+  const payloads = records.map(({ userId, platform, accountId, result }) => ({
     user_id: userId,
     platform,
     account_id: String(accountId),
     last_attempt_at: now,
-    last_success_at: result.ok ? now : null,
-    last_error: result.ok ? null : String(result.error || 'Unknown synchronization error').slice(0, 1000),
-  };
+    last_success_at: result?.ok ? now : null,
+    last_error: result?.ok ? null : String(result?.error || 'Unknown synchronization error').slice(0, 1000),
+  }));
+
   const { error } = await supabase
     .from('inbox_sync_state')
-    .upsert(payload, { onConflict: 'user_id,platform,account_id' });
-  if (error) throw error;
+    .upsert(payloads, { onConflict: 'user_id,platform,account_id' });
+  if (error) console.error('[INBOX] batchRecordInboxSyncStates error:', error.message);
 }

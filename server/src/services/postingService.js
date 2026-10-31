@@ -62,16 +62,18 @@ export async function executeBroadcast(broadcastId, userId, caption, mediaUrls, 
     for (const account of resolveSocialPublishChannels('pinterest', channels, tokens.pinterestAccounts || [])) {
       const resolvedCaption = resolveMentions(platData?.pinterest?.title || caption, 'pinterest', account);
       const targetAccountId = account.accountId || account.account_id || account.id;
+      const pinterestMediaUrl = (isVideo && coverImageUrl) ? coverImageUrl : primaryMediaUrl;
       platformPromises.push(
         (async () => {
           try {
-            const validTokenInfo = await pinterestOAuth.getValidAccessToken(user.userId, targetAccountId);
+            const validTokenInfo = await pinterestOAuth.getValidAccessToken(userId, targetAccountId);
+            const chosenBoard = (platData?.pinterest?.boardId && platData?.pinterest?.boardId !== 'default' ? platData.pinterest.boardId : null) || validTokenInfo.boardId || account.boardId;
             const activeAccount = {
               ...account,
               accessToken: validTokenInfo.accessToken,
-              boardId: platData?.pinterest?.boardId || validTokenInfo.boardId || account.boardId
+              boardId: chosenBoard
             };
-            const result = await postToPinterest(primaryMediaUrl, resolvedCaption, activeAccount, platData?.pinterest?.link, activeAccount.boardId, options?.broadcastId || null);
+            const result = await postToPinterest(pinterestMediaUrl, resolvedCaption, activeAccount, platData?.pinterest?.link, activeAccount.boardId, broadcastId || null);
             return { platform: account.channel, result };
           } catch (err) {
             return {
@@ -322,16 +324,23 @@ export async function executeBroadcast(broadcastId, userId, caption, mediaUrls, 
         !(platform === 'instagram' && results.instagramAccounts) &&
         result?.success === false
       )
-      .map(([platform, result]) => ({
-        platform,
-        error: result.error || 'Unknown error',
-      }));
+      .map(([platform, result]) => {
+        const cleanPlatform = platform.includes(':') ? platform.split(':')[0] : platform;
+        let cleanErr = String(result.error || 'Unknown error');
+        cleanErr = cleanErr.replace(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g, '').trim();
+        return {
+          platform: cleanPlatform,
+          rawPlatform: platform,
+          error: cleanErr || 'Unknown error',
+          rawError: result.error,
+        };
+      });
     const failedPlatforms = failedPlatformEntries.map((failure) => `${failure.platform}: ${failure.error}`);
 
     if (failedPlatforms.length > 0) {
       await updateBroadcastResults(broadcastId, results, 'failed');
       const requiresReconnect = failedPlatformEntries.some((failure) =>
-        (failure.platform === 'instagram' || failure.platform.startsWith('instagram:')) && isInstagramAuthError(failure.error)
+        (failure.platform === 'instagram' || failure.rawPlatform?.startsWith('instagram:')) && isInstagramAuthError(failure.rawError || failure.error)
       );
       const error = new Error(
         `${requiresReconnect ? 'REAUTH_REQUIRED: ' : ''}Platform publishing failed - ${failedPlatforms.join(' | ')}`
