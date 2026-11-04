@@ -14,66 +14,88 @@ const apiClient = axios.create({
   },
 });
 
-const isUsableAuthToken = (token) => {
+const isTokenValid = (token, marginSeconds = 30) => {
   if (!token || typeof token !== 'string') return false;
   const trimmed = token.trim();
-  return trimmed !== 'null' && trimmed !== 'undefined' && trimmed.split('.').length === 3;
+  if (trimmed === 'null' || trimmed === 'undefined') return false;
+  const parts = trimmed.split('.');
+  if (parts.length !== 3) return false;
+
+  try {
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    const decoded = JSON.parse(jsonPayload);
+    if (!decoded || typeof decoded.exp !== 'number') {
+      return true; // No expiration claim, consider usable
+    }
+    const now = Math.floor(Date.now() / 1000);
+    return decoded.exp - now > marginSeconds;
+  } catch {
+    return false;
+  }
 };
 
 // In-memory token cache to avoid hammering Supabase Auth on every HTTP request
 let cachedToken = null;
-let cachedExpiresAt = 0;
 let refreshPromise = null;
 
 async function getOrRefreshValidToken() {
-  const now = Math.floor(Date.now() / 1000);
-
-  // Return cached token if it has at least 60 seconds of valid life left
-  if (cachedToken && cachedExpiresAt - now > 60) {
+  if (isTokenValid(cachedToken, 30)) {
     return cachedToken;
   }
 
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (!session) {
-      const localToken = localStorage.getItem('quickpost_token');
-      cachedToken = isUsableAuthToken(localToken) ? localToken : null;
-      cachedExpiresAt = now + 300; // cache for 5 minutes
-      return cachedToken;
-    }
-
-    // If token is expired or within 60 seconds of expiring, refresh proactively
-    if (session.expires_at && session.expires_at - now < 60) {
-      if (!refreshPromise) {
-        refreshPromise = supabase.auth.refreshSession().finally(() => {
-          refreshPromise = null;
-        });
-      }
-      const { data: refreshed, error: refreshError } = await refreshPromise;
-      if (!refreshError && refreshed?.session?.access_token) {
-        const token = refreshed.session.access_token;
-        localStorage.setItem('quickpost_token', token);
-        cachedToken = token;
-        cachedExpiresAt = refreshed.session.expires_at || (now + 3600);
-        return token;
-      }
-    }
-
-    if (isUsableAuthToken(session.access_token)) {
-      localStorage.setItem('quickpost_token', session.access_token);
-      cachedToken = session.access_token;
-      cachedExpiresAt = session.expires_at || (now + 3600);
-      return session.access_token;
-    }
-  } catch (err) {
-    console.warn('[apiClient] Error resolving session:', err);
+  if (refreshPromise) {
+    return await refreshPromise;
   }
 
-  const fallback = localStorage.getItem('quickpost_token');
-  cachedToken = isUsableAuthToken(fallback) ? fallback : null;
-  cachedExpiresAt = now + 60;
-  return cachedToken;
+  refreshPromise = (async () => {
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (!sessionError && session?.access_token && isTokenValid(session.access_token, 30)) {
+        cachedToken = session.access_token;
+        localStorage.setItem('quickpost_token', session.access_token);
+        return session.access_token;
+      }
+
+      // If session is expired or within margin, refresh it proactively
+      const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+      if (!refreshError && refreshed?.session?.access_token && isTokenValid(refreshed.session.access_token, 10)) {
+        const token = refreshed.session.access_token;
+        cachedToken = token;
+        localStorage.setItem('quickpost_token', token);
+        return token;
+      }
+
+      const fallback = localStorage.getItem('quickpost_token');
+      if (isTokenValid(fallback, 10)) {
+        cachedToken = fallback;
+        return fallback;
+      }
+
+      cachedToken = null;
+      return null;
+    } catch (err) {
+      console.warn('[apiClient] Error resolving session:', err);
+      const fallback = localStorage.getItem('quickpost_token');
+      if (isTokenValid(fallback, 10)) {
+        cachedToken = fallback;
+        return fallback;
+      }
+      cachedToken = null;
+      return null;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return await refreshPromise;
 }
 
 // Request interceptor to add auth token dynamically from Supabase session
@@ -106,15 +128,26 @@ apiClient.interceptors.response.use(
       originalRequest._retry = true;
 
       try {
+        cachedToken = null;
         if (!refreshPromise) {
-          refreshPromise = supabase.auth.refreshSession().finally(() => {
-            refreshPromise = null;
-          });
+          refreshPromise = (async () => {
+            try {
+              const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
+              if (!refreshErr && refreshed?.session?.access_token && isTokenValid(refreshed.session.access_token, 10)) {
+                return refreshed.session.access_token;
+              }
+              return null;
+            } catch (err) {
+              return null;
+            } finally {
+              refreshPromise = null;
+            }
+          })();
         }
-        const { data: refreshed, error: refreshErr } = await refreshPromise;
 
-        if (!refreshErr && refreshed?.session?.access_token) {
-          const newToken = refreshed.session.access_token;
+        const newToken = await refreshPromise;
+        if (newToken) {
+          cachedToken = newToken;
           localStorage.setItem('quickpost_token', newToken);
           originalRequest.headers.Authorization = `Bearer ${newToken}`;
           return apiClient(originalRequest);

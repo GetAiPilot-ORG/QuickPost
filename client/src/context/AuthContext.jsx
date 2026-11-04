@@ -160,42 +160,58 @@ export function AuthProvider({ children }) {
       localStorage.setItem("last_supabase_url", currentSupabaseUrl);
     }
 
-    const hydrateSession = async (session) => {
-      setSession(session);
-      if (session) {
-        setUser(prev => buildSessionUser(session.user, prev));
-        localStorage.setItem("quickpost_token", session.access_token);
-        await Promise.all([
-          fetchUserProfile(session.user),
-          fetchConnectedAccounts()
-        ]);
+    let initialized = false;
+
+    const handleSessionChange = async (event, currentSession) => {
+      if (!isMounted) return;
+      setSession(currentSession);
+
+      if (currentSession) {
+        if (currentSession.access_token) {
+          localStorage.setItem("quickpost_token", currentSession.access_token);
+        }
+        setUser(prev => buildSessionUser(currentSession.user, prev));
+
+        // When a token is refreshed (TOKEN_REFRESHED), we only need to update
+        // the session and token. Avoid re-fetching profile and connected accounts.
+        const isUserChange = event === "SIGNED_IN" || event === "USER_UPDATED";
+        if (!initialized || isUserChange) {
+          initialized = true;
+          try {
+            await Promise.all([
+              fetchUserProfile(currentSession.user),
+              fetchConnectedAccounts()
+            ]);
+          } catch (fetchErr) {
+            console.error("[AUTH] Error during profile/accounts fetch:", fetchErr);
+          }
+        }
+
+        if (isUserChange) {
+          syncUserToHub(currentSession.user);
+        }
       } else {
+        initialized = true;
         setUser(null);
         localStorage.removeItem("quickpost_token");
         setProfileLoading(false);
         setConnectedAccounts(EMPTY_CONNECTED_ACCOUNTS);
       }
+
+      if (isMounted) setLoading(false);
     };
 
-    // Check active sessions and sets the user
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      hydrateSession(session).finally(() => {
-        if (isMounted) setLoading(false);
-      });
-    });
-
-    // Listen for changes on auth state (logged in, signed out, etc.)
+    // Listen for changes on auth state (INITIAL_SESSION, SIGNED_IN, TOKEN_REFRESHED, etc.)
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      hydrateSession(session).finally(() => {
-        if (isMounted) setLoading(false);
-      });
-      if (session) {
-        // Sync to hub — only on SIGNED_IN event to avoid spamming on every token refresh
-        if (_event === "SIGNED_IN" || _event === "USER_UPDATED") {
-          syncUserToHub(session.user);
-        }
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      handleSessionChange(event, session);
+    });
+
+    // Fallback safety check in case INITIAL_SESSION was already emitted or delayed
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!initialized && isMounted) {
+        handleSessionChange("INITIAL_SESSION", session);
       }
     });
 
