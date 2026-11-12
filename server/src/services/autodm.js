@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { normalizeFollowupConfig } from './autodmFollowupConfig.js';
 import { createClient } from '@supabase/supabase-js';
 import supabase from './supabase.js';
 
@@ -794,7 +795,7 @@ function cleanAutomationPayload(payload = {}, user, { includeUserId = true } = {
       ? {
         response_flow:
           rest.response_flow && typeof rest.response_flow === 'object'
-            ? rest.response_flow
+            ? { ...rest.response_flow, follow_up: normalizeFollowupConfig(rest.response_flow.follow_up) }
             : { nodes: [], opening_message_enabled: false, opening_message: '' },
       }
       : {}),

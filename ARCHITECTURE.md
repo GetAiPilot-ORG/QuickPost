@@ -40,3 +40,5 @@
 - A visibility-aware 15-second database poll covers missed Realtime events; source freshness still depends on webhook delivery or the three-minute provider synchronization worker.
 
 - InstaPilot replies run from the API server’s `webhook_logs` Realtime listener after unified inbox persistence; keep `ENABLE_LOCAL_WEBHOOK_WORKER` enabled on the bot-serving process. Manual Graph inbox sync shares one in-flight operation per user per process.
+- Auto DM follow-ups persist in `autodm_followups`; verified inbound DM/postback webhooks update `autodm_dm_activity` and cancel reminders on replies. Comment/echo events never open a messaging window.
+- The webhook engine queues one reminder per automation/account/recipient after a complete successful flow. The API polls every 30 seconds, claims with `SKIP LOCKED`, enforces the three-hour delay/24-hour window and existing quotas, and never replays ambiguous sends. Follow-up link buttons use Meta button templates and preserve their payload in the unified inbox; see `docs/autodm-followups.md` for deployment.

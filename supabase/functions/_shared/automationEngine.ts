@@ -84,6 +84,7 @@ interface ResponseFlow {
   opening_message_enabled?: boolean;
   opening_message?: string;
   opening_button?: string;
+  follow_up?: { enabled?: boolean; message?: string; delay_hours?: number };
 }
 
 interface SenderProfile {
@@ -2737,6 +2738,18 @@ export const processAutomationEvent = async (payload: AutomationInput) => {
   }
 
   // ─────────────────────────────────────────────────────────────────────
+
+  if (normalizeFlow(matched)?.follow_up?.enabled && !nextSession && contactId && sendResult.ok && sendResult.result.sentCount > 0 && sendResult.result.failedCount === 0) {
+    const { error: followupError } = await supabase.rpc("schedule_autodm_followup", {
+      p_automation_id: matched.id,
+      p_contact_id: contactId,
+      p_sender_id: payload.senderId,
+      p_completed_at: new Date().toISOString(),
+    });
+    if (followupError) logError("Failed scheduling Auto DM follow-up", {
+      automationId: matched.id, error: followupError.message,
+    });
+  }
 
   // ── STEP 3: Record messages (only after successful send) ──────────────
   if (automationOwnerUserId && contactId) {

@@ -42,6 +42,7 @@ import { KeywordInput } from '../../features/autodm/KeywordInput';
 
 import ResponseFlowBuilder from '../../features/autodm/ResponseFlowBuilder';
 import MobilePreview from './MobilePreview';
+import FollowupSettings, { getFollowupError } from './FollowupSettings';
 import HeartLikeCheckbox from '../../components/HeartLikeCheckbox';
 
 
@@ -576,6 +577,12 @@ export default function AutomationEditorPage() {
       return;
     }
 
+    const followupError = getFollowupError(responseFlow.follow_up);
+    if (followupError) {
+      toast.error(followupError);
+      return;
+    }
+
     const schedule = buildSchedulePayload();
     if (!schedule.ok) {
       toast.error(schedule.error);
@@ -1038,6 +1045,11 @@ export default function AutomationEditorPage() {
                 />
               </div>
             </div>
+            <FollowupSettings
+              value={responseFlow.follow_up}
+              onChange={(follow_up) => setResponseFlow((previous) => ({ ...previous, follow_up }))}
+              disabled={isSaving}
+            />
           </div>
         </div>
       </div>

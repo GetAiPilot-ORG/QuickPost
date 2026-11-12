@@ -77,7 +77,11 @@ export async function syncAutoDMMessageToInbox(msg) {
     if (bodyText.trim().startsWith('{')) {
       try {
         const parsed = JSON.parse(bodyText);
-        if (parsed.elements && Array.isArray(parsed.elements)) {
+        if (typeof parsed.text === 'string' && Array.isArray(parsed.buttons)) {
+          bodyText = parsed.text;
+          buttons = parsed.buttons;
+          isInteractiveCard = true;
+        } else if (parsed.elements && Array.isArray(parsed.elements)) {
           const el = parsed.elements[0] || {};
           bodyText = el.title || '';
           if (el.subtitle) bodyText += '\n' + el.subtitle;

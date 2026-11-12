@@ -9,3 +9,7 @@
 ## 2026-10-06
 - Diagnosed InstaPilot reply delays: webhooks arrived in 1–2s, but the listener only persisted inbox data; browser polling drove replies. Wired bot handling to live webhook logs, guarded overlapping syncs, and added generation timing.
 - Backend syntax and mocked webhook/sync flow checks passed; live latency needs verification after restarting/deploying the API server.
+
+## 2026-11-12
+- Added three-hour Auto DM follow-ups with up to three link buttons, message preview, durable scheduling, reply/disable cancellation, messaging-window checks, quota enforcement and duplicate protection.
+- Deployed the additive migration and webhook to Supabase; live schema/permission checks passed. Client build, 13 worker/config tests, temporary PostgreSQL checks and UI checks passed; user will deploy backend/frontend. Edge typecheck retains 13 pre-existing errors.
