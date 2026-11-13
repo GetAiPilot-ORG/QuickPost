@@ -1,3 +1,4 @@
+import { publishToSocialpilot } from "./socialpilotPublishing.js";
 import fs from 'fs';
 import { getTokensForUser } from './supabase.js';
 import { postToInstagram, postImageToInstagram, postCarouselToInstagram, postStoryToInstagram } from './instagram.js';
@@ -58,6 +59,10 @@ export async function executeBroadcast(broadcastId, userId, caption, mediaUrls, 
 
     const results = { mediaUrl: primaryMediaUrl, mediaUrls: mediaUrls };
     let platformPromises = [];
+    if (channels.includes('socialpilot')) {
+      platformPromises.push(publishToSocialpilot({ userId, publicationKey: platData?.sourceJobId || platData?.source_job_id || broadcastId, caption, mediaUrls, mediaType, thumbnailUrl: coverImageUrl }).then(result => ({ platform: 'socialpilot', result })));
+    }
+
 
     for (const account of resolveSocialPublishChannels('pinterest', channels, tokens.pinterestAccounts || [])) {
       const resolvedCaption = resolveMentions(platData?.pinterest?.title || caption, 'pinterest', account);

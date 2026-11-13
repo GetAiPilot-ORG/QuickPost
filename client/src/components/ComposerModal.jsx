@@ -1,3 +1,4 @@
+import TutorialHelp from "./TutorialHelp";
 import React, {
   useState,
   useRef,
@@ -1165,6 +1166,8 @@ function ComposerModal({
 
   /* ── State ── */
   const [selectedChannels, setSelectedChannels] = useState([]);
+  const [postToSocialpilot, setPostToSocialpilot] = useState(false);
+  useEffect(() => { if (!isOpen) setPostToSocialpilot(false); }, [isOpen]);
   const hasInstagram = selectedChannels.some(c => c === "instagram" || c.startsWith("instagram:"));
   const isOnlyInstagram =
     selectedChannels.length > 0 &&
@@ -1868,6 +1871,7 @@ function ComposerModal({
         caption.trim().substring(0, 100);
 
       const publishPlatformData = {
+        socialpilot: { enabled: postToSocialpilot },
         ...(hasInstagram
           ? {
               ...platformData,
@@ -1887,6 +1891,7 @@ function ComposerModal({
             }
           : {}),
       };
+      publishPlatformData.socialpilot = { enabled: postToSocialpilot };
       if (youtubeThumbnail) {
         formData.append(
           "youtubeThumbnail",
@@ -1968,7 +1973,7 @@ function ComposerModal({
         res.data.jobId,
         {
           caption,
-          channels: publishChannels,
+          channels: postToSocialpilot ? [...publishChannels, "socialpilot"] : publishChannels,
           fileCount: mediaFiles.length,
           mediaType: detectedMediaType,
           previewUrl:
@@ -1988,6 +1993,7 @@ function ComposerModal({
       setCaption("");
       setMediaFiles([]);
       setSelectedChannels([]);
+      setPostToSocialpilot(false);
       setAutoDMConfig({
         ...defaultComposerAutoDMConfig,
         responseFlow: {
@@ -2239,6 +2245,7 @@ function ComposerModal({
               >
                 Create Post
               </h2>
+              <TutorialHelp topic="compose" />
               <motion.div
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -2596,8 +2603,10 @@ function ComposerModal({
                         }
                       />
                     </Section>
-
-
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 0', marginBottom: 12, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={postToSocialpilot} onChange={(event) => setPostToSocialpilot(event.target.checked)} style={{ marginTop: 3, accentColor: '#111' }} />
+                      <span><span style={{ display: 'block', fontSize: 13, fontWeight: 600 }}>Post on SocialPilot too</span><span style={{ display: 'block', fontSize: 12, color: '#64645f', marginTop: 3 }}>Share publicly in Trend Feed with all SocialPilot users{isScheduled ? ' at the scheduled time' : ''}.</span></span>
+                    </label>
 
                     {!isInstagramStoryOnly && (
                       <>

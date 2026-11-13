@@ -157,10 +157,10 @@ function correlateAndEnrichMessages(messages, outboundDbMsgs, getIsSelf, getAuth
   // First pass: map raw fields and match text
   const enriched = messages.map((m) => {
     const isSelf = getIsSelf(m);
-    const shareUrl = m.shares?.data?.[0]?.link || null;
-    const attachment = m.attachments?.data?.[0];
+    const shareUrl = m.shares?.data?.[0]?.link || m.attachments?.data?.find((item) => /^https:\/\/(www\.)?instagram\.com\/(reel|p|tv)\//.test(item.link || ''))?.link || null;
+    const attachment = m.attachments?.data?.find((item) => item.image_data?.url || item.video_data?.url || item.file_url) || m.attachments?.data?.[0];
     let imageUrl =
-      attachment?.image_data?.url ||
+      attachment?.image_data?.url || attachment?.video_data?.preview_url ||
       (attachment?.mime_type?.startsWith('image/') ? attachment?.file_url : null) ||
       null;
     const videoUrl =
@@ -665,10 +665,10 @@ export async function fetchFacebookComments(tokenRow) {
             .map((m) => {
               const isMe =
                 String(m.from?.id) === String(pageId) || (m.from?.name || '').toLowerCase() === myUsername;
-              const shareUrl = m.shares?.data?.[0]?.link || null;
-              const attachment = m.attachments?.data?.[0];
+              const shareUrl = m.shares?.data?.[0]?.link || m.attachments?.data?.find((item) => /^https:\/\/(www\.)?instagram\.com\/(reel|p|tv)\//.test(item.link || ''))?.link || null;
+              const attachment = m.attachments?.data?.find((item) => item.image_data?.url || item.video_data?.url || item.file_url) || m.attachments?.data?.[0];
               const imageUrl =
-                attachment?.image_data?.url ||
+                attachment?.image_data?.url || attachment?.video_data?.preview_url ||
                 (attachment?.mime_type?.startsWith('image/') ? attachment?.file_url : null) ||
                 null;
               const videoUrl =

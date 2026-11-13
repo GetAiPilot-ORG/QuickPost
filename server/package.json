@@ -11,7 +11,8 @@
     "worker:trends:reddit": "node src/workers/trendRedditWorker.js",
     "worker:trends:bluesky": "node src/workers/trendBlueskyWorker.js",
     "redis:inspect": "node scripts/inspectRedis.js",
-    "worker:inbox": "node src/workers/unifiedInboxWorker.js"
+    "worker:inbox": "node src/workers/unifiedInboxWorker.js",
+    "test:autodm-followups": "node test/autodmFollowups.node.mjs"
   },
   "keywords": [
     "social-media",

@@ -1,3 +1,4 @@
+import TutorialHelp from "../../components/TutorialHelp";
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { autodmSupabase, startAutoDMInstagramOAuth } from '../../services/autodm/supabaseClient';
@@ -179,7 +180,7 @@ export default function ConnectInstagramPage() {
         {/* Page Header */}
         <header style={{ marginBottom: '56px', maxWidth: '640px' }}>
           <h1 style={{ fontSize: '44px', fontWeight: '700', letterSpacing: '-0.03em', margin: '0 0 16px', lineHeight: '1.1' }}>
-            Channels & Integrations
+            Channels & Integrations <TutorialHelp topic="connect" />
           </h1>
           <p style={{ color: 'var(--slate, #64645F)', fontSize: '17px', margin: 0, lineHeight: '1.5' }}>
             Manage your connected social accounts and messaging platforms. Authorize GAP to post on your behalf and automate direct messages.

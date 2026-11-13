@@ -1,3 +1,4 @@
+import { communityFeedPost } from "./socialpilotPublishing.js";
 import IORedis from "ioredis";
 import crypto from "crypto";
 import {
@@ -83,7 +84,7 @@ function cacheKey(params) {
     )
     .digest("hex")
     .slice(0, 12);
-  return `trend:feed:${params.limit || DEFAULT_LIMIT}:${params.cursor || "first"}:${seenHash}`;
+  return `trend:feed:v2:${params.limit || DEFAULT_LIMIT}:${params.cursor || "first"}:${seenHash}`;
 }
 
 async function readCache(cache, key) {
@@ -197,7 +198,29 @@ async function fetchLiveExternalPosts({ type = "all", category = "all", region =
   }
 }
 
+export async function getCommunityFeedPage(params = {}, options = {}) {
+  const db = options.supabase || (await defaultSupabase());
+  const limit = toLimit(params.limit);
+  let query = db.from('posts').select('id,source_platform,source_url,thumbnail_url,caption,creator,creator_avatar_url,author_id,media_urls,media_type,published_at,ingested_at,engagement_score,niche_tags')
+    .eq('source_platform', 'socialpilot').order('published_at', { ascending: false }).order('id', { ascending: false });
+  if (params.cursor) {
+    let cursor;
+    try { cursor = JSON.parse(Buffer.from(String(params.cursor), 'base64url').toString('utf8')); } catch { throw new Error('Invalid community feed cursor'); }
+    if (!/^\d{4}-\d{2}-\d{2}T[0-9:.]+Z$/.test(cursor.at || '') || !Number.isFinite(Date.parse(cursor.at)) || !/^[0-9a-f-]{36}$/i.test(cursor.id || '')) throw new Error('Invalid community feed cursor');
+    query = query.or(`published_at.lt.${cursor.at},and(published_at.eq.${cursor.at},id.lt.${cursor.id})`);
+  }
+  const search = String(params.search || params.q || '').trim().slice(0, 200);
+  if (search) query = query.ilike('caption', `%${search}%`);
+  const { data, error } = await query.limit(limit + 1);
+  if (error) throw error;
+  const rows = (data || []).slice(0, limit);
+  const hasMore = (data || []).length > limit;
+  const last = rows.at(-1);
+  return { success: true, items: rows.map(communityFeedPost), hasMore, nextCursor: hasMore ? Buffer.from(JSON.stringify({ at: new Date(last.published_at).toISOString(), id: last.id })).toString('base64url') : null, cached: false };
+}
+
 export async function getTrendFeedPage(params = {}, options = {}) {
+  if (params.type === "community") return getCommunityFeedPage(params, options);
   const limit = toLimit(params.limit);
   const supabase = options.supabase || (await defaultSupabase());
   const now = options.now || new Date();
@@ -233,18 +256,18 @@ export async function getTrendFeedPage(params = {}, options = {}) {
   try {
     let query = supabase
       .from("posts")
-      .select("id,source_platform,source_url,embed_html,thumbnail_url,caption,engagement_score,niche_tags,published_at,ingested_at")
+      .select("id,source_platform,source_url,embed_html,thumbnail_url,caption,engagement_score,niche_tags,published_at,ingested_at,creator,creator_avatar_url,author_id,media_urls,media_type")
       .order("ingested_at", { ascending: false });
 
     if (type === "social") {
-      query = query.in("source_platform", ["reddit", "bluesky"]);
+      query = query.in("source_platform", ["reddit", "bluesky", "socialpilot"]);
     } else if (type === "videos") {
-      query = query.eq("source_platform", "youtube");
+      query = query.in("source_platform", ["youtube", "socialpilot"]);
     }
 
     const { data, error } = await query.limit(CANDIDATE_LIMIT);
     if (!error && data) {
-      dbRows = data;
+      dbRows = data.map(communityFeedPost);
     }
   } catch (err) {
     console.warn("[TREND-FEED] DB query notice:", err?.message);
@@ -252,7 +275,7 @@ export async function getTrendFeedPage(params = {}, options = {}) {
 
   // 2. Fetch live external items for current page
   let externalRows = [];
-  if (options.skipExternal !== true) {
+  if (options.skipExternal !== true && type !== "community") {
     try {
       externalRows = await fetchLiveExternalPosts({
         type,
@@ -304,9 +327,11 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     allCandidates = allCandidates.filter(
       (item) => item.source_platform === "unsplash" || item.content_type === "visual"
     );
+  } else if (type === "community") {
+    allCandidates = allCandidates.filter((item) => item.source_platform === "socialpilot");
   } else if (type === "social") {
     allCandidates = allCandidates.filter(
-      (item) => item.source_platform === "reddit" || item.source_platform === "bluesky"
+      (item) => item.source_platform === "reddit" || item.source_platform === "bluesky" || item.source_platform === "socialpilot"
     );
   }
 
@@ -334,9 +359,12 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     const videos = [];
     const news = [];
     const others = [];
+    const community = [];
 
     posts.forEach((p) => {
-      if (p.source_platform === "pexels" || p.content_type === "short" || p.content_type === "reel_video") {
+      if (p.source_platform === "socialpilot") {
+        community.push(p);
+      } else if (p.source_platform === "pexels" || p.content_type === "short" || p.content_type === "reel_video") {
         reels.push(p);
       } else if (p.source_platform === "unsplash" || p.content_type === "visual") {
         visuals.push(p);
@@ -350,7 +378,7 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     });
 
     const result = [];
-    const pattern = [visuals, reels, videos, visuals, reels, news, videos, visuals, others];
+    const pattern = [visuals, reels, videos, community, visuals, reels, news, videos, others];
     let hasMore = true;
 
     while (result.length < targetLimit && hasMore) {
@@ -367,7 +395,7 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     }
 
     // Append any remaining items if limit not reached
-    const remaining = [...visuals, ...reels, ...videos, ...news, ...others];
+    const remaining = [...community, ...visuals, ...reels, ...videos, ...news, ...others];
     for (const item of remaining) {
       if (result.length >= targetLimit) break;
       if (!result.some((r) => r.id === item.id)) {

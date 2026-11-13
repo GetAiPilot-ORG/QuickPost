@@ -1,3 +1,4 @@
+import { sortSchedules } from "../utils/scheduleSort";
 import React, { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -25,6 +26,8 @@ import apiClient from "../utils/apiClient";
 import ComposerModal from "../components/ComposerModal";
 import InfoHelp from "../components/InfoHelp";
 import CalendarView from "../components/CalendarView";
+import { ScheduledMediaThumb, ScheduledPreviewDialog } from "../components/ScheduledMedia";
+import { PENDING_SCHEDULE_STATUSES, scheduleStatus, scheduleCountdown, localScheduleInput } from "../utils/scheduleStatus";
 import { Skeleton } from "boneyard-js/react";
 import { useDialog } from "../context/DialogContext";
 import { useAuth } from "../context/AuthContext";
@@ -36,6 +39,7 @@ function getPlatformIcon(id) {
   const icons = {
     facebook: "/icons/facebook-round-color-icon.svg",
     instagram: "/icons/ig-instagram-icon.svg",
+    socialpilot: "/logo.png",
     x: "/icons/x-social-media-round-icon.svg",
     linkedin: "/icons/linkedin-icon.svg",
     youtube: "/icons/youtube-color-icon.svg",
@@ -92,44 +96,20 @@ const STATUS_CONFIG = {
   },
 };
 
-function StatusBadge({ status, lastError }) {
-  const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.scheduled;
+function StatusBadge({ status, lastError, platformData }) {
+  const cfg = { ...(STATUS_CONFIG[status] || STATUS_CONFIG.cancelled), ...scheduleStatus({ status, last_error: lastError, platform_data: platformData }) };
   const Icon = cfg.icon;
   return (
     <span
       className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border ${cfg.color}`}
     >
       <Icon className={`w-3 h-3 ${cfg.pulse ? "animate-spin" : ""}`} />
-      {status === "scheduled" && lastError ? "Retrying" : cfg.label}
+      {cfg.label}
     </span>
   );
 }
 
 // ─── Format helpers ──────────────────────────────────────────────────────────
-function formatScheduledTime(utcString) {
-  if (!utcString) return "—";
-  const d = new Date(utcString);
-  return d.toLocaleString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function timeUntil(utcString) {
-  if (!utcString) return null;
-  const diff = new Date(utcString).getTime() - Date.now();
-  if (diff < 0) return "overdue";
-  const mins = Math.floor(diff / 60000);
-  const hrs = Math.floor(mins / 60);
-  const days = Math.floor(hrs / 24);
-  if (days > 0) return `in ${days}d ${hrs % 24}h`;
-  if (hrs > 0) return `in ${hrs}h ${mins % 60}m`;
-  return `in ${mins}m`;
-}
-
 function cleanError(errorMsg) {
   if (!errorMsg) return "";
   let cleaned = String(errorMsg)
@@ -151,24 +131,8 @@ function cleanError(errorMsg) {
 }
 
 // ─── Thumbnail ───────────────────────────────────────────────────────────────
-function QueueThumb({ post }) {
-  const url = post.thumbnail_url || post.media_url;
-  return (
-    <div className="w-16 h-16 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0">
-      {url ? (
-        <img
-          src={url}
-          alt="thumb"
-          className="w-full h-full object-cover"
-          onError={(e) => (e.target.style.display = "none")}
-        />
-      ) : (
-        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
-          <Calendar className="w-6 h-6 text-gray-300" />
-        </div>
-      )}
-    </div>
-  );
+function QueueThumb({ post, onPreview }) {
+  return <button type="button" aria-label={`Preview ${post.caption || 'post'}`} onClick={onPreview} className="shrink-0 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black"><ScheduledMediaThumb post={post} className="h-[52px] w-[52px]" /></button>;
 }
 
 // ─── Queue Card ───────────────────────────────────────────────────────────────
@@ -186,16 +150,18 @@ function QueueCard({ post, onCancel, onRetry, onRefresh, autoEditId }) {
   const [newCaption, setNewCaption] = useState(post.caption || "");
   const [newTime, setNewTime] = useState(
     post.scheduled_for
-      ? new Date(post.scheduled_for).toISOString().slice(0, 16)
+      ? localScheduleInput(post.scheduled_for)
       : "",
   );
   const [saving, setSaving] = useState(false);
   const [actionLoading, setActionLoading] = useState("");
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const { connectedAccounts } = useAuth();
 
   const channels = (Array.isArray(post.selected_channels) ? post.selected_channels : [])
     .filter((c) => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(c).trim()));
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone; // Always show in local time for the user
-  const until = timeUntil(post.scheduled_for);
+  const until = scheduleCountdown(post);
 
   const handleSaveEdit = async () => {
     if (!newTime) return;
@@ -244,9 +210,7 @@ function QueueCard({ post, onCancel, onRetry, onRefresh, autoEditId }) {
   };
 
   // Min datetime for editing = now + 2 min
-  const minEditTime = new Date(Date.now() + 2 * 60 * 1000)
-    .toISOString()
-    .slice(0, 16);
+  const minEditTime = localScheduleInput(Date.now() + 2 * 60 * 1000);
 
   return (
     <motion.div
@@ -254,78 +218,32 @@ function QueueCard({ post, onCancel, onRetry, onRefresh, autoEditId }) {
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.97, y: -6 }}
-      className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-shadow hover:shadow-md ${post.status === "processing"
-        ? "border-amber-200 ring-1 ring-amber-100"
-        : post.status === "failed"
-          ? "border-red-200"
-          : post.status === "cancelled"
-            ? "border-gray-200 opacity-60"
-            : "border-gray-100"
-        }`}
+      className={`scheduled-list-card ${post.status === "cancelled" ? 'opacity-70' : ''}`}
+      role="listitem"
     >
-      {/* Main row */}
-      <div className="p-4 flex items-start gap-4">
-        <QueueThumb post={post} />
-        <div className="flex-1 min-w-0">
-          {/* Caption */}
-          <p className="text-sm font-semibold text-gray-900 line-clamp-2 leading-normal mb-1">
-            {post.caption || (
-              <span className="text-gray-400 italic">No caption</span>
-            )}
-          </p>
-
-          {/* Error Message Inline (if failed) */}
-          {post.status === "failed" && post.last_error && (
-            <div className="mb-2 inline-flex items-start gap-1.5 p-1.5 bg-red-50/80 rounded-md border border-red-100 max-w-full">
-              <AlertTriangle className="w-3.5 h-3.5 text-red-600 mt-0.5 shrink-0" />
-              <span className="text-[12px] font-medium text-red-700 leading-tight">
-                {cleanError(post.last_error)}
-              </span>
-            </div>
-          )}
-
-          {/* Meta: time + timezone */}
-          <div className="flex items-center gap-2 flex-wrap mb-2">
-            <div className="flex items-center gap-1 text-[11px] font-medium text-gray-500">
-              <Clock className="w-3 h-3" />
-              {formatScheduledTime(post.scheduled_for)}
-              {until && (
-                <span
-                  className={`ml-1 font-bold ${until === "overdue" ? "text-red-500" : "text-blue-500"
-                    }`}
-                >
-                  ({until})
-                </span>
-              )}
-            </div>
-            <span className="text-[10px] text-gray-300">·</span>
-            <span className="text-[10px] text-gray-400">{tz}</span>
+      <div className="scheduled-list-row">
+        <div className="scheduled-row-thumb"><QueueThumb post={post} onPreview={() => setPreviewOpen(true)} /></div>
+        <div className="scheduled-row-content min-w-0">
+          <button type="button" onClick={() => setPreviewOpen(true)} className="block w-full truncate text-left text-sm font-semibold text-gray-900 hover:underline focus-visible:outline-none focus-visible:underline">{post.caption || 'Untitled post'}</button>
+          <div className="mt-1 flex min-w-0 items-center gap-2 overflow-hidden text-xs text-gray-500">
+            {channels.map(channel => {
+              const [provider, accountId] = channel.split(':');
+              const accounts = connectedAccounts?.[`${provider}Accounts`] || [];
+              const account = accountId ? accounts.find(item => String(item.id) === accountId) : accounts[0];
+              const label = account?.username ? `@${account.username.replace(/^@/, '')}` : account?.name || provider;
+              return <span key={channel} title={label} className="inline-flex min-w-0 items-center gap-1.5"><span className="shrink-0">{getPlatformIcon(channel)}</span><span className="truncate">{label}</span></span>;
+            })}
           </div>
-
-          {/* Platforms + status */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <StatusBadge status={post.status} lastError={post.last_error} />
-            <div className="flex items-center gap-1 flex-wrap">
-              {channels.map((id) => (
-                <span
-                  key={id}
-                  title={(id || "").split(":")[0]}
-                  className="w-5 h-5 rounded-full bg-gray-50 border border-gray-100 flex items-center justify-center overflow-hidden"
-                >
-                  {getPlatformIcon(id)}
-                </span>
-              ))}
-            </div>
-            {post.attempt_count > 0 && (
-              <span className="text-[10px] text-gray-400">
-                attempt {post.attempt_count}
-              </span>
-            )}
-          </div>
+          {post.status === 'failed' && post.last_error && <p title={cleanError(post.last_error)} className="mt-1 truncate text-xs text-red-600">{cleanError(post.last_error)}</p>}
         </div>
-
+        <div className="scheduled-row-time text-xs">
+          <p className="font-semibold tabular-nums text-gray-800">{post.scheduled_for && Number.isFinite(Date.parse(post.scheduled_for)) ? new Date(post.scheduled_for).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '—'}</p>
+          {until && <p className="mt-1 text-[11px] text-gray-500">{until}</p>}
+        </div>
+        <div className="scheduled-row-status"><StatusBadge status={post.status} lastError={post.last_error} platformData={post.platform_data} /></div>
         {/* Actions */}
-        <div className="flex items-center gap-1 flex-shrink-0">
+        <div className="scheduled-row-actions flex items-center justify-end gap-1">
+          <button type="button" onClick={() => setPreviewOpen(true)} className="rounded-md px-2 py-2 text-xs font-medium text-gray-700 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black">Preview</button>
           {post.status === "scheduled" && (
             <button
               onClick={() => {
@@ -369,6 +287,8 @@ function QueueCard({ post, onCancel, onRetry, onRefresh, autoEditId }) {
           {post.status === "scheduled" && (
             <button
               onClick={() => setExpanded(!expanded)}
+              aria-label={expanded ? 'Hide details' : 'Show details'}
+              aria-expanded={expanded}
               className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
             >
               {expanded ? (
@@ -380,6 +300,8 @@ function QueueCard({ post, onCancel, onRetry, onRefresh, autoEditId }) {
           )}
         </div>
       </div>
+
+      <ScheduledPreviewDialog post={post} open={previewOpen} onOpenChange={setPreviewOpen} errorMessage={post.status === 'failed' ? cleanError(post.last_error) : null} />
 
       {/* Expanded / Edit panel */}
       <AnimatePresence>
@@ -493,6 +415,7 @@ export default function ScheduledQueue() {
   const [composerOpen, setComposerOpen] = useState(false);
   const [activeFilter, setActiveFilter] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
+  const [sortOrder, setSortOrder] = useState('latest');
 
   // Persistent toggle state
   const [viewMode, setViewMode] = useState(() => {
@@ -542,7 +465,7 @@ export default function ScheduledQueue() {
   // Filter
   const FILTERS = [
     { id: "all", label: "All" },
-    { id: "scheduled", label: "Scheduled" },
+    { id: "scheduled", label: "Pending" },
     { id: "sent", label: "Published" },
     { id: "failed", label: "Failed" },
     { id: "cancelled", label: "Cancelled" },
@@ -551,9 +474,9 @@ export default function ScheduledQueue() {
   const filtered =
     activeFilter === "all"
       ? posts
-      : posts.filter((p) => p.status === activeFilter);
+      : posts.filter((p) => activeFilter === 'scheduled' ? PENDING_SCHEDULE_STATUSES.includes(p.status) : p.status === activeFilter);
 
-  const grouped = groupByDate(filtered);
+  const grouped = groupByDate(sortSchedules(filtered, sortOrder));
 
   return (
     <div className="min-h-screen" style={{ background: "var(--canvas)" }}>
@@ -562,14 +485,14 @@ export default function ScheduledQueue() {
         style={{
           background: "#ffffff",
           borderBottom: "1px solid #ebe7e1",
-          padding: "clamp(20px, 3vw, 24px) clamp(18px, 3vw, 32px)",
+          padding: "18px clamp(12px, 2vw, 20px)",
         }}
       >
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1
               style={{
-                fontSize: "clamp(36px, 5vw, 56px)",
+                fontSize: "clamp(28px, 3vw, 38px)",
                 fontWeight: 500,
                 color: "#111111",
                 margin: 0,
@@ -582,11 +505,8 @@ export default function ScheduledQueue() {
               }}
             >
               Scheduled Queue
-              <InfoHelp text="Automated schedule dispatcher that publishes queued multi-channel content at exact scheduled times" />
+              <InfoHelp text="The scheduled time is a publishing target, not a guaranteed live time. Dispatch checks run every minute by default; upload and platform processing can add delay." />
             </h1>
-            <p className="text-xs text-gray-500 font-medium mt-1.5 max-w-md">
-              Manage and track upcoming social broadcasts across all connected channels.
-            </p>
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -600,7 +520,7 @@ export default function ScheduledQueue() {
                   }`}
               >
                 <LayoutGrid className="w-3.5 h-3.5" />
-                Grid
+                Calendar
               </button>
               <button
                 onClick={() => handleViewChange("list")}
@@ -666,16 +586,16 @@ export default function ScheduledQueue() {
         style={{
           background: "#ffffff",
           borderBottom: "1px solid #d3cec6",
-          padding: "0 clamp(18px, 3vw, 32px)",
+          padding: "0 clamp(12px, 2vw, 20px)",
         }}
       >
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-6 overflow-x-auto" aria-label="Filter schedules">
           {[
             { id: "all", label: "All", count: posts.length },
             {
               id: "scheduled",
-              label: "Scheduled",
-              count: posts.filter((p) => p.status === "scheduled").length,
+              label: "Pending",
+              count: posts.filter((p) => PENDING_SCHEDULE_STATUSES.includes(p.status)).length,
             },
             {
               id: "sent",
@@ -733,9 +653,9 @@ export default function ScheduledQueue() {
       {/* ── Content ── */}
       <div
         style={{
-          padding: "32px clamp(18px, 3vw, 32px)",
+          padding: "16px clamp(12px, 2vw, 20px)",
           margin: "0 auto",
-          maxWidth: "1600px",
+          maxWidth: viewMode === 'list' ? '1120px' : '1600px',
         }}
       >
         <Skeleton
@@ -745,7 +665,7 @@ export default function ScheduledQueue() {
             <div className="space-y-8">
               {[1, 2].map((i) => (
                 <div key={i}>
-                  <div className="flex items-center gap-3 mb-3">
+                  <div className="flex items-center gap-3 mb-2">
                     <div className="h-4 w-32 bg-gray-200 rounded animate-pulse" />
                     <div className="flex-1 h-px bg-gray-100" />
                   </div>
@@ -811,21 +731,30 @@ export default function ScheduledQueue() {
               </button>
             </motion.div>
           ) : (
-            <div className="space-y-8">
+            <div className="space-y-5">
+              <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-gray-500">
+                <label className="flex items-center gap-2">Schedule time
+                  <select aria-label="Sort posts by schedule time" value={sortOrder} onChange={(event) => setSortOrder(event.target.value)} className="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700">
+                    <option value="latest">Latest first</option>
+                    <option value="oldest">Oldest first</option>
+                  </select>
+                </label>
+                <span>Times in {Intl.DateTimeFormat().resolvedOptions().timeZone}</span>
+              </div>
               <AnimatePresence>
                 {Object.entries(grouped).map(([date, datePosts]) => (
                   <div key={date}>
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-gray-500 uppercase tracking-widest">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="flex items-center gap-1.5 text-[13px] font-semibold text-gray-700">
                         <Calendar className="w-3.5 h-3.5" />
                         {date}
                       </div>
                       <div className="flex-1 h-px bg-gray-100" />
-                      <span className="text-[10px] font-bold text-gray-300">
+                      <span className="text-xs font-medium text-gray-500">
                         {datePosts.length} post{datePosts.length > 1 ? "s" : ""}
                       </span>
                     </div>
-                    <div className="space-y-3">
+                    <div className="scheduled-list-group" role="list" aria-label={date}>
                       {datePosts.map((post) => (
                         <QueueCard
                           key={post.id}

@@ -285,7 +285,7 @@ function buildPlatforms(post) {
   ])).map(String).filter((ch) => Boolean(ch) && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ch.trim()));
 
   const isScheduled = post.status === 'scheduled' && !post.last_error;
-  const resultsData = post.results || post.platform_data?.results || {};
+  const resultsData = { ...(post.results || post.platform_data?.results || {}), ...(post.platform_data?.channelResults || {}) };
 
   const getSpecificPlatformError = (platformId, channelId) => {
     return (
@@ -297,6 +297,7 @@ function buildPlatforms(post) {
   };
 
   const platformMeta = [
+    { id: "socialpilot", name: "SocialPilot", success: Boolean(resultsData.socialpilot?.success), error: resultsData.socialpilot?.error || null, url: resultsData.socialpilot?.url },
     { id: "linkedin", name: "LinkedIn", success: Boolean(post.linkedin_success), error: getSpecificPlatformError("linkedin", "linkedin"), url: post.linkedin_url },
     { id: "youtube", name: "YouTube", success: Boolean(post.youtube_success), error: getSpecificPlatformError("youtube", "youtube"), url: post.youtube_shorts_url || post.youtube_url },
     { id: "facebook", name: "Facebook", success: Boolean(post.facebook_success), error: getSpecificPlatformError("facebook", "facebook"), url: post.facebook_url },
@@ -343,7 +344,7 @@ function buildPlatforms(post) {
           id: scId,
           name: pm.name,
           success: isScheduled ? false : pm.success,
-          error: isScheduled ? null : (specificErr || (post.status === 'failed' ? post.last_error : null)),
+          error: isScheduled || (pm.id === "socialpilot" && pm.success) ? null : (specificErr || (post.status === 'failed' ? post.last_error : null)),
           url: pm.url,
         });
       });

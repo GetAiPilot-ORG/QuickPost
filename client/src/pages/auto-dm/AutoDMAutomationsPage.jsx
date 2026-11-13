@@ -378,7 +378,7 @@ function AnalyticsModal({ automation, analytics, loading, commentRows, commentsL
                         style={{ padding: '4px 8px', fontSize: '12px' }}
                         onClick={() => window.open(automation.media_permalink, '_blank', 'noopener,noreferrer')}
                       >
-                        <ExternalLink size={13} />
+                        <HugeiconsIcon icon={ExternalLinkIcon} size={13} strokeWidth={1.8} />
                         View
                       </button>
                     ) : (

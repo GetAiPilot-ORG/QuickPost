@@ -1,3 +1,4 @@
+import TutorialHelp from "./TutorialHelp";
 import React, { useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -204,6 +205,7 @@ function Header({ onMenuClick, sidebarOpen, isDesktop, topOffset = 0 }) {
 
       {/* Right: Actions + user pill */}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <TutorialHelp key={location.pathname} />
         <div id="header-actions-portal" style={{ display: "flex", alignItems: "center", gap: 12 }}></div>
         {!isEditorPage && (
           <>
