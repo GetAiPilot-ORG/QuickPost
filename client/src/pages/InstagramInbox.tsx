@@ -11,7 +11,8 @@ export default function InstagramInbox() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [syncing, setSyncing] = useState(false);
 
-  const handleRefresh = async () => {
+  // Manual sync triggered when user clicks the sync button
+  const handleManualSync = async () => {
     setSyncing(true);
     try {
       await syncInstagramInbox();
@@ -20,6 +21,12 @@ export default function InstagramInbox() {
     } finally {
       setSyncing(false);
     }
+    await refresh();
+    setRefreshKey((prev) => prev + 1);
+  };
+
+  // Data refresh when realtime SSE message arrives
+  const handleDataRefresh = async () => {
     await refresh();
     setRefreshKey((prev) => prev + 1);
   };
@@ -38,7 +45,7 @@ export default function InstagramInbox() {
     
     eventSource.onmessage = (e) => {
       if (e.data === 'refresh') {
-        handleRefresh();
+        handleDataRefresh();
       }
     };
 
@@ -46,16 +53,17 @@ export default function InstagramInbox() {
       console.warn('[SSE] Reconnecting to stream...', err);
     };
 
-    // Safety background poll every 4 seconds to guarantee sync
-    const pollInterval = setInterval(() => {
+    // Refresh when user returns to tab
+    const handleVisibility = () => {
       if (!document.hidden) {
-        handleRefresh();
+        handleDataRefresh();
       }
-    }, 4000);
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
       eventSource.close();
-      clearInterval(pollInterval);
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [refresh]);
 
@@ -86,7 +94,7 @@ export default function InstagramInbox() {
         />
         <LeadPanel
           lead={selected?.instagram_leads?.[0] || selected?.lead_data}
-          onRefresh={handleRefresh}
+          onRefresh={handleManualSync}
           syncing={syncing}
         />
       </div>

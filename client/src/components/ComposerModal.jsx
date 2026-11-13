@@ -1170,6 +1170,8 @@ function ComposerModal({
     selectedChannels.length > 0 &&
     selectedChannels.every(c => c === "instagram" || c.startsWith("instagram:"));
   const getBasePlatform = (c) => c?.split(':')[0] || c;
+  const hasPlatform = (p) =>
+    selectedChannels.some((c) => c === p || String(c).startsWith(p + ":"));
   const normalizeSelectedChannels = (channels) => {
     const specificProviders = new Set(
       channels
@@ -1202,7 +1204,7 @@ function ComposerModal({
 
   const [platformData, setPlatformData] = useState({
     instagram: { type: "post" },
-    youtube: { type: "short" },
+    youtube: { type: "short", title: "" },
     facebook: { type: "post" },
     pinterest: { boardId: "", title: "", link: "" },
     reddit: { subreddit: "", title: "", flairId: "" },
@@ -1481,6 +1483,7 @@ function ComposerModal({
     mediaFiles,
     platformData,
     youtubeThumbnail,
+    instagramCover,
     postType: effectivePostType,
     caption,
     scheduledAt,
@@ -1743,9 +1746,6 @@ function ComposerModal({
     const hasImg = mediaFiles.some((m) => m.file?.type?.startsWith("image/"));
     const hasVid = mediaFiles.some((m) => m.file?.type?.startsWith("video/"));
 
-    const hasPlatform = (p) =>
-      selectedChannels.some((c) => c === p || String(c).startsWith(p + ":"));
-
     if (effectivePostType === "reel" && !hasVid) {
       setError("Reels require a video file.");
       return false;
@@ -1762,16 +1762,27 @@ function ComposerModal({
     }
     if (
       hasPlatform("pinterest") &&
-      !platformData.pinterest?.title?.trim()
+      !platformData.pinterest?.title?.trim() &&
+      !caption.trim()
     ) {
-      setError("Pinterest requires a title in Platform Customization.");
+      setError("Pinterest requires a title or caption.");
       return false;
     }
+    const hasDefaultPinterestBoard = Boolean(
+      connectedAccounts?.pinterestAccounts?.[0]?.boardId ||
+      connectedAccounts?.pinterestAccounts?.[0]?.profileData?.boardId ||
+      connectedAccounts?.pinterestAccounts?.[0]?.profile_data?.boardId
+    );
     if (
       hasPlatform("pinterest") &&
-      !platformData.pinterest?.boardId
+      !platformData.pinterest?.boardId &&
+      !hasDefaultPinterestBoard
     ) {
-      setError("Pinterest requires a board selection.");
+      setError("Pinterest requires a board selection. Please choose a board in Platform Customization.");
+      return false;
+    }
+    if (hasPlatform("pinterest") && hasVid && !hasImg && !youtubeThumbnail && !instagramCover) {
+      setError("Pinterest requires an image or cover image to publish a Pin.");
       return false;
     }
     if (
@@ -1779,6 +1790,19 @@ function ComposerModal({
       !platformData.reddit?.subreddit?.trim()
     ) {
       setError("Reddit requires a subreddit.");
+      return false;
+    }
+    if (
+      hasPlatform("youtube") &&
+      !platformData.youtube?.title?.trim() &&
+      !caption?.trim()
+    ) {
+      setError("YouTube requires a title. Please enter a title in Platform Customization or add a caption.");
+      return false;
+    }
+    const ytAccount = connectedAccounts?.youtube || connectedAccounts?.youtubeAccounts?.[0];
+    if (hasPlatform("youtube") && ytAccount && ytAccount.hasChannel === false) {
+      setError("No YouTube channel found for this Google account. Please create a channel at youtube.com/create_channel before publishing.");
       return false;
     }
     if (isScheduled) {
@@ -1817,6 +1841,9 @@ function ComposerModal({
     isOnlyInstagram,
     effectivePostType,
     isInstagramStoryOnly,
+    connectedAccounts,
+    youtubeThumbnail,
+    instagramCover,
   ]);
 
   const handleSubmit = async () => {
@@ -1830,15 +1857,36 @@ function ComposerModal({
       formData.append("caption", isInstagramStoryOnly ? "" : caption);
       const publishChannels = normalizeSelectedChannels(selectedChannels);
       const publishPostType = hasInstagram ? postTypeRef.current : effectivePostType;
-      const publishPlatformData = hasInstagram
-        ? {
-            ...platformData,
-            instagram: {
-              ...platformData.instagram,
-              type: publishPostType,
-            },
-          }
-        : platformData;
+      const defaultPinterestBoard =
+        platformData.pinterest?.boardId ||
+        connectedAccounts?.pinterestAccounts?.[0]?.boardId ||
+        connectedAccounts?.pinterestAccounts?.[0]?.profileData?.boardId ||
+        connectedAccounts?.pinterestAccounts?.[0]?.profile_data?.boardId ||
+        "";
+      const defaultPinterestTitle =
+        platformData.pinterest?.title?.trim() ||
+        caption.trim().substring(0, 100);
+
+      const publishPlatformData = {
+        ...(hasInstagram
+          ? {
+              ...platformData,
+              instagram: {
+                ...platformData.instagram,
+                type: publishPostType,
+              },
+            }
+          : platformData),
+        ...(hasPlatform("pinterest")
+          ? {
+              pinterest: {
+                ...platformData.pinterest,
+                boardId: defaultPinterestBoard,
+                title: defaultPinterestTitle,
+              },
+            }
+          : {}),
+      };
       if (youtubeThumbnail) {
         formData.append(
           "youtubeThumbnail",
@@ -1953,7 +2001,13 @@ function ComposerModal({
       if (err.response) {
         console.error("Server response data:", err.response.data);
       }
-      setError(err.response?.data?.error || "Failed to start broadcast");
+      const errMsg =
+        err.response?.data?.error ||
+        err.response?.data?.message ||
+        (typeof err.response?.data === "string" ? err.response.data : null) ||
+        err.message ||
+        "Failed to start broadcast";
+      setError(errMsg);
     } finally {
       setLoading(false);
     }
@@ -2474,6 +2528,7 @@ function ComposerModal({
                     user={user}
                     selectedChannels={selectedChannels}
                     caption={caption}
+                    platformData={platformData}
                     mediaFiles={mediaFiles}
                     selectedRatio={selectedRatio}
                     selectedSizePreset={platformPresets[activePreviewBasePlatform]}

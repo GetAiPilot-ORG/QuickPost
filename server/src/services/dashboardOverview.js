@@ -139,6 +139,7 @@ export function summarizeConnectedAccounts(connectedAccounts = {}, now = new Dat
         profilePicture: account.profilePicture || account.profile_picture_url || null,
         tokenExpiry: account.token_expiry || null,
         needsReconnect: isExpired(account.token_expiry, nowMs),
+        hasChannel: account.hasChannel ?? true,
       }));
     });
 
@@ -152,6 +153,7 @@ export function summarizeConnectedAccounts(connectedAccounts = {}, now = new Dat
       profilePicture: account.profilePicture || null,
       tokenExpiry: account.token_expiry || null,
       needsReconnect: isExpired(account.token_expiry, nowMs),
+      hasChannel: account.hasChannel ?? true,
     }));
 
   const accounts = [...accountGroups, ...singles];

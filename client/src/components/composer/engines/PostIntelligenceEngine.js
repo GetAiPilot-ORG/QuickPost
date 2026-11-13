@@ -20,6 +20,7 @@ import { PLATFORM_META } from "../data/platforms.js";
 /* ── Internal rule IDs ── */
 const RULE = {
   YT_IMAGE_ONLY:        "yt_image_only",
+  YT_NO_CHANNEL:        "yt_no_channel",
   YT_IMAGE_IGNORED:     "yt_image_ignored",
   YT_THUMB_UNVERIFIED:  "yt_thumb_unverified",
   YT_THUMB_MISSING:     "yt_thumb_missing",
@@ -57,6 +58,7 @@ export function PostIntelligenceEngine(ctx) {
     mediaFiles = [],
     platformData = {},
     youtubeThumbnail = null,
+    instagramCover = null,
     postType = "post",
     caption = "",
     scheduledAt = "",
@@ -86,6 +88,19 @@ export function PostIntelligenceEngine(ctx) {
      YOUTUBE RULES
      ──────────────────────────────────────────────────────────── */
   if (hasPlatform("youtube")) {
+    // BLOCKING: Google account has no YouTube channel created
+    const ytAccount = connectedAccounts?.youtube || (connectedAccounts?.youtubeAccounts && connectedAccounts.youtubeAccounts[0]);
+    if (ytAccount && ytAccount.hasChannel === false) {
+      errors.push({
+        id: RULE.YT_NO_CHANNEL,
+        platform: "youtube",
+        title: "No YouTube channel found",
+        message: "Is Google account par abhi tak koi YouTube channel nahi bana hai. YouTube par video publish karne ke liye pehle channel setup karein.",
+        actionUrl: "https://www.youtube.com/create_channel",
+        actionLabel: "Create YouTube channel (youtube.com/create_channel)",
+        blocking: true,
+      });
+    }
 
     // BLOCKING: YouTube cannot accept image-only posts (including GIFs)
     if (hasImage && !hasVideo) {
@@ -115,6 +130,8 @@ export function PostIntelligenceEngine(ctx) {
         platform: "youtube",
         title: "YouTube account not verified",
         message: "Custom thumbnail set karne ke liye YouTube channel verify hona zaroori hai. Thumbnail set nahi hogi.",
+        actionUrl: "https://www.youtube.com/verify",
+        actionLabel: "Verify YouTube channel (youtube.com/verify)",
       });
     }
 
@@ -128,12 +145,13 @@ export function PostIntelligenceEngine(ctx) {
     }
 
     // WARNING: YouTube title is mandatory
-    if (!platformData?.youtube?.title?.trim()) {
+    const hasYtTitle = platformData?.youtube?.title?.trim() || caption?.trim();
+    if (!hasYtTitle) {
       warnings.push({
         id: RULE.YT_TITLE_MISSING,
         platform: "youtube",
         title: "YouTube title required",
-        message: "YouTube par video publish hone ke liye ek title add karna zaroori hai.",
+        message: "YouTube par video publish hone ke liye ek title add karna zaroori hai. Platform Customization ya caption mein title add karein.",
       });
     }
   }
@@ -158,20 +176,34 @@ export function PostIntelligenceEngine(ctx) {
      PINTEREST RULES
      ──────────────────────────────────────────────────────────── */
   if (hasPlatform("pinterest")) {
-    if (!platformData?.pinterest?.title?.trim()) {
+    if (!platformData?.pinterest?.title?.trim() && !caption.trim()) {
       warnings.push({
         id: RULE.PINTEREST_TITLE,
         platform: "pinterest",
         title: "Pinterest title required",
-        message: "Pinterest par Pin ke liye ek descriptive title add karna zaroori hai.",
+        message: "Pinterest par Pin ke liye title ya caption add karna zaroori hai.",
       });
     }
-    if (!platformData?.pinterest?.boardId) {
+    const hasPinterestDefault = Boolean(
+      platformData?.pinterest?.boardId ||
+      connectedAccounts?.pinterestAccounts?.[0]?.boardId ||
+      connectedAccounts?.pinterestAccounts?.[0]?.profileData?.boardId ||
+      connectedAccounts?.pinterestAccounts?.[0]?.profile_data?.boardId
+    );
+    if (!hasPinterestDefault) {
       warnings.push({
         id: RULE.PINTEREST_BOARD,
         platform: "pinterest",
         title: "Pinterest board not selected",
         message: "Pinterest board select karna required hai. Platform Customization mein board choose karein.",
+      });
+    }
+    if (hasVideo && !hasImage && !youtubeThumbnail && !instagramCover) {
+      warnings.push({
+        id: "pinterest_media_format",
+        platform: "pinterest",
+        title: "Pinterest image required",
+        message: "Pinterest Pin ke liye ek image ya cover thumbnail zaroori hai.",
       });
     }
   }

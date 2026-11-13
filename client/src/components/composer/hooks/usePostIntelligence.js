@@ -25,6 +25,7 @@ export function usePostIntelligence(postState) {
       postState.mediaFiles?.[0]?.file?.type,
       JSON.stringify(postState.platformData),
       postState.youtubeThumbnail,
+      postState.instagramCover,
       postState.postType,
       postState.caption?.length,          // Re-run on length change (char limit checks)
       postState.scheduledAt,

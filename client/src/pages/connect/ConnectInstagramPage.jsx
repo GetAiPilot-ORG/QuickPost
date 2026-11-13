@@ -146,6 +146,7 @@ export default function ConnectInstagramPage() {
 
   const socialPlatforms = [
     { id: 'facebook', name: 'Facebook', description: 'Pages & Groups', icon: '/icons/facebook-round-color-icon.svg', onConnect: () => setShowFacebookModal(true) },
+    { id: 'pinterest', name: 'Pinterest', description: 'Boards & Pins', icon: '/icons/pinterest-round-color-icon.svg', onConnect: () => setShowPinterestModal(true) },
     { id: 'linkedin', name: 'LinkedIn', description: 'Profiles & Pages', icon: '/icons/linkedin-icon.svg', onConnect: () => setShowLinkedInModal(true) },
     { id: 'youtube', name: 'YouTube', description: 'Shorts & Videos', icon: '/icons/youtube-color-icon.svg', onConnect: () => handleRedirectConnect('youtube') },
     { id: 'threads', name: 'Threads', description: 'Text & Media', icon: '/icons/threads-icon.svg', onConnect: () => handleRedirectConnect('threads') },
@@ -154,7 +155,6 @@ export default function ConnectInstagramPage() {
 
   const comingSoonPlatforms = [
     { id: 'x', name: 'X (Twitter)', description: 'Posts & Threads', icon: '/icons/x-social-media-round-icon.svg' },
-    { id: 'pinterest', name: 'Pinterest', description: 'Boards & Pins', icon: '/icons/pinterest-round-color-icon.svg' },
     { id: 'reddit', name: 'Reddit', description: 'Subreddit Posting', icon: '/icons/reddit-icon.svg' },
     { id: 'whatsapp', name: 'WhatsApp', description: 'Business API', icon: '/icons/wa-whatsapp-icon.svg' },
     { id: 'telegram', name: 'Telegram', description: 'Bot API', icon: '/icons/telegram-icon.svg' },

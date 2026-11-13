@@ -60,6 +60,8 @@ export default defineConfig(({ mode }) => {
         '@supabase/supabase-js',
         'axios',
         'lucide-react',
+        '@hugeicons/react',
+        '@hugeicons/core-free-icons',
       ],
       exclude: ['gsap'],
     },

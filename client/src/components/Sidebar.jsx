@@ -587,11 +587,13 @@ function Sidebar({ onClose }) {
     const accounts = connectedAccounts[`${platform.id}Accounts`] || [];
     if (!accounts.length) return [platform];
 
+    const platformIcon = platformDetails[platform.id]?.icon || platform.icon;
+
     return accounts.map((account) => ({
       ...platform,
       id: `${platform.id}:${account.id}`,
       providerId: platform.id,
-      name: account.username || account.account_id || platform.name,
+      name: account.username || account.account_name || account.account_id || platform.name,
       icon: account.profilePicture ? (
         <img
           src={account.profilePicture}
@@ -599,11 +601,13 @@ function Sidebar({ onClose }) {
           alt=""
         />
       ) : (
-        <img
-          src="/icons/ig-instagram-icon.svg"
-          style={{ width: 22, height: 22, display: "block" }}
-          alt=""
-        />
+        React.isValidElement(platformIcon) ? (
+          React.cloneElement(platformIcon, {
+            style: { width: 22, height: 22, display: "block" }
+          })
+        ) : (
+          platformIcon
+        )
       ),
     }));
   });

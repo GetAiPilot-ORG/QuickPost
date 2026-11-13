@@ -76,9 +76,9 @@ export default function AuthPage() {
   };
 
   return (
-    <main className="relative md:h-screen md:overflow-hidden lg:grid lg:grid-cols-2 bg-background font-sans">
+    <main className="relative min-h-[100dvh] lg:h-screen lg:overflow-hidden lg:grid lg:grid-cols-2 bg-background font-sans">
       {/* Left side - Branding & Hero */}
-      <div className="bg-muted/10 relative hidden h-full flex-col border-r p-10 lg:flex">
+      <div className="bg-muted/10 relative hidden h-full flex-col border-r p-8 lg:flex lg:p-10">
         <div className="from-background absolute inset-0 z-10 bg-gradient-to-t to-transparent opacity-30" />
         <Link to="/" className="z-20 flex items-center gap-4 no-underline">
           <img src={logo} alt="GAP Social-pilot" className="size-8 object-contain" />
@@ -118,7 +118,7 @@ export default function AuthPage() {
       </div>
 
       {/* Right side - Auth Form */}
-      <div className="relative flex min-h-screen flex-col justify-center p-6 md:p-12">
+      <div className="relative flex min-h-[100dvh] lg:min-h-0 lg:h-full flex-col justify-center px-6 py-6 sm:px-8 sm:py-8 md:p-12 overflow-y-auto lg:overflow-hidden">
         <div
           aria-hidden
           className="absolute inset-0 isolate contain-strict -z-10 opacity-40 pointer-events-none"
@@ -129,46 +129,61 @@ export default function AuthPage() {
           />
         </div>
 
+        {/* Desktop-only back button */}
         <Button
           variant="ghost"
-          className="absolute top-8 left-8 hover:bg-muted/50"
+          className="hidden lg:flex absolute top-8 left-8 hover:bg-muted/50"
           onClick={() => navigate("/")}
         >
           <ChevronLeftIcon className="size-4 me-2" />
           Back to Home
         </Button>
 
-        <div className="mx-auto w-full max-w-[400px] space-y-8">
-          <Link to="/" className="flex items-center gap-3 lg:hidden mb-8 no-underline">
-            <div className="bg-ink p-1.5 rounded-lg shadow-lg">
-              <img
-                src={logo}
-                alt="GAP Social-pilot"
-                className="size-5 object-contain"
-              />
-            </div>
-            <span
-              style={{
-                fontSize: 18,
-                fontWeight: 800,
-                color: "var(--ink)",
-                fontFamily: "var(--font-logo)",
-                letterSpacing: "-0.03em",
-                lineHeight: 0.9,
-                display: 'flex',
-                flexDirection: 'column'
-              }}
-            >
-              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--arc)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 1 }}>GAP</span>
-              <span>Social‑pilot</span>
-            </span>
-          </Link>
+        <div className="mx-auto w-full max-w-[400px] flex flex-col space-y-4 sm:space-y-5 lg:space-y-6 my-auto">
+          {/* Mobile Header: Logo on left, Back to Home button on right */}
+          <div className="flex items-center justify-between w-full lg:hidden pb-1">
+            <Link to="/" className="flex items-center gap-2.5 no-underline group shrink-0">
+              <div className="bg-ink p-1.5 rounded-lg shadow-sm group-hover:scale-105 transition-transform">
+                <img
+                  src={logo}
+                  alt="GAP Social-pilot"
+                  className="size-5 object-contain"
+                />
+              </div>
+              <span
+                style={{
+                  fontSize: 18,
+                  fontWeight: 800,
+                  color: "var(--ink)",
+                  fontFamily: "var(--font-logo)",
+                  letterSpacing: "-0.03em",
+                  lineHeight: 0.9,
+                  display: 'flex',
+                  flexDirection: 'column'
+                }}
+              >
+                <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--arc)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 1 }}>GAP</span>
+                <span>Social‑pilot</span>
+              </span>
+            </Link>
 
-          <div className="flex flex-col space-y-2">
-            <h1 className="text-3xl font-bold tracking-tight text-ink">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-xs font-semibold text-slate hover:text-ink hover:bg-muted/50 h-8 px-2.5 rounded-lg gap-1 shrink-0 -me-1"
+              onClick={() => navigate("/")}
+            >
+              <ChevronLeftIcon className="size-3.5" />
+              <span>Back to home</span>
+            </Button>
+          </div>
+
+          <div className="flex flex-col space-y-1">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-ink">
               {mode === "login" ? "Welcome back" : "Start broadcasting"}
             </h1>
-            <p className="text-slate text-base">
+            <p className="text-slate text-sm">
               {mode === "login"
                 ? "Sign in to manage your social channels."
                 : "Create your account to start reaching more people."}
@@ -179,19 +194,19 @@ export default function AuthPage() {
           <AnimatePresence mode="wait">
             {notice && (
               <motion.div
-                initial={{ opacity: 0, y: -10 }}
+                initial={{ opacity: 0, y: -6 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="flex items-start gap-3 rounded-lg border border-[var(--dust)] bg-white p-4 text-sm text-[var(--ink)]"
+                exit={{ opacity: 0, y: -6 }}
+                className="flex items-start gap-2.5 rounded-lg border border-[var(--dust)] bg-white p-2.5 text-xs text-[var(--ink)]"
               >
-                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#fff1e8] text-[var(--arc)]">
-                  <MailCheck className="size-4" />
+                <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#fff1e8] text-[var(--arc)]">
+                  <MailCheck className="size-3.5" />
                 </span>
                 <span className="min-w-0">
-                  <strong className="block text-sm font-semibold leading-5 text-[var(--ink)]">
+                  <strong className="block text-xs font-semibold text-[var(--ink)]">
                     {notice.title}
                   </strong>
-                  <span className="mt-0.5 block leading-5 text-[var(--slate)]">
+                  <span className="mt-0.5 block leading-normal text-[var(--slate)] text-xs">
                     {notice.message}
                   </span>
                 </span>
@@ -199,19 +214,25 @@ export default function AuthPage() {
             )}
           </AnimatePresence>
 
-          <div className="space-y-3">
+          {/* SSO Buttons */}
+          <div className="space-y-2 sm:space-y-2.5">
             {/* GetAiPilot Hub SSO Button */}
             <Button
               type="button"
               size="lg"
-              className="w-full h-12 bg-gradient-to-r from-[#031b4e] to-[#0d3880] text-white hover:opacity-95 hover:shadow-md transition-all duration-300 font-bold shadow-sm flex items-center justify-center gap-2.5 border border-[#031b4e]/20 cursor-pointer"
+              className="w-full h-11 sm:h-12 bg-gradient-to-r from-[#031b4e] to-[#0d3880] text-white hover:opacity-95 hover:shadow-md transition-all duration-300 font-bold shadow-sm flex items-center justify-center gap-2.5 border border-[#031b4e]/20 cursor-pointer text-xs sm:text-sm"
               onClick={() => {
                 const hubUrl = "https://getaipilot.in";
                 window.location.href = `${hubUrl}/login?sso=social`;
               }}
               disabled={loading}
             >
-              <img src="https://getaipilot.in/logo.png" alt="GetAiPilot Logo" className="size-5 rounded object-contain" />
+              <img
+                src="https://getaipilot.in/logo.png"
+                alt="GetAiPilot Logo"
+                className="w-5 h-5 rounded object-contain shrink-0"
+                style={{ width: "20px", height: "20px", minWidth: "20px", minHeight: "20px" }}
+              />
               <span>Continue with GetAiPilot</span>
             </Button>
 
@@ -219,28 +240,27 @@ export default function AuthPage() {
               type="button"
               variant="outline"
               size="lg"
-              className="w-full h-12 border-muted hover:border-slate-300 hover:bg-white hover:shadow-md transition-all duration-300 font-bold bg-white text-ink shadow-sm"
+              className="w-full h-11 sm:h-12 border-muted hover:border-slate-300 hover:bg-white hover:shadow-md transition-all duration-300 font-bold bg-white text-ink shadow-sm flex items-center justify-center gap-2.5 text-xs sm:text-sm"
               onClick={handleGoogleLogin}
               disabled={loading}
             >
-              <GoogleIcon className="size-5 me-3" />
-              Continue with Google
+              <GoogleIcon className="w-5 h-5 shrink-0" />
+              <span>Continue with Google</span>
             </Button>
-            {/* You can add GitHub/Apple here if implemented in useAuth */}
           </div>
 
           <AuthSeparator />
 
-          <form className="space-y-4" onSubmit={handleSubmit}>
+          <form className="space-y-2.5 sm:space-y-3" onSubmit={handleSubmit}>
             {mode === "signup" && (
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate ml-1">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wider text-slate ml-1">
                   Full Name
                 </label>
                 <div className="relative">
                   <Input
                     placeholder="Jane Doe"
-                    className="h-12 ps-10 border-muted focus:border-arc transition-all bg-white"
+                    className="h-11 sm:h-12 ps-10 border-muted focus:border-arc transition-all bg-white text-sm"
                     type="text"
                     required
                     value={name}
@@ -253,14 +273,14 @@ export default function AuthPage() {
               </div>
             )}
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate ml-1">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate ml-1">
                 Email Address
               </label>
               <div className="relative">
                 <Input
                   placeholder="name@example.com"
-                  className="h-12 ps-10 border-muted focus:border-arc transition-all bg-white"
+                  className="h-11 sm:h-12 ps-10 border-muted focus:border-arc transition-all bg-white text-sm"
                   type="email"
                   required
                   value={email}
@@ -272,24 +292,14 @@ export default function AuthPage() {
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between ml-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate">
-                  Password
-                </label>
-                {mode === "login" && (
-                  <a
-                    href="https://getaipilot.in/login?forgot=true&returnTo=social"
-                    className="text-xs font-semibold text-[var(--arc)] hover:underline"
-                  >
-                    Forgot password?
-                  </a>
-                )}
-              </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate ml-1">
+                Password
+              </label>
               <div className="relative">
                 <Input
                   placeholder="••••••••"
-                  className="h-12 ps-10 pe-10 border-muted focus:border-arc transition-all bg-white"
+                  className="h-11 sm:h-12 ps-10 pe-10 border-muted focus:border-arc transition-all bg-white text-sm"
                   type={showPassword ? "text" : "password"}
                   required
                   value={password}
@@ -315,7 +325,7 @@ export default function AuthPage() {
             <Button
               type="submit"
               size="lg"
-              className="w-[80%] mx-auto flex h-12 text-white font-bold transition-all duration-300 hover:brightness-110 shadow-xl border-none"
+              className="w-full mx-auto flex h-11 sm:h-12 text-white font-bold transition-all duration-300 hover:brightness-110 shadow-lg border-none text-sm sm:text-base mt-2"
               style={{
                 backgroundImage: 'url("/download (2).jpg")',
                 backgroundSize: 'cover',
@@ -336,7 +346,8 @@ export default function AuthPage() {
             </Button>
           </form>
 
-          <p className="text-center text-sm text-slate pt-4">
+          {/* Switch Mode Link */}
+          <p className="text-center text-xs sm:text-sm text-slate pt-2 pb-2">
             {mode === "login" ? "New here?" : "Already have an account?"}{" "}
             <button
               type="button"
@@ -405,14 +416,19 @@ function FloatingPaths({ position }) {
 }
 
 const GoogleIcon = ({ className }) => (
-  <img src="/icons/google-icon.svg" alt="Google" className={className} />
+  <img
+    src="/icons/google-icon.svg"
+    alt="Google"
+    className={cn("w-5 h-5 shrink-0 object-contain", className)}
+    style={{ width: "20px", height: "20px", minWidth: "20px", minHeight: "20px" }}
+  />
 );
 
 const AuthSeparator = () => {
   return (
-    <div className="flex w-full items-center justify-center gap-4">
+    <div className="flex w-full items-center justify-center gap-3 my-0.5 sm:my-1">
       <div className="bg-muted h-[1px] w-full" />
-      <span className="text-slate px-2 text-xs font-bold uppercase tracking-wider">
+      <span className="text-slate px-2 text-[10px] sm:text-xs font-bold uppercase tracking-wider">
         OR
       </span>
       <div className="bg-muted h-[1px] w-full" />

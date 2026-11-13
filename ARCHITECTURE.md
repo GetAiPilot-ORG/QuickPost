@@ -6,6 +6,7 @@
 - `pgvector` is enabled now, with `embedding vector(1536)` reserved for later personalization/tag similarity.
 
 ## Execution
+- Pinterest Trial publishing uses `PINTEREST_API_BASE_URL=https://api-sandbox.pinterest.com/v5`; OAuth exchange, refresh, boards, and Pins must use the same environment. Reconnect after changing environments because production tokens do not authenticate in Sandbox. Standard access is required for production Pin creation.
 - Phase work follows `TODO.md` order.
 - Paid APIs, scraping/ToS risk, Supabase data deletion, or architecture conflicts must stop in `BLOCKERS.md`.
 - Trend source credentials stay server-side in `server/.env`; the frontend only receives Supabase anon config and API base URLs.
@@ -39,3 +40,5 @@
 - A visibility-aware 15-second database poll covers missed Realtime events; source freshness still depends on webhook delivery or the three-minute provider synchronization worker.
 
 - InstaPilot replies run from the API server’s `webhook_logs` Realtime listener after unified inbox persistence; keep `ENABLE_LOCAL_WEBHOOK_WORKER` enabled on the bot-serving process. Manual Graph inbox sync shares one in-flight operation per user per process.
+- Auto DM follow-ups persist in `autodm_followups`; verified inbound DM/postback webhooks update `autodm_dm_activity` and cancel reminders on replies. Comment/echo events never open a messaging window.
+- The webhook engine queues one reminder per automation/account/recipient after a complete successful flow. The API polls every 30 seconds, claims with `SKIP LOCKED`, enforces the three-hour delay/24-hour window and existing quotas, and never replays ambiguous sends. Follow-up link buttons use Meta button templates and preserve their payload in the unified inbox; see `docs/autodm-followups.md` for deployment.
