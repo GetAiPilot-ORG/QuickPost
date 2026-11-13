@@ -1,3 +1,4 @@
+import InstagramShare, { instagramShareUrl } from "../components/InstagramShare";
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -844,8 +845,12 @@ export default function SocialInboxPage() {
                         }
                       }
 
+                      const shareUrl = instagramShareUrl(msg.shareUrl || msg.rawPayload?.shareUrl || text);
+                      const videoUrl = msg.videoUrl || msg.rawPayload?.videoUrl || null;
+                      if (shareUrl && (text === shareUrl || instagramShareUrl(text) === shareUrl || text === '🎬 Shared Media')) text = '';
+
                       // Never render phantom messages with no content
-                      if (!text && !imageUrl && buttons.length === 0) {
+                      if (!text && !imageUrl && !videoUrl && !shareUrl && buttons.length === 0) {
                         return null;
                       }
 
@@ -895,9 +900,9 @@ export default function SocialInboxPage() {
                             {/* Minimal Message Bubble */}
                             <div
                               style={{
-                                background: isSelf ? "#f1f3fd" : "#f3f4f6",
+                                background: shareUrl ? "transparent" : isSelf ? "#f1f3fd" : "#f3f4f6",
                                 color: "#1e293b",
-                                padding: "12px 16px",
+                                padding: shareUrl ? 0 : "12px 16px",
                                 borderRadius: 16,
                                 borderBottomRightRadius: isSelf ? 4 : 16,
                                 borderBottomLeftRadius: !isSelf ? 4 : 16,
@@ -908,7 +913,7 @@ export default function SocialInboxPage() {
                               }}
                             >
                               {/* Cloudinary or Attached Image */}
-                              {imageUrl && (
+                              {!shareUrl && imageUrl && (
                                 <a href={imageUrl} target="_blank" rel="noreferrer" style={{ display: "block", marginBottom: text ? 8 : 0 }}>
                                   <img
                                     src={imageUrl}
@@ -925,6 +930,9 @@ export default function SocialInboxPage() {
                                   />
                                 </a>
                               )}
+
+                              {shareUrl && <InstagramShare key={shareUrl} url={shareUrl} imageUrl={imageUrl} videoUrl={videoUrl} />}
+                              {!shareUrl && videoUrl && <video src={videoUrl} controls preload="none" playsInline style={{ maxWidth: '100%', width: 280, maxHeight: 360, borderRadius: 10 }} />}
 
                               {/* Message Text */}
                               {text && <div style={{ whiteSpace: "pre-wrap" }}>{text}</div>}

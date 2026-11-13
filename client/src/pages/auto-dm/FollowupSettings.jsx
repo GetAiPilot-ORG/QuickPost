@@ -1,5 +1,5 @@
 import React, { useId } from 'react';
-import { Plus, Trash2, ExternalLink } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -35,7 +35,7 @@ export default function FollowupSettings({ value, onChange, disabled = false }) 
       <div className="autodm-editor-card-head flex items-center justify-between gap-4 p-4">
         <div>
           <h3 id={`${id}-title`} className="font-semibold text-gray-900">Follow-up after 3 hours</h3>
-          <p className="mt-1 text-xs leading-relaxed text-gray-500">One reminder in the same chat if they don’t reply after your final automated message.</p>
+          <span className="mt-1 block text-[13px] text-gray-600">Optional · if they don’t reply</span>
         </div>
         <Switch aria-labelledby={`${id}-title`} checked={enabled} onCheckedChange={(checked) => update({ enabled: checked })} disabled={disabled} />
       </div>
@@ -52,8 +52,9 @@ export default function FollowupSettings({ value, onChange, disabled = false }) 
               aria-invalid={bytes > 900 || (buttons.length > 0 && characters > 600)}
             />
             <p id={`${id}-limit`} className={`text-xs ${bytes > 900 || (buttons.length > 0 && characters > 600) ? 'text-red-600' : 'text-gray-500'}`} aria-live="polite">
-              {buttons.length ? `${characters} / 600 characters · ` : ''}{bytes} / 900 bytes
+              {characters} characters
             </p>
+            {(bytes > 900 || (buttons.length > 0 && characters > 600)) && <p role="alert" className="text-[13px] text-red-600">This message is too long. Shorten it before saving{buttons.length > 0 && characters > 600 ? ' (600 characters maximum with buttons)' : ''}.</p>}
           </div>
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -61,7 +62,7 @@ export default function FollowupSettings({ value, onChange, disabled = false }) 
               <button type="button" disabled={disabled || buttons.length >= 3}
                 onClick={() => update({ buttons: [...buttons, { type: 'url', title: '', url: '' }] })}
                 className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50">
-                <Plus size={14} /> Add button
+                Add button
               </button>
             </div>
             {buttons.map((button, index) => (
@@ -70,7 +71,7 @@ export default function FollowupSettings({ value, onChange, disabled = false }) 
                   <label htmlFor={`${id}-button-${index}-title`} className="text-xs font-medium text-gray-700">Button {index + 1} title</label>
                   <button type="button" disabled={disabled} aria-label={`Remove button ${index + 1}`}
                     onClick={() => update({ buttons: buttons.filter((_, i) => i !== index) })}
-                    className="rounded p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-50"><Trash2 size={14} /></button>
+                    className="rounded-md px-2 py-2 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50">Delete</button>
                 </div>
                 <Input id={`${id}-button-${index}-title`} value={button.title || ''} disabled={disabled}
                   onChange={(event) => updateButton(index, { title: event.target.value })}
@@ -82,11 +83,11 @@ export default function FollowupSettings({ value, onChange, disabled = false }) 
                   placeholder="https://ig.me/j/your-channel" className="rounded-md border-gray-200 text-sm" />
               </div>
             ))}
-            <p className="text-xs text-gray-500">Add up to 3 buttons to open a channel, website or resource.</p>
+
           </div>
           {(message.trim() || buttons.length > 0) && (
             <div className="space-y-2" aria-label="Follow-up preview">
-              <p className="text-xs font-medium text-gray-500">Message preview</p>
+              <p className="text-[13px] font-medium text-gray-600">Message preview</p>
               <div className="overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
                 <p className="whitespace-pre-wrap break-words p-3 text-sm leading-relaxed text-gray-800">{message.trim() || 'Your follow-up message'}</p>
                 {buttons.map((button, index) => (
@@ -97,7 +98,7 @@ export default function FollowupSettings({ value, onChange, disabled = false }) 
               </div>
             </div>
           )}
-          <p id={`${id}-hint`} className="text-xs leading-relaxed text-gray-500">For comment-triggered DMs, they must first reply or tap a reply button. Opening a link alone doesn’t qualify. Sends only within Instagram’s 24-hour messaging window; a new reply cancels the reminder. One follow-up per person for this automation.</p>
+          <details className="text-[13px] leading-relaxed text-gray-600"><summary className="cursor-pointer font-medium">When will this send?</summary><p id={`${id}-hint`} className="mt-2">For comment-triggered DMs, they must first reply or tap a reply button. Opening a link alone doesn’t qualify. Sends only within Instagram’s 24-hour messaging window; a new reply cancels the reminder. One follow-up per person for this automation.</p></details>
         </div>
       )}
     </section>

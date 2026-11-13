@@ -1,5 +1,6 @@
 import { getSupabaseAdmin, json, logError, logInfo, requireEnv } from '../_shared/db.ts';
 import { processAutomationEvent } from '../_shared/automationEngine.ts';
+import { webhookEventIdentity } from '../_shared/commentSafety.ts';
 
 interface WebhookEvent {
   triggerType: 'dm' | 'comment';
@@ -167,7 +168,8 @@ const extractEvents = (payload: any): WebhookEvent[] => {
       const senderUsername = String(change?.value?.from?.username ?? '').trim().toLowerCase().replace(/^@/, '');
       const igId = entryId || String(change?.value?.instagram_business_account_id ?? '');
       const messageText = String(change?.value?.text ?? '');
-      const eventId = String(change?.value?.id ?? `${entryId}-${Date.now()}-comment`);
+      const eventId = String(change?.value?.id ?? '');
+      if (!eventId || !senderId) continue;
       const mediaId = String(change?.value?.media?.id ?? '');
       const parentId = String(change?.value?.parent_id ?? '');
 
@@ -270,13 +272,7 @@ Deno.serve(async (request: Request) => {
     const supabase = getSupabaseAdmin();
 
     for (const event of events) {
-      const dedupeKey = await hashDedupeKey([
-        event.igId,
-        event.senderId,
-        event.eventType,
-        event.eventId,
-        event.messageText,
-      ]);
+      const dedupeKey = await hashDedupeKey(webhookEventIdentity(event));
 
       const insertPayload = {
         ig_id: event.igId,
@@ -307,7 +303,7 @@ Deno.serve(async (request: Request) => {
 
       if (!(event.payload as any)?.message?.is_echo) {
         try {
-          await processAutomationEvent({
+          const automationResult = await processAutomationEvent({
             igId: event.igId,
             senderId: event.senderId,
             senderUsername: event.senderUsername,
@@ -320,6 +316,12 @@ Deno.serve(async (request: Request) => {
             requestId,
             externalPayload: event.payload,
           });
+          if (automationResult?.status?.startsWith('ignored_')) {
+            const { error: ignoredUpdateError } = await supabase.from('webhook_logs')
+              .update({ processed: true, processing_error: automationResult.status })
+              .eq('dedupe_key', dedupeKey);
+            if (ignoredUpdateError) throw new Error(`Failed closing ignored webhook: ${ignoredUpdateError.message}`);
+          }
         } catch (automationError) {
           const errorMessage = automationError instanceof Error ? automationError.message : String(automationError);
           logError('Automation processing failed', {

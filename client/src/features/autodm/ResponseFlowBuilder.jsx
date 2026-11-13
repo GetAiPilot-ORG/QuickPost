@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { GripVertical, MessageCircle, Pencil, Plus, Trash2, X, Clock, FileText, Image as ImageIcon, Layers, MousePointer, Type, UploadCloud } from 'lucide-react';
+import { MessageCircle, Plus, Trash2, X, Clock, FileText, Image as ImageIcon, Layers, MousePointer, Type, UploadCloud } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import apiClient from '@/utils/apiClient';
+import { responseIssue } from './editorHelpers';
 
 function generateId(prefix = 'item') {
   return prefix + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
@@ -62,6 +63,16 @@ function ImageUrlField({ label, value, onChange, placeholder = 'https://...' }) 
     </div>
   );
 }
+
+const responseBackgrounds = {
+  text: '/assets/text%20message.png',
+  image: '/assets/Image.png',
+  card: '/assets/Card.png',
+  carousel: '/assets/curosal.png',
+  buttons: '/assets/Buttons.png',
+  lead_form: '/assets/Lead%20Form.png',
+  delay: '/assets/delay.png',
+};
 
 const responseTypes = [
   { type: 'text', label: 'Text Message', shortLabel: 'Text', icon: Type, description: 'Send a simple text message' },
@@ -185,7 +196,6 @@ function ResponseFlowBuilder({ responseFlow, onChange, step, hideHeader = false,
                   )}
                   {nodes.map((node, index) => {
                     const config = responseTypes.find((item) => item.type === node.type) || responseTypes[0];
-                    const Icon = config.icon;
                     return (
                       <Draggable key={node.id} draggableId={node.id} index={index}>
                         {(provided, snapshot) => (
@@ -193,45 +203,19 @@ function ResponseFlowBuilder({ responseFlow, onChange, step, hideHeader = false,
                             ref={provided.innerRef}
                             {...provided.draggableProps}
                             style={{ ...provided.draggableProps.style }}
-                            className={`grid items-center rounded-lg border border-black/10 bg-white ${
-                              snapshot.isDragging ? 'shadow-lg z-10' : ''
-                            } ${
-                              compact
-                                ? 'grid-cols-[16px_30px_32px_minmax(0,1fr)_36px_32px] gap-2 p-3'
-                                : 'grid-cols-[18px_32px_34px_minmax(0,1fr)_36px_36px] gap-2 p-3 sm:grid-cols-[20px_34px_36px_minmax(0,1fr)_auto_auto] sm:gap-3'
-                            }`}
+                            className={`grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-black/10 bg-white p-3 ${snapshot.isDragging ? 'shadow-lg z-10' : ''}`}
                           >
-                            <div {...provided.dragHandleProps} className="flex h-full w-full items-center justify-center cursor-grab active:cursor-grabbing outline-none">
-                              <GripVertical className="h-4 w-4 shrink-0 text-[var(--slate)]/60" />
-                            </div>
-                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[var(--ink)] text-sm font-semibold text-white">
+                            <div {...provided.dragHandleProps} aria-label={`Reorder response ${index + 1}`} title="Drag to reorder" className="flex h-7 w-7 shrink-0 cursor-grab items-center justify-center rounded-full border border-black/15 text-xs font-medium tabular-nums text-gray-500 outline-none focus-visible:ring-2 focus-visible:ring-black active:cursor-grabbing">
                               {index + 1}
-                            </span>
-                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-                              <Icon className="h-4 w-4" />
-                            </span>
-                            <div className="min-w-0 flex-1 overflow-hidden">
-                              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                                <p className="min-w-0 truncate font-medium text-[var(--ink)]">{config.shortLabel}</p>
-                                {!compact && <span className="text-xs font-medium text-primary">Editable</span>}
-                              </div>
-                              <p className="line-clamp-2 break-words text-sm leading-5 text-[var(--slate)]">{responseSummary(node)}</p>
                             </div>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon"
-                              aria-label="Edit response"
-                              title="Edit response"
-                              className={`h-9 rounded-md ${compact ? 'w-9' : 'w-9 sm:w-auto sm:px-3'}`}
-                              onClick={() => setEditingNode({ ...node })}
-                            >
-                              <Pencil className={`h-4 w-4 ${compact ? '' : 'sm:mr-2'}`} />
-                              <span className={compact ? 'sr-only' : 'hidden sm:inline'}>Edit response</span>
-                            </Button>
-                            <Button type="button" variant="ghost" size="icon" className="h-9 w-9 rounded-md text-red-600" onClick={() => removeNode(node.id)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            <button type="button" onClick={() => setEditingNode({ ...node })} aria-label={`Edit ${config.shortLabel.toLowerCase()} response ${index + 1}`} className="min-w-0 overflow-hidden text-left focus-visible:outline-none focus-visible:underline">
+                              <span className="block truncate text-sm font-medium text-[var(--ink)]">{config.shortLabel}</span>
+                              <span className={`mt-0.5 line-clamp-1 break-words text-[13px] leading-5 ${responseIssue(node) ? 'text-red-600' : 'text-[var(--slate)]'}`}>{responseIssue(node) || responseSummary(node)}</span>
+                            </button>
+                            <div className="flex items-center gap-1">
+                              <button type="button" aria-label={`Edit response ${index + 1}`} onClick={() => setEditingNode({ ...node })} className="rounded-md px-2 py-2 text-xs font-medium text-gray-600 hover:bg-black/5 hover:text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black">Edit</button>
+                              <button type="button" aria-label={`Delete response ${index + 1}`} onClick={() => removeNode(node.id)} className="rounded-md px-2 py-2 text-xs font-medium text-red-600 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500">Delete</button>
+                            </div>
                           </div>
                         )}
                       </Draggable>
@@ -244,30 +228,29 @@ function ResponseFlowBuilder({ responseFlow, onChange, step, hideHeader = false,
           </DragDropContext>
 
         <Button type="button" variant="outline" className="h-11 w-full rounded-md border-dashed" onClick={() => setPickerOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
           Add Response
         </Button>
       </CardContent>
 
       <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
-        <DialogContent className="max-w-md rounded-lg bg-white">
+        <DialogContent className="max-h-[85dvh] max-w-md overflow-y-auto rounded-lg bg-white">
           <DialogHeader>
             <DialogTitle>Add Response Element</DialogTitle>
-            <DialogDescription>Choose what to send next: text, image, buttons, delay, etc.</DialogDescription>
+            <DialogDescription className="sr-only">Choose a response type to add.</DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-1 gap-3 py-3 sm:grid-cols-2">
+          <div className="grid grid-cols-2 gap-3 py-3">
             {responseTypes.map((item) => {
-              const Icon = item.icon;
               return (
                 <button
                   key={item.type}
                   type="button"
-                  className="rounded-lg border border-black/10 bg-white p-4 text-center transition-colors hover:border-primary hover:bg-primary/5"
+                  className="group relative flex min-h-[140px] flex-col justify-end overflow-hidden rounded-lg border border-black/10 bg-white text-center transition-colors hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   onClick={() => addNode(item.type)}
                 >
-                  <Icon className="mx-auto h-6 w-6 text-primary" />
-                  <p className="mt-2 font-medium text-[var(--ink)]">{item.label}</p>
-                  <p className="mt-1 text-xs text-[var(--slate)]">{item.description}</p>
+                  <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 -top-10 h-[168px] bg-cover bg-center bg-no-repeat" style={{ backgroundImage: `url("${responseBackgrounds[item.type]}")` }} />
+                  <span className="relative z-10 block w-full bg-white/95 px-3 py-2.5">
+                    <span className="block font-medium text-[var(--ink)]">{item.label}</span>
+                  </span>
                 </button>
               );
             })}

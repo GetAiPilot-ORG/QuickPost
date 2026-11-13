@@ -1,4 +1,5 @@
 import { getSupabaseAdmin, logError, logInfo } from "./db.ts";
+import { ignoredCommentReason, claimCommentDelivery } from "./commentSafety.ts";
 import {
   isTokenExpiredError,
   refreshIGLongLivedToken,
@@ -1341,6 +1342,8 @@ const refreshAccountTokenIfNeeded = async (
 };
 
 export const processAutomationEvent = async (payload: AutomationInput) => {
+  const ignoredComment = ignoredCommentReason(payload);
+  if (ignoredComment) return { status: ignoredComment, sentCount: 0 };
   // Prevent self-action loop: bot replying to its own comment or DM
   if (payload.senderId && payload.igId && payload.senderId === payload.igId) {
     logInfo("Skipping automation: senderId matches account igId (self-action)", {
@@ -1825,7 +1828,9 @@ export const processAutomationEvent = async (payload: AutomationInput) => {
     .from("automations")
     .select(automationSelectFields)
     .in("instagram_account_id", accountIds)
-    .eq("is_active", true);
+    .eq("is_active", true)
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
 
   if (automationError) {
     throw new Error(`Failed loading automations: ${automationError.message}`);
@@ -2054,6 +2059,13 @@ export const processAutomationEvent = async (payload: AutomationInput) => {
       status: "ignored_nested_reply",
       sentCount: 0,
     };
+  }
+
+  const ignoredResolvedComment = ignoredCommentReason(payload, connectedAccounts);
+  if (ignoredResolvedComment) return { status: ignoredResolvedComment, sentCount: 0 };
+  if (payload.triggerType === "comment") {
+    const claimed = await claimCommentDelivery(supabase, payload.eventId!, selectedAccount.id, matched.id);
+    if (!claimed) return { status: "ignored_duplicate_comment", sentCount: 0 };
   }
 
   if (
@@ -2971,10 +2983,7 @@ export const processAutomationEvent = async (payload: AutomationInput) => {
     });
   }
 
-  // ── Fire remaining matched automations (different keywords, same comment) ─
-  // Runs when a comment contains keywords matching multiple different automations.
-  // Example: comment "info price" triggers both an 'info' automation AND a 'price' automation.
-  const secondaryMatches = allMatched.slice(1);
+  const secondaryMatches = payload.triggerType === "comment" ? [] : allMatched.slice(1);
   for (const secondaryAutomation of secondaryMatches) {
     try {
       const secondaryAccount =
@@ -3004,41 +3013,6 @@ export const processAutomationEvent = async (payload: AutomationInput) => {
           if (action.type === "delay") { await sleep((action as any).seconds); continue; }
           const usePrivate = payload.triggerType === "comment" && idx === 0 && Boolean(payload.eventId);
           await sendAction(action, secondaryTokenBundle, usePrivate);
-        }
-
-        // Public comment reply for secondary automation (if enabled)
-        if (
-          payload.triggerType === "comment" &&
-          payload.eventId &&
-          secondaryAutomation.comment_reply_enabled &&
-          secondaryAutomation.comment_reply_text?.trim()
-        ) {
-          let secChosenReply = secondaryAutomation.comment_reply_text.trim();
-          const secFlowVariations = (secondaryAutomation.response_flow as any)?.comment_reply_variations;
-          if (Array.isArray(secFlowVariations) && secFlowVariations.length > 0) {
-            secChosenReply = String(secFlowVariations[Math.floor(Math.random() * secFlowVariations.length)] || secChosenReply).trim();
-          } else if (secChosenReply.includes("|||")) {
-            const secVariations = secChosenReply.split("|||").map((v) => v.trim()).filter(Boolean);
-            if (secVariations.length > 0) {
-              secChosenReply = secVariations[Math.floor(Math.random() * secVariations.length)];
-            }
-          }
-          const secReplyText = renderMessageTemplate(
-            stripBrandingWatermark(secChosenReply),
-            senderProfile,
-          ).trim();
-          await sendInstagramCommentReply(
-            payload.eventId,
-            secReplyText,
-            secondaryTokenBundle.pageAccessToken,
-            payload.requestId,
-          ).catch((e: unknown) => {
-            logError("Secondary automation comment reply failed", {
-              requestId: payload.requestId,
-              automationId: secondaryAutomation.id,
-              error: e instanceof Error ? e.message : String(e),
-            });
-          });
         }
 
         // reply_log entry for secondary automation

@@ -1,3 +1,4 @@
+import { communityFeedPost } from "../services/socialpilotPublishing.js";
 import express from "express";
 import { authenticateUser } from "../middleware/authenticateUser.js";
 import { getTrendFeedPage, getHotTopicsRadar } from "../services/trendFeed.js";
@@ -16,6 +17,20 @@ router.get("/trends/feed", authenticateUser, async (req, res) => {
       success: false,
       error: "Failed to load trend feed",
     });
+  }
+});
+
+router.get('/trends/posts/:id', authenticateUser, async (req, res) => {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) return res.status(400).json({ success: false, error: 'Invalid post ID' });
+  try {
+    const { default: db } = await import('../services/supabase.js');
+    const { data, error } = await db.from('posts').select('id,source_platform,source_url,thumbnail_url,caption,creator,creator_avatar_url,author_id,media_urls,media_type,published_at,ingested_at,engagement_score,niche_tags').eq('id', req.params.id).eq('source_platform', 'socialpilot').maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ success: false, error: 'Post not found' });
+    res.json({ success: true, post: communityFeedPost(data) });
+  } catch (error) {
+    console.error('[SOCIALPILOT] Post read failed:', error.message);
+    res.status(500).json({ success: false, error: 'Unable to load this post' });
   }
 });
 

@@ -1,3 +1,5 @@
+import { useSearchParams } from "react-router-dom";
+import { ScheduledMediaGallery } from "../components/ScheduledMedia";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Masonry from "react-masonry-css";
 import {
@@ -53,6 +55,7 @@ const MASONRY_BREAKPOINTS = {
 };
 
 const FORMAT_TABS = [
+  { id: "community", label: "SocialPilot", icon: Globe },
   { id: "all", label: "All Pins", icon: LayoutGrid },
   { id: "videos", label: "Videos & Reels", icon: Video },
   { id: "visuals", label: "Visuals", icon: ImageIcon },
@@ -135,7 +138,7 @@ function PinterestPinMedia({ post, onOpenLightbox, onRemix, onCompose, onSave, i
   const videoRef = useRef(null);
 
   const videoId = post.source_platform === "youtube" ? getYouTubeVideoId(post) : null;
-  const isPexels = post.source_platform === "pexels" && Boolean(post.video_url);
+  const isPexels = ["pexels", "socialpilot"].includes(post.source_platform) && Boolean(post.video_url);
   const isVideoPin = isPexels || Boolean(videoId);
   const isShortOrReel = post.content_type === "short" || post.source_url?.includes("/shorts/") || isPexels;
 
@@ -194,6 +197,7 @@ function PinterestPinMedia({ post, onOpenLightbox, onRemix, onCompose, onSave, i
           src={post.video_url}
           poster={post.thumbnail_url}
           muted={isMuted}
+          preload="none"
           playsInline
           loop
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
@@ -415,7 +419,7 @@ function InspirationLightbox({ isOpen, onClose, post, onRemix, onCompose, onSave
 
           {/* Clean Player */}
           <div className="md:w-3/5 bg-black flex items-center justify-center overflow-hidden relative min-h-[300px]">
-            {videoId ? (
+            {post.source_platform === 'socialpilot' ? <div className="w-full p-4"><ScheduledMediaGallery post={post} /></div> : videoId ? (
               <iframe
                 src={`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1`}
                 title={post.title || "YouTube Player"}
@@ -448,7 +452,7 @@ function InspirationLightbox({ isOpen, onClose, post, onRemix, onCompose, onSave
             <div>
               <div className="flex items-center gap-2 mb-3">
                 <span className="px-3 py-1 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30 text-xs font-black uppercase tracking-wider">
-                  {post.source_platform}
+                  {post.source_platform === 'socialpilot' ? 'SocialPilot' : post.source_platform}
                 </span>
                 <span className="text-xs text-neutral-400">
                   {formatDate(post.published_at || post.ingested_at)}
@@ -456,7 +460,7 @@ function InspirationLightbox({ isOpen, onClose, post, onRemix, onCompose, onSave
               </div>
 
               <h2 className="text-xl sm:text-2xl font-black leading-tight text-white mb-3">
-                {post.title || post.caption}
+                {post.source_platform === 'socialpilot' ? post.creator || 'SocialPilot creator' : post.title || post.caption}
               </h2>
 
               {post.caption && (
@@ -1089,6 +1093,7 @@ function SavedIdeasDrawer({ isOpen, onClose, savedPosts, onRemove, onRemix, onCo
 // -----------------------------------------------------------------------------
 export default function TrendFeedPage() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Feed State
   const [items, setItems] = useState([]);
@@ -1122,6 +1127,16 @@ export default function TrendFeedPage() {
 
   // Lightbox Preview
   const [lightboxPost, setLightboxPost] = useState(null);
+  const linkedPostId = searchParams.get('post');
+  useEffect(() => {
+    if (!linkedPostId) return;
+    let active = true;
+    apiClient.get(`/api/trends/posts/${encodeURIComponent(linkedPostId)}`).then(({ data }) => {
+      if (active && data.post) setLightboxPost(data.post);
+    }).catch(() => { if (active) toast.error('This post could not be loaded.'); });
+    return () => { active = false; };
+  }, [linkedPostId]);
+
 
   // Post Composer Modal
   const [composerOpen, setComposerOpen] = useState(false);
@@ -1133,6 +1148,7 @@ export default function TrendFeedPage() {
 
   const sentinelRef = useRef(null);
   const loadingRef = useRef(false);
+  const exhaustedRef = useRef(false);
   const pageRef = useRef(1);
   const cursorRef = useRef(null);
   const seenRef = useRef(new Set());
@@ -1209,7 +1225,8 @@ export default function TrendFeedPage() {
   // Load page with true infinite pagination
   const loadPage = useCallback(
     async ({ reset = false } = {}) => {
-      if (loadingRef.current) return;
+      if (loadingRef.current || (!reset && exhaustedRef.current)) return;
+      if (reset) exhaustedRef.current = false;
       loadingRef.current = true;
       setLoading(true);
       setError("");
@@ -1247,6 +1264,7 @@ export default function TrendFeedPage() {
         });
 
         cursorRef.current = data.nextCursor || null;
+        exhaustedRef.current = data.hasMore === false;
         const nextP = targetPage + 1;
         pageRef.current = nextP;
 
@@ -1606,7 +1624,7 @@ export default function TrendFeedPage() {
       {/* 6. CINEMATIC LIGHTBOX MODAL */}
       <InspirationLightbox
         isOpen={Boolean(lightboxPost)}
-        onClose={() => setLightboxPost(null)}
+        onClose={() => { setLightboxPost(null); if (linkedPostId) setSearchParams((current) => { const next = new URLSearchParams(current); next.delete("post"); return next; }, { replace: true }); }}
         post={lightboxPost}
         onRemix={handleOpenRemix}
         onCompose={handleOpenComposer}

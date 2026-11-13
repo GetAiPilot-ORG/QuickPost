@@ -43,7 +43,7 @@ import { KeywordInput } from '../../features/autodm/KeywordInput';
 import ResponseFlowBuilder from '../../features/autodm/ResponseFlowBuilder';
 import MobilePreview from './MobilePreview';
 import FollowupSettings, { getFollowupError } from './FollowupSettings';
-import HeartLikeCheckbox from '../../components/HeartLikeCheckbox';
+import { insertPersonalization, spacePersonalization, personalizationExample, responseIssue } from '../../features/autodm/editorHelpers';
 
 
 const triggerTypes = [
@@ -143,7 +143,7 @@ function normalizeResponseFlow(flow) {
     ...defaultResponseFlow,
     ...source,
     opening_message_enabled: source.opening_message_enabled !== false,
-    opening_message: source.opening_message || defaultResponseFlow.opening_message,
+    opening_message: spacePersonalization(source.opening_message || defaultResponseFlow.opening_message),
     opening_button: source.opening_button || firstNode.buttons?.[0]?.title || defaultResponseFlow.opening_button,
     nodes: nodes.map((node) => ({ ...node })),
   };
@@ -388,59 +388,13 @@ export default function AutomationEditorPage() {
   const openingMessageInputRef = useRef(null);
 
   const insertVariable = (variable, target = 'reply') => {
-    const tag = variable === 'username' ? '@{{username}}' : `{{${variable}}}`;
-    if (target === 'reply') {
-      const inputEl = commentReplyInputRef.current;
-      if (inputEl && typeof inputEl.selectionStart === 'number') {
-        const start = inputEl.selectionStart;
-        const end = inputEl.selectionEnd ?? start;
-        const current = commentReplyText || '';
-        const nextText = current.slice(0, start) + tag + current.slice(end);
-        setCommentReplyText(nextText);
-        setTimeout(() => {
-          inputEl.focus();
-          const nextPos = start + tag.length;
-          inputEl.setSelectionRange(nextPos, nextPos);
-        }, 10);
-      } else {
-        setCommentReplyText((prev) => (prev ? `${prev} ${tag}` : tag));
-      }
-    } else if (target === 'fallback') {
-      const inputEl = fallbackReplyInputRef.current;
-      if (inputEl && typeof inputEl.selectionStart === 'number') {
-        const start = inputEl.selectionStart;
-        const end = inputEl.selectionEnd ?? start;
-        const current = fallbackCommentReply || '';
-        const nextText = current.slice(0, start) + tag + current.slice(end);
-        setFallbackCommentReply(nextText);
-        setTimeout(() => {
-          inputEl.focus();
-          const nextPos = start + tag.length;
-          inputEl.setSelectionRange(nextPos, nextPos);
-        }, 10);
-      } else {
-        setFallbackCommentReply((prev) => (prev ? `${prev} ${tag}` : tag));
-      }
-    } else if (target === 'opening') {
-      const current = responseFlow?.opening_message || '';
-      const inputEl = openingMessageInputRef.current;
-      if (inputEl && typeof inputEl.selectionStart === 'number') {
-        const start = inputEl.selectionStart;
-        const end = inputEl.selectionEnd ?? start;
-        const nextText = current.slice(0, start) + tag + current.slice(end);
-        setResponseFlow((prev) => ({ ...prev, opening_message: nextText }));
-        setTimeout(() => {
-          inputEl.focus();
-          const nextPos = start + tag.length;
-          inputEl.setSelectionRange(nextPos, nextPos);
-        }, 10);
-      } else {
-        setResponseFlow((prev) => ({
-          ...prev,
-          opening_message: current ? `${current} ${tag}` : tag,
-        }));
-      }
-    }
+    const input = target === 'opening' ? openingMessageInputRef.current : target === 'fallback' ? fallbackReplyInputRef.current : commentReplyInputRef.current;
+    const value = target === 'opening' ? responseFlow.opening_message || '' : target === 'fallback' ? fallbackCommentReply : commentReplyText;
+    const result = insertPersonalization(value, variable, input?.selectionStart ?? value.length, input?.selectionEnd ?? value.length);
+    if (target === 'opening') setResponseFlow(previous => ({ ...previous, opening_message: result.text }));
+    else if (target === 'fallback') setFallbackCommentReply(result.text);
+    else setCommentReplyText(result.text);
+    requestAnimationFrame(() => { input?.focus(); input?.setSelectionRange(result.caret, result.caret); });
   };
 
   useEffect(() => {
@@ -498,10 +452,10 @@ export default function AutomationEditorPage() {
         setIsCaseSensitive(Boolean(data.is_case_sensitive));
         const rawReply = String(data.comment_reply_text || '');
         const cleanReply = rawReply.includes('|||') ? rawReply.split('|||')[0].trim() : rawReply.trim();
-        setCommentReplyText(cleanReply || 'Sent it to your DM. Tap SETUP to continue.');
+        setCommentReplyText(spacePersonalization(cleanReply || 'Sent it to your DM. Tap SETUP to continue.'));
         setAutoLikeComment(Boolean(data.response_flow?.auto_like_comment ?? data.auto_like_comment ?? true));
         setRequireFollow(Boolean(data.require_follow));
-        setFallbackCommentReply(data.fallback_comment_reply || '');
+        setFallbackCommentReply(spacePersonalization(data.fallback_comment_reply || ''));
         setScheduleType(data.schedule_type || 'manual');
         setStartsAt(toDateTimeLocalValue(data.starts_at));
         setEndsAt(toDateTimeLocalValue(data.ends_at));
@@ -577,6 +531,14 @@ export default function AutomationEditorPage() {
       return;
     }
 
+    if (isActive) {
+      const invalidIndex = (responseFlow.nodes || []).findIndex(node => responseIssue(node));
+      if (invalidIndex !== -1) {
+        toast.error(`Response ${invalidIndex + 1}: ${responseIssue(responseFlow.nodes[invalidIndex])}`);
+        return;
+      }
+    }
+
     const followupError = getFollowupError(responseFlow.follow_up);
     if (followupError) {
       toast.error(followupError);
@@ -605,11 +567,12 @@ export default function AutomationEditorPage() {
         keywords: keywordMatchType === 'any' ? ['*'] : keywords,
         is_case_sensitive: isCaseSensitive,
         comment_reply_enabled: commentReplyEnabled,
-        comment_reply_text: commentReplyEnabled ? commentReplyText : null,
+        comment_reply_text: commentReplyEnabled ? spacePersonalization(commentReplyText) : null,
         require_follow: requireFollow,
-        fallback_comment_reply: fallbackCommentReply,
+        fallback_comment_reply: spacePersonalization(fallbackCommentReply),
         response_flow: {
           ...responseFlow,
+          opening_message: spacePersonalization(responseFlow.opening_message),
           auto_like_comment: autoLikeComment,
         },
         is_active: isActive,
@@ -690,13 +653,12 @@ export default function AutomationEditorPage() {
 
         {portalTarget ? createPortal(
           <div className="flex items-center gap-2 sm:gap-4 mr-2 sm:mr-4">
-             <span className="hidden sm:inline-block text-xs font-medium text-gray-500">{isSaving ? 'Saving...' : 'Saved'}</span>
              <Button variant="outline" size="sm" onClick={handleSave} disabled={isSaving} className="px-2 sm:px-3">
                {isSaving ? <Loader2 className="h-4 w-4 animate-spin sm:mr-2" /> : <Save className="h-4 w-4 sm:mr-2" />}
                <span className="hidden sm:inline-block">Save</span>
              </Button>
              <div className="flex items-center gap-1 sm:gap-2 ml-1 sm:ml-2">
-                <Switch checked={isActive} onCheckedChange={setIsActive} />
+                <Switch aria-label="Automation active" checked={isActive} onCheckedChange={setIsActive} />
                 <span className="text-sm font-medium w-[60px] text-left">{isActive ? 'Active' : 'Inactive'}</span>
              </div>
           </div>,
@@ -838,113 +800,85 @@ export default function AutomationEditorPage() {
                 <div className="p-5 border-t border-gray-100 bg-gray-50/50">
                    <div className="flex items-center justify-between">
                       <div>
-                        <Label className="text-sm font-semibold text-gray-800 block">Public Comment Reply</Label>
-                        <p className="text-xs text-gray-500 mt-1">Reply to the triggering comment publicly.</p>
+                        <Label className="text-sm font-semibold text-gray-800 block">Public reply · optional</Label>
+                        <p className="text-[13px] text-gray-600 mt-1">Appears under their comment.</p>
                       </div>
                       <Switch 
-                          checked={commentReplyEnabled} 
+                          aria-label="Enable public reply" checked={commentReplyEnabled}
                           onCheckedChange={setCommentReplyEnabled} 
                       />
                    </div>
                    {commentReplyEnabled && (
                       <div className="mt-4">
                           <div className="flex items-center justify-between gap-2 mb-2">
-                            <span className="text-[11px] text-gray-500 font-medium">Insert variable:</span>
+                            <span className="text-xs text-gray-500 font-medium">Personalize:</span>
                             <div className="flex items-center gap-1.5">
                               <button
                                 type="button"
                                 onClick={() => insertVariable('first_name', 'reply')}
-                                className="px-2 py-0.5 rounded-md border border-black/10 bg-white hover:bg-orange-50 hover:border-orange-200 hover:text-orange-600 transition-colors font-mono text-[10px] text-gray-700 font-medium"
+                                className="px-2 py-0.5 rounded-md border border-black/10 bg-white hover:bg-orange-50 hover:border-orange-200 hover:text-orange-600 transition-colors text-xs text-gray-700 font-medium"
                                 title="Inserts user's first name"
                               >
-                                + &#123;&#123;first_name&#125;&#125;
+                                First name
                               </button>
                               <button
                                 type="button"
                                 onClick={() => insertVariable('username', 'reply')}
-                                className="px-2 py-0.5 rounded-md border border-black/10 bg-white hover:bg-orange-50 hover:border-orange-200 hover:text-orange-600 transition-colors font-mono text-[10px] text-gray-700 font-medium"
+                                className="px-2 py-0.5 rounded-md border border-black/10 bg-white hover:bg-orange-50 hover:border-orange-200 hover:text-orange-600 transition-colors text-xs text-gray-700 font-medium"
                                 title="Inserts user's @username mention"
                               >
-                                + @&#123;&#123;username&#125;&#125;
+                                Username
                               </button>
                             </div>
                           </div>
                           <Textarea 
+                              aria-label="Public reply message"
                               ref={commentReplyInputRef}
                               value={commentReplyText}
                               onChange={(e) => setCommentReplyText(e.target.value)}
                               placeholder="Sent it to your DM. Tap SETUP to continue."
                               className="w-full text-sm resize-none rounded-xl border-gray-200 focus:ring-1 focus:ring-primary focus:border-primary min-h-[60px] p-3 bg-white"
                           />
+                          {commentReplyText.includes('{{') && <p className="mt-2 break-words text-[13px] text-gray-600">Example: {personalizationExample(commentReplyText)}</p>}
                       </div>
                    )}
 
-                   {/* Auto-like Comment Toggle (Coming Soon) */}
-                   <div className="flex items-center justify-between pt-4 mt-4 border-t border-gray-200/60">
-                      <div className="flex items-center gap-3">
-                        <HeartLikeCheckbox 
-                          checked={false} 
-                          disabled={true}
-                          onChange={() => toast('Auto-like comment feature is coming soon!', { icon: '✨' })} 
-                        />
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <Label 
-                              className="text-sm font-semibold text-gray-700 cursor-pointer"
-                              onClick={() => toast('Auto-like comment feature is coming soon!', { icon: '✨' })}
-                            >
-                              Auto-like Comment
-                            </Label>
-                            <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase bg-amber-50 text-amber-700 border border-amber-200 rounded-full">
-                              Coming Soon
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      <div onClick={() => toast('Auto-like comment feature is coming soon!', { icon: '✨' })}>
-                        <Switch 
-                            checked={false} 
-                            disabled={true}
-                            className="opacity-50 cursor-not-allowed"
-                        />
-                      </div>
-                   </div>
                 </div>
 
                 {/* Follow Gate */}
                 <div className="p-5 border-t border-gray-100 bg-gray-50/50">
                    <div className="flex items-center justify-between">
                       <div>
-                        <Label className="text-sm font-semibold text-gray-800 block">Instagram Follow Gate</Label>
-                        <p className="text-xs text-gray-500 mt-1">Require users to follow your account before sending a DM.</p>
+                        <Label className="text-sm font-semibold text-gray-800 block">Require a follow · optional</Label>
+                        <p className="text-[13px] text-gray-600 mt-1">Send the DM only to people who follow you.</p>
                       </div>
                       <Switch 
-                          checked={requireFollow} 
+                          aria-label="Require a follow" checked={requireFollow}
                           onCheckedChange={setRequireFollow} 
                       />
                    </div>
                    {requireFollow && (
                       <div className="mt-4 pt-4 border-t border-gray-200/60">
-                          <Label className="text-sm font-semibold text-gray-800 block">Fallback Comment Reply</Label>
-                          <p className="text-xs text-gray-500 mt-1 mb-2">If they don't follow you, we'll reply to their comment with this text instead of sending a DM.</p>
+                          <Label className="text-sm font-semibold text-gray-800 block">Reply for people who don’t follow you</Label>
+                          <p className="text-[13px] text-gray-600 mt-1 mb-2">Shown publicly instead of sending the DM.</p>
                           <div className="flex items-center justify-between gap-2 mb-2">
-                            <span className="text-[11px] text-gray-500 font-medium">Insert variable:</span>
+                            <span className="text-xs text-gray-500 font-medium">Personalize:</span>
                             <div className="flex items-center gap-1.5">
                               <button
                                 type="button"
                                 onClick={() => insertVariable('first_name', 'fallback')}
-                                className="px-2 py-0.5 rounded-md border border-black/10 bg-white hover:bg-orange-50 hover:border-orange-200 hover:text-orange-600 transition-colors font-mono text-[10px] text-gray-700 font-medium"
+                                className="px-2 py-0.5 rounded-md border border-black/10 bg-white hover:bg-orange-50 hover:border-orange-200 hover:text-orange-600 transition-colors text-xs text-gray-700 font-medium"
                                 title="Inserts user's first name"
                               >
-                                + &#123;&#123;first_name&#125;&#125;
+                                First name
                               </button>
                               <button
                                 type="button"
                                 onClick={() => insertVariable('username', 'fallback')}
-                                className="px-2 py-0.5 rounded-md border border-black/10 bg-white hover:bg-orange-50 hover:border-orange-200 hover:text-orange-600 transition-colors font-mono text-[10px] text-gray-700 font-medium"
+                                className="px-2 py-0.5 rounded-md border border-black/10 bg-white hover:bg-orange-50 hover:border-orange-200 hover:text-orange-600 transition-colors text-xs text-gray-700 font-medium"
                                 title="Inserts user's @username mention"
                               >
-                                + @&#123;&#123;username&#125;&#125;
+                                Username
                               </button>
                             </div>
                           </div>
@@ -968,16 +902,13 @@ export default function AutomationEditorPage() {
             <div className="autodm-editor-card overflow-hidden">
               <div className="autodm-editor-card-head flex items-center justify-between p-4">
                 <div className="flex items-center gap-3">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[#1683dd] text-sm font-bold text-white">
-                    1
-                  </span>
                   <div>
                     <p className="font-semibold text-gray-900">Opening DM</p>
-                    <p className="text-xs font-medium text-gray-500">Sent first with a button, like the screenshot.</p>
+                    <p className="text-xs font-medium text-gray-500">They tap the button below to continue.</p>
                   </div>
                 </div>
                 <Switch
-                  checked={Boolean(responseFlow.opening_message_enabled)}
+                  aria-label="Enable opening DM" checked={Boolean(responseFlow.opening_message_enabled)}
                   onCheckedChange={(checked) => setResponseFlow((prev) => ({ ...prev, opening_message_enabled: checked }))}
                 />
               </div>
@@ -985,34 +916,38 @@ export default function AutomationEditorPage() {
               {responseFlow.opening_message_enabled ? (
                 <div className="space-y-4 p-5">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] text-gray-500 font-medium">Insert variable:</span>
+                    <span className="text-xs text-gray-500 font-medium">Personalize:</span>
                     <div className="flex items-center gap-1.5">
                       <button
                         type="button"
                         onClick={() => insertVariable('first_name', 'opening')}
-                        className="px-2 py-0.5 rounded-md border border-black/10 bg-white hover:bg-orange-50 hover:border-orange-200 hover:text-orange-600 transition-colors font-mono text-[10px] text-gray-700 font-medium"
+                        className="px-2 py-0.5 rounded-md border border-black/10 bg-white hover:bg-orange-50 hover:border-orange-200 hover:text-orange-600 transition-colors text-xs text-gray-700 font-medium"
                         title="Inserts user's first name"
                       >
-                        + &#123;&#123;first_name&#125;&#125;
+                        First name
                       </button>
                       <button
                         type="button"
                         onClick={() => insertVariable('username', 'opening')}
-                        className="px-2 py-0.5 rounded-md border border-black/10 bg-white hover:bg-orange-50 hover:border-orange-200 hover:text-orange-600 transition-colors font-mono text-[10px] text-gray-700 font-medium"
+                        className="px-2 py-0.5 rounded-md border border-black/10 bg-white hover:bg-orange-50 hover:border-orange-200 hover:text-orange-600 transition-colors text-xs text-gray-700 font-medium"
                         title="Inserts user's @username mention"
                       >
-                        + @&#123;&#123;username&#125;&#125;
+                        Username
                       </button>
                     </div>
                   </div>
                   <Textarea
+                    aria-label="Opening message"
                     ref={openingMessageInputRef}
                     value={responseFlow.opening_message || ''}
                     onChange={(event) => setResponseFlow((prev) => ({ ...prev, opening_message: event.target.value }))}
                     placeholder="Hey there! I'm so happy you're here..."
                     className="min-h-[126px] resize-none rounded-md border-gray-200 text-sm leading-relaxed focus-visible:ring-1"
                   />
+                  {responseFlow.opening_message?.includes('{{') && <p className="break-words text-[13px] text-gray-600">Example: {personalizationExample(responseFlow.opening_message)}</p>}
+                  <Label htmlFor="autodm-opening-button" className="block text-sm font-medium">Button label</Label>
                   <Input
+                    id="autodm-opening-button"
                     value={responseFlow.opening_button || ''}
                     onChange={(event) => setResponseFlow((prev) => ({ ...prev, opening_button: event.target.value }))}
                     placeholder="Send me the link"
@@ -1025,12 +960,9 @@ export default function AutomationEditorPage() {
             <div className="autodm-editor-card overflow-hidden">
               <div className="autodm-editor-card-head p-4">
                 <div className="flex items-center gap-3">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[#111111] text-sm font-bold text-white">
-                    2
-                  </span>
                   <div>
                     <p className="font-semibold text-gray-900">After they tap the button</p>
-                    <p className="text-xs font-medium text-gray-500">Shown after the user sends “{responseFlow.opening_button || 'Send me the link'}”.</p>
+                    <p className="text-[13px] text-gray-600">{responseFlow.opening_message_enabled ? `After they tap “${responseFlow.opening_button || 'Send me the link'}”` : 'Sent directly to their DMs'}</p>
                   </div>
                 </div>
               </div>
