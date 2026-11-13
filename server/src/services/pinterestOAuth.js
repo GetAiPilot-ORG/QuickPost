@@ -12,7 +12,13 @@ function getRedisLockClient() {
   const url = process.env.REDIS_URL || process.env.BULLMQ_REDIS_URL;
   if (!url) return null;
   if (!redisClient) {
-    redisClient = new IORedis(url, { maxRetriesPerRequest: null, enableReadyCheck: false });
+    redisClient = new IORedis(url, {
+      maxRetriesPerRequest: 1,
+      connectTimeout: 1000,
+      enableReadyCheck: false,
+      retryStrategy: () => null
+    });
+    redisClient.on('error', () => {});
   }
   return redisClient;
 }
@@ -59,15 +65,24 @@ async function acquireDistributedLock(lockKey, ttlMs = 15000) {
 }
 
 class PinterestOAuth {
-  constructor() {
-    this.clientId = process.env.PINTEREST_APP_ID;
-    this.clientSecret = process.env.PINTEREST_APP_SECRET;
+  get clientId() {
+    return process.env.PINTEREST_APP_ID;
+  }
+  get clientSecret() {
+    return process.env.PINTEREST_APP_SECRET;
+  }
+  get redirectUri() {
     const serverUrl = process.env.SERVER_PUBLIC_URL || 'http://localhost:5000';
-    this.redirectUri =
+    return (
       process.env.PINTEREST_REDIRECT_URI ||
-      `${serverUrl.replace(/\/$/, '')}/api/auth/pinterest/callback`;
-    this.scopes = 'boards:read,boards:write,pins:read,pins:write,user_accounts:read';
-    this.baseUrl = 'https://api.pinterest.com/v5';
+      `${serverUrl.replace(/\/$/, '')}/api/auth/pinterest/callback`
+    );
+  }
+  get scopes() {
+    return 'boards:read,boards:write,pins:read,pins:write,user_accounts:read';
+  }
+  get baseUrl() {
+    return process.env.PINTEREST_API_BASE_URL || 'https://api.pinterest.com/v5';
   }
 
   /**
@@ -101,7 +116,7 @@ class PinterestOAuth {
         throw new Error('PINTEREST_APP_ID or PINTEREST_APP_SECRET missing in environment');
       }
 
-      console.log('📌 [PINTEREST-OAUTH] Exchanging auth code for token...');
+      console.log(`📌 [PINTEREST-OAUTH] Exchanging auth code for token using client_id: ${this.clientId}, redirect_uri: ${this.redirectUri}...`);
 
       const params = new URLSearchParams();
       params.append('grant_type', 'authorization_code');
@@ -123,12 +138,23 @@ class PinterestOAuth {
 
       const { access_token, refresh_token, token_type, expires_in, scope } = response.data;
 
-      // Get user profile info
-      const userInfo = await this.getUserInfo(access_token);
+      // Get user profile info safely
+      let userInfo = {};
+      try {
+        userInfo = await this.getUserInfo(access_token);
+      } catch (userErr) {
+        console.warn('⚠️ [PINTEREST-OAUTH] Could not fetch user profile details:', userErr.message);
+      }
       
-      // Get user boards
-      const boards = await this.getBoards(access_token);
+      // Get user boards safely
+      let boards = [];
+      try {
+        boards = await this.getBoards(access_token);
+      } catch (boardErr) {
+        console.warn('⚠️ [PINTEREST-OAUTH] Could not fetch user boards:', boardErr.message);
+      }
       const defaultBoard = boards[0];
+      const username = userInfo?.username || 'Pinterest User';
 
       return {
         accessToken: access_token,
@@ -136,11 +162,12 @@ class PinterestOAuth {
         tokenType: token_type || 'bearer',
         expiresIn: expires_in || null,
         scope: scope || this.scopes,
+        username: username,
         userInfo: {
-          username: userInfo.username,
-          id: userInfo.id || userInfo.username,
-          profileImage: userInfo.profile_image || userInfo.profile_image_url || null,
-          accountType: userInfo.account_type || null
+          username: username,
+          id: userInfo?.id || userInfo?.username || username,
+          profileImage: userInfo?.profile_image || userInfo?.profile_image_url || null,
+          accountType: userInfo?.account_type || null
         },
         boards: boards.map(b => ({ id: b.id, name: b.name })),
         boardId: defaultBoard?.id || null,
@@ -149,8 +176,13 @@ class PinterestOAuth {
     } catch (error) {
       const duration = Date.now() - startTime;
       const httpStatus = error.response?.status || 500;
-      console.error(`❌ [PINTEREST-OAUTH] Token exchange failed (HTTP ${httpStatus}, ${duration}ms):`, error.response?.data?.message || error.message);
-      throw new Error(`Pinterest OAuth token exchange failed: ${error.response?.data?.message || error.message}`);
+      const errorData = error.response?.data;
+      const errorMsg = errorData?.message || errorData?.error_description || errorData?.error || error.message;
+      console.error(`❌ [PINTEREST-OAUTH] Token exchange failed (HTTP ${httpStatus}, ${duration}ms):`, JSON.stringify(errorData || errorMsg));
+      try {
+        fs.appendFileSync('/tmp/pinterest_oauth.log', `[${new Date().toISOString()}] Token exchange failed HTTP ${httpStatus}: ${JSON.stringify(errorData || errorMsg)}\n`);
+      } catch (e) {}
+      throw new Error(`Pinterest OAuth token exchange failed: ${errorMsg}`);
     }
   }
 
@@ -238,7 +270,7 @@ class PinterestOAuth {
 
     let row = await lookupAccount();
 
-    if (row.token_status === 'reconnect_required') {
+    if (row.token_status === 'reconnect_required' || row.profile_data?.token_status === 'reconnect_required') {
       throw new Error('Pinterest account connection expired. Please reconnect.');
     }
 
@@ -282,7 +314,10 @@ class PinterestOAuth {
                 refresh_token: encryptedRefresh,
                 token_expiry: newExpiry,
                 expires_at: newExpiry,
-                token_status: 'active',
+                profile_data: {
+                  ...(row.profile_data || {}),
+                  token_status: 'active'
+                },
                 updated_at: new Date().toISOString()
               })
               .eq('id', row.id);
@@ -297,7 +332,10 @@ class PinterestOAuth {
             await supabase
               .from('social_tokens')
               .update({
-                token_status: 'reconnect_required',
+                profile_data: {
+                  ...(row.profile_data || {}),
+                  token_status: 'reconnect_required'
+                },
                 updated_at: new Date().toISOString()
               })
               .eq('id', row.id);
@@ -372,7 +410,33 @@ class PinterestOAuth {
     } catch (error) {
       const duration = Date.now() - startTime;
       console.error(`❌ [PINTEREST-ERROR] getBoards failed (HTTP ${error.response?.status || 500}, ${duration}ms):`, error.response?.data?.message || error.message);
-      return [];
+      throw new Error(`Failed to fetch Pinterest boards: ${error.response?.data?.message || error.message}`);
+    }
+  }
+
+  /**
+   * Create a new Pinterest board for user
+   */
+  async createBoard(accessToken, name, description = '') {
+    const startTime = Date.now();
+    try {
+      const response = await axios.post(`${this.baseUrl}/boards`, {
+        name,
+        description: description || undefined
+      }, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000
+      });
+      const duration = Date.now() - startTime;
+      console.log(`✅ [PINTEREST-OAUTH] Board created "${name}" (ID: ${response.data.id}, ${duration}ms)`);
+      return response.data;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      console.error(`❌ [PINTEREST-ERROR] createBoard failed (${duration}ms):`, error.response?.data?.message || error.message);
+      throw new Error(`Failed to create board: ${error.response?.data?.message || error.message}`);
     }
   }
 
@@ -393,11 +457,12 @@ class PinterestOAuth {
         provider: 'pinterest',
         access_token: encryptedAccess,
         refresh_token: encryptedRefresh,
-        account_id: tokenData.userInfo?.id || tokenData.userInfo?.username,
-        pinterest_board_id: tokenData.boardId,
-        username: tokenData.userInfo?.username,
+        account_id: tokenData.userInfo?.id || tokenData.userInfo?.username || tokenData.username || `pinterest_${userId.slice(0, 8)}`,
+        pinterest_board_id: tokenData.boardId || null,
+        username: tokenData.userInfo?.username || tokenData.username || 'Pinterest User',
         profile_data: {
           ...tokenData.userInfo,
+          token_status: 'active',
           boardId: tokenData.boardId,
           boardName: tokenData.boardName,
           boards: tokenData.boards || [],
@@ -405,7 +470,6 @@ class PinterestOAuth {
         },
         token_expiry: expiryDate,
         expires_at: expiryDate,
-        token_status: 'active',
         updated_at: new Date().toISOString()
       };
 

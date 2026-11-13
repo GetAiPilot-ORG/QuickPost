@@ -15,6 +15,9 @@ import {
   Edit3
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
+import { ScheduledMediaThumb, ScheduledMediaGallery } from "./ScheduledMedia";
+import { scheduleStatus, localScheduleInput } from "../utils/scheduleStatus";
 import apiClient from "../utils/apiClient";
 import { useDialog } from "../context/DialogContext";
 
@@ -25,6 +28,7 @@ function getPlatformIcon(id) {
   const icons = {
     facebook: "/icons/facebook-round-color-icon.svg",
     instagram: "/icons/ig-instagram-icon.svg",
+    socialpilot: "/logo.png",
     x: "/icons/x-social-media-round-icon.svg",
     linkedin: "/icons/linkedin-icon.svg",
     youtube: "/icons/youtube-color-icon.svg",
@@ -53,16 +57,6 @@ function getPlatformAccent(channelId) {
   };
   return colors[provider] || { bg: "bg-[#f0fdf4]/85 border-[#dcfce7]", text: "text-[#166534]", border: "border-[#dcfce7]", borderLeft: "border-l-[3.5px] border-l-[#22c55e]", dot: "bg-[#22c55e]" };
 }
-
-// ─── Status configs ─────────────────────────────────────────────────────────
-const STATUS_BADGES = {
-  scheduled: { label: "Scheduled", color: "bg-blue-50 text-blue-700 border-blue-150" },
-  queued: { label: "Queued", color: "bg-violet-50 text-violet-700 border-violet-150" },
-  processing: { label: "Publishing...", color: "bg-amber-50 text-amber-700 border-amber-150" },
-  failed: { label: "Failed", color: "bg-red-50 text-red-700 border-red-150" },
-  cancelled: { label: "Cancelled", color: "bg-gray-50 text-gray-500 border-gray-150" },
-  sent: { label: "Published", color: "bg-green-50 text-green-700 border-green-150" },
-};
 
 // Helper to format Date object as local YYYY-MM-DD string
 function getLocalDateString(date) {
@@ -141,7 +135,7 @@ export default function CalendarView({
     return localStorage.getItem("quickpost_calendar_mode") || "month";
   });
 
-  const [expandedDates, setExpandedDates] = useState({});
+  const [selectedDay, setSelectedDay] = useState(null);
   const [dragOverDate, setDragOverDate] = useState(null);
 
   // Event interaction states
@@ -370,19 +364,11 @@ export default function CalendarView({
     }
   };
 
-  const toggleExpandDate = (dateStr, e) => {
-    e.stopPropagation();
-    setExpandedDates((prev) => ({
-      ...prev,
-      [dateStr]: !prev[dateStr],
-    }));
-  };
-
   // Edit / Action handlers
   const handleOpenEdit = (post) => {
     setEditingPost(post);
     setEditCaption(post.caption || "");
-    setEditTime(post.scheduled_for ? new Date(post.scheduled_for).toISOString().slice(0, 16) : "");
+    setEditTime(post.scheduled_for ? localScheduleInput(post.scheduled_for) : "");
     setDetailEvent(null);
   };
 
@@ -448,22 +434,24 @@ export default function CalendarView({
   // Card subcomponent to maintain clean hierarchy
   const RenderEventCard = ({ post, isCompact = false }) => {
     const channel = post.selected_channels?.[0];
-    const accent = getPlatformAccent(channel);
+    const badge = scheduleStatus(post);
+    const accent = { ...getPlatformAccent(channel), bg: badge.color, border: '', text: 'text-gray-700' };
     const postTime = new Date(post.scheduled_for).toLocaleTimeString(undefined, {
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
     });
-    const hasMedia = !!(post.media_url || post.thumbnail_url);
     const avatar = getAccountPicture(channel, connectedAccounts);
     const accountName = getAccountName(channel, connectedAccounts);
 
     return (
       <motion.div
         key={post.id}
-        draggable={post.status !== "sent" ? "true" : "false"}
+        role="button" tabIndex={0} aria-label={`${badge.label}: ${post.caption || "Untitled post"}`}
+        onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); setDetailEvent(post); } }}
+        draggable={post.status === "scheduled"}
         onDragStart={(e) => {
-          if (post.status === "sent") {
+          if (post.status !== "scheduled") {
             e.preventDefault();
             return;
           }
@@ -474,15 +462,15 @@ export default function CalendarView({
           setDetailEvent(post);
         }}
         whileHover={{ y: -1, scale: 1.01 }}
-        className={`p-2 rounded-xl border text-left select-none shadow-sm transition-all flex flex-col gap-1.5 hover:shadow-md ${post.status === "sent" ? "cursor-pointer" : "cursor-grab active:cursor-grabbing"
-          } ${calendarMode === "week" ? "min-h-[96px]" : ""
+        className={`p-2 rounded-xl border text-left select-none shadow-sm transition-all flex flex-col gap-1.5 hover:shadow-md ${post.status === "scheduled" ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
+          } ${calendarMode === "week" ? "min-h-[80px]" : ""
           } ${accent.bg} ${accent.border}`}
       >
         {/* Top platform/account info bar */}
         <div className="flex items-center justify-between gap-1.5 min-w-0">
           <div className="flex items-center gap-1.5 min-w-0">
             <span className="shrink-0">{getPlatformIcon(channel)}</span>
-            <span className={`text-[10px] font-extrabold truncate shrink-0 max-w-[80px] sm:max-w-none ${accent.text}`}>
+            <span className={`min-w-0 truncate text-[11px] font-semibold ${accent.text}`}>
               {accountName || channel?.split(":")[0]}
             </span>
           </div>
@@ -495,18 +483,14 @@ export default function CalendarView({
           )}
         </div>
 
+        <ScheduledMediaThumb key={post.id} post={post} className={isCompact ? 'h-16 w-full' : 'h-20 w-full'} />
         {/* Main card description */}
         <div className="flex flex-col">
           <div className="flex items-center gap-1">
             <span className="text-[10px] font-extrabold text-gray-500 leading-none">
               {postTime}
             </span>
-            {hasMedia && <span className="text-[10px] leading-none shrink-0" title="Media post">📷</span>}
           </div>
-          <span className={`text-[11px] font-semibold text-gray-700 leading-tight mt-1 ${calendarMode === "week" ? "line-clamp-3" : "truncate"
-            }`}>
-            {post.caption || "No caption"}
-          </span>
         </div>
       </motion.div>
     );
@@ -519,7 +503,7 @@ export default function CalendarView({
     >
 
       {/* ─── Calendar Navigation Header ─────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-[#ebe7e1] px-6 py-4 gap-4 bg-white z-10">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-[#ebe7e1] px-4 py-3 gap-3 bg-white z-10">
         <div className="flex items-center gap-3">
           <div className="flex items-center border border-[#ebe7e1] rounded-lg overflow-hidden bg-white">
             <button
@@ -590,7 +574,7 @@ export default function CalendarView({
                     : "text-gray-600 hover:bg-gray-50/50 active:bg-gray-100/50"
                     }`}
                 >
-                  <span className="text-[10px] uppercase font-bold tracking-wider opacity-60">
+                  <span className="text-[10px] font-bold opacity-60">
                     {dayName}
                   </span>
                   <span className="text-sm font-extrabold mt-1">
@@ -609,37 +593,30 @@ export default function CalendarView({
             {postsByDate[getLocalDateString(activeMobileDate)]?.length > 0 ? (
               postsByDate[getLocalDateString(activeMobileDate)].map((post) => {
                 const channel = post.selected_channels?.[0];
-                const accent = getPlatformAccent(channel);
                 const postTime = new Date(post.scheduled_for).toLocaleTimeString(undefined, {
                   hour: "2-digit",
                   minute: "2-digit",
                 });
-                const badge = STATUS_BADGES[post.status] || { label: post.status, color: "bg-gray-100 text-gray-700 border-gray-200" };
-
                 return (
-                  <div
+                  <button type="button"
                     key={post.id}
                     onClick={() => setDetailEvent(post)}
-                    className={`flex items-center gap-4 p-3.5 bg-white border border-[#ebe7e1] rounded-2xl active:scale-[0.98] transition-all cursor-pointer shadow-sm relative ${accent.borderLeft}`}
+                    className={`w-full text-left flex items-center gap-4 p-3.5 bg-white border border-[#ebe7e1] rounded-2xl active:scale-[0.98] transition-all cursor-pointer shadow-sm relative border-l-[3px] border-l-gray-200`}
                   >
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${accent.bg} ${accent.text}`}>
-                      {getPlatformIcon(channel)}
-                    </div>
+                    <ScheduledMediaThumb post={post} />
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-[11px] font-extrabold text-gray-400">
                           {postTime}
                         </span>
-                        <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${badge.color}`}>
-                          {badge.label}
-                        </span>
+
                       </div>
                       <p className="text-xs font-bold text-gray-800 truncate mt-1">
-                        {post.caption || "No caption"}
+                        {getAccountName(post.selected_channels?.[0], connectedAccounts) || post.selected_channels?.[0]?.split(':')[0]}
                       </p>
                     </div>
-                  </div>
+                  </button>
                 );
               })
             ) : (
@@ -662,7 +639,7 @@ export default function CalendarView({
           </div>
         </div>
       ) : (
-        <div className="overflow-hidden relative w-full flex-1 min-h-[520px]">
+        <div className="overflow-hidden relative w-full">
           <AnimatePresence initial={false} custom={slideDirection} mode="wait">
             <motion.div
               key={currentDate.toISOString() + calendarMode}
@@ -692,7 +669,7 @@ export default function CalendarView({
                 {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((day) => (
                   <div
                     key={day}
-                    className="py-1.5 text-center text-[10px] font-extrabold text-gray-400 uppercase tracking-wider truncate px-1"
+                    className="py-1.5 text-center text-[10px] font-extrabold text-gray-400 truncate px-1"
                   >
                     {calendarMode === "week" ? day : day.slice(0, 3)}
                   </div>
@@ -700,25 +677,24 @@ export default function CalendarView({
               </div>
 
               {/* ─── Grid Cells ─────────── */}
-              <div className={`grid grid-cols-7 bg-white border-b border-r border-[#ebe7e1]/60 ${calendarMode === "week" ? "grid-rows-1" : "grid-rows-5 auto-rows-fr"
+              <div className={`grid grid-cols-7 bg-white border-b border-r border-[#ebe7e1]/60 ${calendarMode === "week" ? "grid-rows-1" : "auto-rows-fr"
                 }`}>
                 {gridDays.map(({ date, isCurrentMonth }) => {
                   const dateStr = getLocalDateString(date);
                   const isToday = dateStr === todayStr;
                   const dayPosts = postsByDate[dateStr] || [];
-                  const isExpanded = !!expandedDates[dateStr];
 
-                  // Limits display items to at most 1 in month view for super-compact single-screen fit. Week view displays all.
-                  const visiblePosts = (calendarMode === "week") ? dayPosts : dayPosts.slice(0, 1);
-                  const hasMore = calendarMode === "month" && dayPosts.length > 1;
-                  const moreCount = dayPosts.length - 1;
+
+                  const limit = calendarMode === 'week' ? 3 : 1;
+                  const visiblePosts = dayPosts.slice(0, limit);
+                  const hasMore = dayPosts.length > limit;
 
                   const isOver = dateStr === dragOverDate;
 
                   // Soft pastel contrasting backgrounds:
                   // Soothing pale slate blue for active days containing posts vs off-white for empty days
                   const cellBackground = isCurrentMonth
-                    ? (dayPosts.length > 0 ? "bg-[#f5f3ff] hover:bg-[#ede9fe]/70" : "bg-white hover:bg-gray-50/40")
+                    ? "bg-white hover:bg-gray-50/40"
                     : "bg-[#fafafa]/40 text-gray-300/60";
 
                   return (
@@ -728,13 +704,13 @@ export default function CalendarView({
                       onDragEnter={(e) => handleDragEnter(e, dateStr)}
                       onDrop={(e) => handleDrop(e, date)}
                       onClick={() => onAddPost(date)}
-                      className={`p-2 flex flex-col justify-between group transition-all relative border-t border-l border-[#ebe7e1]/60 ${calendarMode === "week" ? "min-h-[420px] h-full" : "min-h-[110px] sm:min-h-[120px]"
+                      className={`p-2 flex flex-col justify-between group transition-all relative border-t border-l border-[#ebe7e1]/60 ${calendarMode === "week" ? "min-h-[240px]" : "min-h-[96px] sm:min-h-[104px]"
                         } ${cellBackground} ${isOver ? "bg-[#eff6ff] ring-2 ring-[#bfdbfe]/50 border-blue-400 border-dashed z-10" : ""
                         }`}
                     >
                       {/* Cell Header (Date number) */}
                       <div className="flex items-center justify-between mb-1">
-                        <span
+                        <button type="button" aria-label={`View ${dayPosts.length} posts on ${date.toLocaleDateString()}`} onClick={(event) => { event.stopPropagation(); setSelectedDay(dateStr); }}
                           className={`text-[11px] font-extrabold w-5 h-5 flex items-center justify-center rounded-full ${isToday
                             ? "bg-green-500 text-white shadow-sm shadow-green-200"
                             : isCurrentMonth
@@ -743,7 +719,7 @@ export default function CalendarView({
                             }`}
                         >
                           {date.getDate()}
-                        </span>
+                        </button>
 
                         {/* Add Post Plus button */}
                         <button
@@ -768,49 +744,14 @@ export default function CalendarView({
                       <div className="h-4 shrink-0 flex items-center justify-start">
                         {hasMore && (
                           <button
-                            onClick={(e) => toggleExpandDate(dateStr, e)}
-                            className="px-2 py-0.5 rounded-full bg-black/5 hover:bg-black/10 border border-black/5 text-[9px] font-extrabold text-gray-600 transition uppercase tracking-wider"
+                            onClick={(e) => { e.stopPropagation(); setSelectedDay(dateStr); }}
+                            className="px-2 py-0.5 rounded-full bg-black/5 hover:bg-black/10 border border-black/5 text-[9px] font-extrabold text-gray-600 transition"
                           >
-                            +{moreCount} more
+                            View all {dayPosts.length} posts
                           </button>
                         )}
                       </div>
 
-                      {/* Floating Expanded Overlay List */}
-                      <AnimatePresence>
-                        {isExpanded && (
-                          <motion.div
-                            initial={{ opacity: 0, scale: 0.95, y: 5 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95, y: 5 }}
-                            onClick={(e) => e.stopPropagation()}
-                            className={`absolute ${date.getDay() === 0
-                              ? "left-1"
-                              : date.getDay() === 6
-                                ? "right-1"
-                                : "left-1/2 -translate-x-1/2"
-                              } -top-6 w-[260px] z-[45] bg-white shadow-2xl border border-gray-200/90 rounded-2xl p-4 flex flex-col gap-3 max-h-[300px] overflow-y-auto cursor-default select-none [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-gray-200 hover:[&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent`}
-                          >
-                            <div className="flex items-center justify-between border-b border-gray-100 pb-2.5 shrink-0">
-                              <span className="text-xs font-extrabold text-gray-900 flex items-center gap-1.5 uppercase tracking-wider">
-                                <Calendar className="w-3.5 h-3.5 text-gray-500" />
-                                {date.toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                              </span>
-                              <button
-                                onClick={(e) => toggleExpandDate(dateStr, e)}
-                                className="p-1 rounded-full hover:bg-gray-50 text-gray-400 hover:text-gray-700 transition"
-                              >
-                                <X size={12} className="stroke-[2.5]" />
-                              </button>
-                            </div>
-                            <div className="flex-1 flex flex-col gap-2.5">
-                              {dayPosts.map((post) => (
-                                <RenderEventCard key={post.id} post={post} isCompact={false} />
-                              ))}
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
                     </div>
                   );
                 })}
@@ -820,27 +761,23 @@ export default function CalendarView({
         </div>
       )}
 
-      {/* ─── Rich Event Details Popover Panel ─────────── */}
-      <AnimatePresence>
-        {detailEvent && (
-          <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setDetailEvent(null)}
-              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            />
-            {/* Popover Card */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 12 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.97, y: 8 }}
-              className="relative w-full max-w-[460px] bg-white rounded-2xl shadow-2xl overflow-hidden border border-black/5 z-10 text-left flex flex-col"
-            >
+      <Dialog open={Boolean(selectedDay)} onOpenChange={(open) => !open && setSelectedDay(null)}>
+        <DialogContent className="max-h-[90dvh] max-w-3xl overflow-y-auto">
+          <DialogHeader><DialogTitle>{selectedDay && new Date(`${selectedDay}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</DialogTitle><DialogDescription>{(postsByDate[selectedDay] || []).length} posts · sorted by time · {tz}</DialogDescription></DialogHeader>
+          <div className="space-y-2">{(postsByDate[selectedDay] || []).map((post, index) => <button type="button" key={post.id} onClick={() => { setSelectedDay(null); setDetailEvent(post); }} className="flex w-full items-center gap-3 rounded-lg border border-black/10 p-3 text-left hover:bg-gray-50">
+            <ScheduledMediaThumb post={post} />
+            <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">{index + 1}. {new Date(post.scheduled_for).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</span><span className="mt-1 line-clamp-2 break-words text-sm text-gray-600">{post.caption || 'No caption'}</span><span className="mt-1 block truncate text-xs text-gray-500">{getAccountName(post.selected_channels?.[0], connectedAccounts) || post.selected_channels?.[0]?.split(':')[0]}</span></span>
+            <span className={`shrink-0 rounded-full border px-2 py-1 text-[11px] font-medium ${scheduleStatus(post).color}`}>{scheduleStatus(post).label}</span>
+          </button>)}{!(postsByDate[selectedDay] || []).length && <p className="py-8 text-center text-sm text-gray-500">No posts on this day.</p>}</div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(detailEvent)} onOpenChange={(open) => !open && setDetailEvent(null)}>
+        <DialogContent className="max-h-[90dvh] max-w-2xl overflow-hidden p-0 gap-0 flex flex-col">
+          <DialogHeader className="sr-only"><DialogTitle>Post preview</DialogTitle><DialogDescription>Media, caption, scheduled time and publishing status.</DialogDescription></DialogHeader>
+          {detailEvent && <>
               {/* Header profile block */}
-              <div className="p-6 border-b border-[#ebe7e1] flex items-start justify-between gap-4">
+              <div className="p-4 pr-12 border-b border-[#ebe7e1] flex items-start justify-between gap-4">
                 <div className="flex items-center gap-3">
                   {getAccountPicture(detailEvent.selected_channels?.[0], connectedAccounts) ? (
                     <img
@@ -863,16 +800,11 @@ export default function CalendarView({
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={() => setDetailEvent(null)}
-                  className="p-1 rounded-full border border-gray-100 text-gray-400 hover:text-gray-800 transition hover:bg-gray-50"
-                >
-                  <X size={14} />
-                </button>
               </div>
 
               {/* Details Body */}
-              <div className="p-6 space-y-4 max-h-[360px] overflow-y-auto custom-scrollbar">
+              <div className="min-h-0 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                <ScheduledMediaGallery key={detailEvent.id} post={detailEvent} />
                 {/* Time details */}
                 <div className="flex items-center gap-3 text-xs font-semibold text-gray-600 bg-gray-50/70 p-3 rounded-xl border border-gray-150">
                   <Clock className="w-4 h-4 text-blue-500" />
@@ -895,22 +827,22 @@ export default function CalendarView({
                 </div>
 
                 {/* Status indicator */}
-                {STATUS_BADGES[detailEvent.status] && (
+                {scheduleStatus(detailEvent) && (
                   <div>
-                    <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider mb-1 block">
+                    <label className="text-[10px] font-extrabold text-gray-400 mb-1 block">
                       Status
                     </label>
-                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border ${STATUS_BADGES[detailEvent.status].color
+                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border ${scheduleStatus(detailEvent).color
                       }`}>
                       <span className="w-1.5 h-1.5 rounded-full bg-current shrink-0" />
-                      {STATUS_BADGES[detailEvent.status].label}
+                      {scheduleStatus(detailEvent).label}
                     </span>
                   </div>
                 )}
 
                 {/* Caption Block */}
                 <div>
-                  <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider mb-1 block">
+                  <label className="text-[10px] font-extrabold text-gray-400 mb-1 block">
                     Caption
                   </label>
                   <p className="text-xs font-semibold text-gray-700 bg-gray-50/50 p-3 rounded-xl border border-gray-100 leading-relaxed whitespace-pre-wrap">
@@ -951,10 +883,9 @@ export default function CalendarView({
                   )}
                 </div>
               </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+          </>}
+        </DialogContent>
+      </Dialog>
 
       {/* ─── Standard Edit Modal ─────────── */}
       <AnimatePresence>
@@ -987,7 +918,7 @@ export default function CalendarView({
 
               <div className="space-y-4">
                 <div>
-                  <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider mb-2 block">
+                  <label className="text-[10px] font-extrabold text-gray-400 mb-2 block">
                     Target Platforms
                   </label>
                   <div className="flex items-center gap-1.5 flex-wrap">
@@ -1006,7 +937,7 @@ export default function CalendarView({
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider mb-1.5 block">
+                  <label className="text-[10px] font-extrabold text-gray-400 mb-1.5 block">
                     Caption
                   </label>
                   <textarea
@@ -1019,7 +950,7 @@ export default function CalendarView({
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider mb-1.5 block">
+                  <label className="text-[10px] font-extrabold text-gray-400 mb-1.5 block">
                     Scheduled Time ({tz})
                   </label>
                   <input

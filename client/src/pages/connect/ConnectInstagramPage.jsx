@@ -1,3 +1,4 @@
+import TutorialHelp from "../../components/TutorialHelp";
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { autodmSupabase, startAutoDMInstagramOAuth } from '../../services/autodm/supabaseClient';
@@ -146,6 +147,7 @@ export default function ConnectInstagramPage() {
 
   const socialPlatforms = [
     { id: 'facebook', name: 'Facebook', description: 'Pages & Groups', icon: '/icons/facebook-round-color-icon.svg', onConnect: () => setShowFacebookModal(true) },
+    { id: 'pinterest', name: 'Pinterest', description: 'Boards & Pins', icon: '/icons/pinterest-round-color-icon.svg', onConnect: () => setShowPinterestModal(true) },
     { id: 'linkedin', name: 'LinkedIn', description: 'Profiles & Pages', icon: '/icons/linkedin-icon.svg', onConnect: () => setShowLinkedInModal(true) },
     { id: 'youtube', name: 'YouTube', description: 'Shorts & Videos', icon: '/icons/youtube-color-icon.svg', onConnect: () => handleRedirectConnect('youtube') },
     { id: 'threads', name: 'Threads', description: 'Text & Media', icon: '/icons/threads-icon.svg', onConnect: () => handleRedirectConnect('threads') },
@@ -154,7 +156,6 @@ export default function ConnectInstagramPage() {
 
   const comingSoonPlatforms = [
     { id: 'x', name: 'X (Twitter)', description: 'Posts & Threads', icon: '/icons/x-social-media-round-icon.svg' },
-    { id: 'pinterest', name: 'Pinterest', description: 'Boards & Pins', icon: '/icons/pinterest-round-color-icon.svg' },
     { id: 'reddit', name: 'Reddit', description: 'Subreddit Posting', icon: '/icons/reddit-icon.svg' },
     { id: 'whatsapp', name: 'WhatsApp', description: 'Business API', icon: '/icons/wa-whatsapp-icon.svg' },
     { id: 'telegram', name: 'Telegram', description: 'Bot API', icon: '/icons/telegram-icon.svg' },
@@ -179,7 +180,7 @@ export default function ConnectInstagramPage() {
         {/* Page Header */}
         <header style={{ marginBottom: '56px', maxWidth: '640px' }}>
           <h1 style={{ fontSize: '44px', fontWeight: '700', letterSpacing: '-0.03em', margin: '0 0 16px', lineHeight: '1.1' }}>
-            Channels & Integrations
+            Channels & Integrations <TutorialHelp topic="connect" />
           </h1>
           <p style={{ color: 'var(--slate, #64645F)', fontSize: '17px', margin: 0, lineHeight: '1.5' }}>
             Manage your connected social accounts and messaging platforms. Authorize GAP to post on your behalf and automate direct messages.

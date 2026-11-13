@@ -264,24 +264,28 @@ export function formatUserFriendlyError(rawError, platform = null) {
 
   // Strip prefixes like "[Attempt 5] " or "Platform publishing failed - " if present
   let cleaned = errStr.replace(/^\[Attempt\s+\d+\]\s*/i, '');
+  cleaned = cleaned.replace(/^REAUTH_REQUIRED:\s*/i, '');
   cleaned = cleaned.replace(/^Platform publishing failed\s*-\s*/i, '');
+  cleaned = cleaned.replace(/(?:^|\s*\|\s*)([a-zA-Z0-9_-]+):[0-9a-fA-F-]{8,}(?::\s*|\s*-\s*)/gi, (_m, p) => `${p.charAt(0).toUpperCase() + p.slice(1)}: `);
+  cleaned = cleaned.replace(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g, '');
+  cleaned = cleaned.replace(/Instagram:\s*Instagram publishing failed:\s*/gi, 'Instagram: ');
   if (/^youtube:\s*/i.test(cleaned)) {
     const sub = cleaned.replace(/^youtube:\s*/i, '');
     if (/unauthorized|401|404|channel/i.test(sub)) {
       return "No YouTube channel found for this Google account. Please create a channel at youtube.com/create_channel and reconnect.";
     }
   }
-  return cleaned;
+  return cleaned.trim();
 }
 
 function buildPlatforms(post) {
   const selectedChannels = Array.from(new Set([
     ...(Array.isArray(post.selected_channels) ? post.selected_channels : []),
     ...(Array.isArray(post.platform_data?.selectedChannels) ? post.platform_data.selectedChannels : []),
-  ])).map(String).filter(Boolean);
+  ])).map(String).filter((ch) => Boolean(ch) && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ch.trim()));
 
   const isScheduled = post.status === 'scheduled' && !post.last_error;
-  const resultsData = post.results || post.platform_data?.results || {};
+  const resultsData = { ...(post.results || post.platform_data?.results || {}), ...(post.platform_data?.channelResults || {}) };
 
   const getSpecificPlatformError = (platformId, channelId) => {
     return (
@@ -293,6 +297,7 @@ function buildPlatforms(post) {
   };
 
   const platformMeta = [
+    { id: "socialpilot", name: "SocialPilot", success: Boolean(resultsData.socialpilot?.success), error: resultsData.socialpilot?.error || null, url: resultsData.socialpilot?.url },
     { id: "linkedin", name: "LinkedIn", success: Boolean(post.linkedin_success), error: getSpecificPlatformError("linkedin", "linkedin"), url: post.linkedin_url },
     { id: "youtube", name: "YouTube", success: Boolean(post.youtube_success), error: getSpecificPlatformError("youtube", "youtube"), url: post.youtube_shorts_url || post.youtube_url },
     { id: "facebook", name: "Facebook", success: Boolean(post.facebook_success), error: getSpecificPlatformError("facebook", "facebook"), url: post.facebook_url },
@@ -339,7 +344,7 @@ function buildPlatforms(post) {
           id: scId,
           name: pm.name,
           success: isScheduled ? false : pm.success,
-          error: isScheduled ? null : (specificErr || (post.status === 'failed' ? post.last_error : null)),
+          error: isScheduled || (pm.id === "socialpilot" && pm.success) ? null : (specificErr || (post.status === 'failed' ? post.last_error : null)),
           url: pm.url,
         });
       });

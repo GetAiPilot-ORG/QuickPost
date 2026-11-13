@@ -19,6 +19,7 @@ import billingRouter from './routes/billing.js';
 import youtubeRouter from './routes/youtube.js';
 import inboxRouter from './routes/inbox.js';
 import { initScheduler } from './services/scheduler.js';
+import { initAutoDMFollowups } from './services/autodmFollowupScheduler.js';
 import supabase from './services/supabase.js';
 import { processInstagramWebhook } from './services/instapilot.js';
 import { persistInstagramWebhookToUnifiedInbox } from './services/unifiedInboxWebhook.js';
@@ -401,6 +402,7 @@ const server = app.listen(PORT, () => {
 
   // Initialize Post Scheduler
   initScheduler();
+  initAutoDMFollowups();
 
   console.log(`\n✨ Ready to broadcast!\n`);
 });
@@ -467,7 +469,7 @@ async function handleWebhookLogRecord(log) {
         
         await supabase
           .from('webhook_logs')
-          .update({ processed: true, updated_at: new Date().toISOString() })
+          .update({ processed: true })
           .eq('id', logId);
       }
     } catch (e) {
@@ -502,7 +504,7 @@ if (enableLocalWorker) {
       console.log(`📡 [SUPABASE] webhook_logs listener status: ${status}`);
     });
 
-  // Resilient fallback sweeper (ensures 100% at-least-once message processing if Realtime drops an event)
+  // Resilient fallback sweeper (runs every 60s as a safety net if Realtime drops an event)
   const webhookSweeper = setInterval(async () => {
     try {
       const { data, error } = await supabase
@@ -523,7 +525,7 @@ if (enableLocalWorker) {
     } catch (err) {
       // Silent suppression in background loop
     }
-  }, 4000);
+  }, 60000);
 
   if (webhookSweeper?.unref) webhookSweeper.unref();
 } else {
