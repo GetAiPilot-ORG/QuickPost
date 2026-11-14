@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+﻿import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import { supermailbox } from './supermailbox.js';
 
@@ -365,7 +365,7 @@ export async function getConnectedAccounts(userOrId) {
   try {
     const userIds = typeof userOrId === 'string'
       ? [userOrId].filter(Boolean)
-      : [...new Set([userOrId?.userId, userOrId?.authUserId].filter(Boolean))];
+      : [userOrId?.userId].filter(Boolean);
 
     const { data, error } = await supabase
       .from('social_tokens')

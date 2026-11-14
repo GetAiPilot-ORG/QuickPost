@@ -1,4 +1,3 @@
-import TutorialHelp from "./TutorialHelp";
 import React, {
   useState,
   useRef,
@@ -825,7 +824,7 @@ const CustomSelect = memo(function CustomSelect({
   useEffect(() => {
     if (open && containerRef.current) {
       const isMobile = window.innerWidth <= 768;
-      
+
       if (isMobile) {
         // On mobile, pop up in the center of the screen to avoid clipping
         setPosition({
@@ -856,9 +855,9 @@ const CustomSelect = memo(function CustomSelect({
 
   const label = isCalendar
     ? new Date(value + "T00:00:00").toLocaleDateString(undefined, {
-        month: "short",
-        day: "numeric",
-      })
+      month: "short",
+      day: "numeric",
+    })
     : value;
 
   return (
@@ -965,84 +964,84 @@ const CustomSelect = memo(function CustomSelect({
                   pointerEvents: "auto",
                 }}
               >
-            {isCalendar ? (
-              <CalendarView
-                value={value}
-                onChange={(v) => {
-                  onChange(v);
-                  setOpen(false);
-                }}
-              />
-            ) : isTime ? (
-              <ClockView
-                value={value}
-                minTime={minTime}
-                onChange={(v) => {
-                  onChange(v);
-                }}
-                onClose={() => setOpen(false)}
-              />
-            ) : (
-              <div
-                style={{
-                  maxHeight: 240,
-                  overflowY: "auto",
-                  width: 140,
-                  padding: "8px",
-                  fontFamily: "var(--font)",
-                }}
-                className="custom-scrollbar"
-              >
-                {options.map((opt) => {
-                  const val = typeof opt === "string" ? opt : opt.value;
-                  const lbl = typeof opt === "string" ? opt : opt.label;
-                  const disabled = minTime && val < minTime;
-                  return (
-                    <button
-                      key={val}
-                      onClick={() => {
-                        if (!disabled) {
-                          onChange(val);
-                          setOpen(false);
-                        }
-                      }}
-                      style={{
-                        width: "100%",
-                        padding: "8px 12px",
-                        textAlign: "left",
-                        background:
-                          value === val
-                            ? "rgba(243,115,56,0.08)"
-                            : "transparent",
-                        border: "none",
-                        borderRadius: "8px",
-                        fontSize: 12,
-                        fontWeight: value === val ? 800 : 500,
-                        color: disabled
-                          ? "rgba(20,20,19,0.2)"
-                          : value === val
-                            ? "var(--arc)"
-                            : "var(--ink)",
-                        cursor: disabled ? "default" : "pointer",
-                        transition: "all 0.15s",
-                        marginBottom: "2px",
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!disabled && value !== val)
-                          e.target.style.background = "rgba(20,20,19,0.04)";
-                      }}
-                      onMouseLeave={(e) => {
-                        if (value !== val)
-                          e.target.style.background = "transparent";
-                      }}
-                    >
-                      {lbl}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </motion.div>
+                {isCalendar ? (
+                  <CalendarView
+                    value={value}
+                    onChange={(v) => {
+                      onChange(v);
+                      setOpen(false);
+                    }}
+                  />
+                ) : isTime ? (
+                  <ClockView
+                    value={value}
+                    minTime={minTime}
+                    onChange={(v) => {
+                      onChange(v);
+                    }}
+                    onClose={() => setOpen(false)}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      maxHeight: 240,
+                      overflowY: "auto",
+                      width: 140,
+                      padding: "8px",
+                      fontFamily: "var(--font)",
+                    }}
+                    className="custom-scrollbar"
+                  >
+                    {options.map((opt) => {
+                      const val = typeof opt === "string" ? opt : opt.value;
+                      const lbl = typeof opt === "string" ? opt : opt.label;
+                      const disabled = minTime && val < minTime;
+                      return (
+                        <button
+                          key={val}
+                          onClick={() => {
+                            if (!disabled) {
+                              onChange(val);
+                              setOpen(false);
+                            }
+                          }}
+                          style={{
+                            width: "100%",
+                            padding: "8px 12px",
+                            textAlign: "left",
+                            background:
+                              value === val
+                                ? "rgba(243,115,56,0.08)"
+                                : "transparent",
+                            border: "none",
+                            borderRadius: "8px",
+                            fontSize: 12,
+                            fontWeight: value === val ? 800 : 500,
+                            color: disabled
+                              ? "rgba(20,20,19,0.2)"
+                              : value === val
+                                ? "var(--arc)"
+                                : "var(--ink)",
+                            cursor: disabled ? "default" : "pointer",
+                            transition: "all 0.15s",
+                            marginBottom: "2px",
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!disabled && value !== val)
+                              e.target.style.background = "rgba(20,20,19,0.04)";
+                          }}
+                          onMouseLeave={(e) => {
+                            if (value !== val)
+                              e.target.style.background = "transparent";
+                          }}
+                        >
+                          {lbl}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </motion.div>
             </div>
           </div>,
           document.body,
@@ -1597,11 +1596,22 @@ function ComposerModal({
           const results = await Promise.all(
             initialMediaUrls.slice(0, 5).map(async (url) => {
               try {
-                const res = await fetch(url);
-                if (!res.ok) throw new Error("Internal proxy error");
+                let res;
+                // 1. Try direct fetch first
+                try {
+                  res = await fetch(url);
+                  if (!res.ok) throw new Error("Direct fetch status " + res.status);
+                } catch (directErr) {
+                  // 2. Fall back to backend media proxy to bypass browser CORS
+                  const apiUrl = import.meta.env.VITE_API_URL || "";
+                  const proxyUrl = `${apiUrl}/api/trends/proxy-media?url=${encodeURIComponent(url)}`;
+                  res = await fetch(proxyUrl);
+                  if (!res.ok) throw new Error("Proxy fetch status " + res.status);
+                }
 
                 const blob = await res.blob();
-                const name = url.split("/").pop()?.split("?")[0] || "media";
+                const rawName = url.split("/").pop()?.split("?")[0] || "media";
+                const name = rawName.replace(/[^a-zA-Z0-9_-]/g, "_") || "trend_media";
 
                 // Smart mime type detection
                 let mimeType = blob.type;
@@ -1615,8 +1625,12 @@ function ComposerModal({
                     mimeType = "video/quicktime";
                   else if (url.toLowerCase().includes(".webm"))
                     mimeType = "video/webm";
-                  else if (url.toLowerCase().match(/\.(jpg|jpeg|png|webp|gif)/))
-                    mimeType = "image/" + url.split(".").pop().split("?")[0];
+                  else if (url.toLowerCase().match(/\.(jpg|jpeg|png|webp|gif)/)) {
+                    const ext = url.split(".").pop().split("?")[0].toLowerCase();
+                    mimeType = "image/" + (ext === "jpg" ? "jpeg" : ext);
+                  } else {
+                    mimeType = "image/jpeg";
+                  }
                 }
 
                 // Detect extension
@@ -1624,12 +1638,47 @@ function ComposerModal({
                 if (extension === "jpeg") extension = "jpg";
                 if (extension.includes("quicktime")) extension = "mov";
 
-                return new File([blob], `${name}.${extension}`, {
+                const file = new File([blob], `${name}.${extension}`, {
                   type: mimeType,
                 });
+
+                // Calculate image/video dimensions for preview and validation
+                const dimensions = await new Promise((resolve) => {
+                  try {
+                    if (file.type.startsWith("image/")) {
+                      const img = new Image();
+                      img.onload = () => {
+                        const d = { width: img.width, height: img.height, ratio: img.width / img.height };
+                        URL.revokeObjectURL(img.src);
+                        resolve(d);
+                      };
+                      img.onerror = () => resolve(null);
+                      img.src = URL.createObjectURL(file);
+                    } else if (file.type.startsWith("video/")) {
+                      const video = document.createElement("video");
+                      video.onloadedmetadata = () => {
+                        const d = { width: video.videoWidth, height: video.videoHeight, ratio: video.videoWidth / video.videoHeight };
+                        URL.revokeObjectURL(video.src);
+                        resolve(d);
+                      };
+                      video.onerror = () => resolve(null);
+                      video.src = URL.createObjectURL(file);
+                    } else {
+                      resolve(null);
+                    }
+                  } catch {
+                    resolve(null);
+                  }
+                });
+
+                return {
+                  id: `initial_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+                  file,
+                  dimensions,
+                };
               } catch (err) {
                 console.error(
-                  "Failed to load media via internal proxy:",
+                  "Failed to load media via proxy:",
                   url,
                   err,
                 );
@@ -1638,13 +1687,9 @@ function ComposerModal({
             }),
           );
 
-          const files = results.filter(Boolean);
-          const newItems = files.map((file) => ({
-            id: `initial_${Math.random().toString(36).substr(2, 9)}`,
-            file,
-          }));
-          if (newItems.length > 0) {
-            setMediaFiles(newItems);
+          const validItems = results.filter(Boolean);
+          if (validItems.length > 0) {
+            setMediaFiles(validItems);
           }
         } catch (err) {
           console.error("Failed to load initial media:", err);
@@ -1706,7 +1751,7 @@ function ComposerModal({
     if (!isScheduled) return;
     const dv = datePart || minDate;
     let nt = timePart;
-    
+
     if (!nt) {
       nt = buildTimeOpts(dv)[0] || "";
     } else if (dv === minDate && nt < minTime) {
@@ -1874,21 +1919,21 @@ function ComposerModal({
         socialpilot: { enabled: postToSocialpilot },
         ...(hasInstagram
           ? {
-              ...platformData,
-              instagram: {
-                ...platformData.instagram,
-                type: publishPostType,
-              },
-            }
+            ...platformData,
+            instagram: {
+              ...platformData.instagram,
+              type: publishPostType,
+            },
+          }
           : platformData),
         ...(hasPlatform("pinterest")
           ? {
-              pinterest: {
-                ...platformData.pinterest,
-                boardId: defaultPinterestBoard,
-                title: defaultPinterestTitle,
-              },
-            }
+            pinterest: {
+              ...platformData.pinterest,
+              boardId: defaultPinterestBoard,
+              title: defaultPinterestTitle,
+            },
+          }
           : {}),
       };
       publishPlatformData.socialpilot = { enabled: postToSocialpilot };
@@ -1916,9 +1961,9 @@ function ComposerModal({
       formData.append("platformPresets", JSON.stringify(
         hasInstagram && publishPostType !== 'post'
           ? {
-              ...platformPresets,
-              instagram: INSTAGRAM_POST_TYPE_PRESETS[publishPostType] || platformPresets.instagram,
-            }
+            ...platformPresets,
+            instagram: INSTAGRAM_POST_TYPE_PRESETS[publishPostType] || platformPresets.instagram,
+          }
           : platformPresets
       ));
       formData.append("userTimezone", userTimezone);
@@ -2039,7 +2084,7 @@ function ComposerModal({
       setError("Please write some text in the caption field first for the AI to analyze.");
       return;
     }
-    
+
     setIsAiLoading(true);
     setError(null);
     try {
@@ -2069,7 +2114,7 @@ function ComposerModal({
       setError("Please write some text in the caption field first.");
       return;
     }
-    
+
     setIsFetchingMoreIdeas(true);
     try {
       const response = await apiClient.post('/api/ai/suggest', { text: caption, type: 'ideas' });
@@ -2091,7 +2136,7 @@ function ComposerModal({
       setError("Please write some text in the caption field first.");
       return;
     }
-    
+
     setIsFetchingMoreHashtags(true);
     try {
       const response = await apiClient.post('/api/ai/suggest', { text: caption, type: 'hashtags' });
@@ -3440,12 +3485,12 @@ function ComposerModal({
                 whileHover={
                   !publishDisabled
                     ? {
-                        scale: 1.02,
-                        y: -2,
-                        boxShadow: isScheduled
-                          ? "0 10px 24px rgba(243,115,56,0.3)"
-                          : "0 10px 24px rgba(20,20,19,0.22)",
-                      }
+                      scale: 1.02,
+                      y: -2,
+                      boxShadow: isScheduled
+                        ? "0 10px 24px rgba(243,115,56,0.3)"
+                        : "0 10px 24px rgba(20,20,19,0.22)",
+                    }
                     : {}
                 }
                 whileTap={!publishDisabled ? { scale: 0.97 } : {}}
