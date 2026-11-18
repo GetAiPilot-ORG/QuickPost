@@ -6230,3 +6230,21 @@ textarea:not(.bare-input):focus-visible {
 }
 
 
+
+/* Scheduled queue: aligned list rows with a bounded reading width. */
+.scheduled-list-group { overflow: hidden; border: 1px solid #d3cec6; border-radius: 10px; background: white; }
+.scheduled-list-card + .scheduled-list-card { border-top: 1px solid #ebe7e1; }
+.scheduled-list-row { display: grid; grid-template-columns: 52px minmax(180px, 1fr) 104px 124px 160px; align-items: center; gap: 14px; padding: 12px 14px; }
+.scheduled-row-thumb { grid-column: 1; display: flex; align-items: center; }
+.scheduled-row-content { grid-column: 2; }
+.scheduled-row-time { grid-column: 3; }
+.scheduled-row-status { grid-column: 4; }
+.scheduled-row-actions { grid-column: 5; }
+@media (max-width: 1150px) {
+  .scheduled-list-row { grid-template-columns: 52px minmax(0, 1fr) auto; gap: 8px 12px; padding: 12px; }
+  .scheduled-row-thumb { grid-column: 1; grid-row: 1 / 4; align-self: start; }
+  .scheduled-row-content { grid-column: 2 / -1; grid-row: 1; }
+  .scheduled-row-time { grid-column: 2; grid-row: 2; }
+  .scheduled-row-status { grid-column: 3; grid-row: 2; }
+  .scheduled-row-actions { grid-column: 2 / -1; grid-row: 3; justify-content: flex-start; }
+}

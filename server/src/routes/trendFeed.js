@@ -1,4 +1,6 @@
+import { communityFeedPost } from "../services/socialpilotPublishing.js";
 import express from "express";
+import axios from "axios";
 import { authenticateUser } from "../middleware/authenticateUser.js";
 import { getTrendFeedPage, getHotTopicsRadar } from "../services/trendFeed.js";
 import { generateTrendRemix } from "../services/trends/trendRemixService.js";
@@ -16,6 +18,20 @@ router.get("/trends/feed", authenticateUser, async (req, res) => {
       success: false,
       error: "Failed to load trend feed",
     });
+  }
+});
+
+router.get('/trends/posts/:id', authenticateUser, async (req, res) => {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) return res.status(400).json({ success: false, error: 'Invalid post ID' });
+  try {
+    const { default: db } = await import('../services/supabase.js');
+    const { data, error } = await db.from('posts').select('id,source_platform,source_url,thumbnail_url,caption,creator,creator_avatar_url,author_id,media_urls,media_type,published_at,ingested_at,engagement_score,niche_tags').eq('id', req.params.id).eq('source_platform', 'socialpilot').maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ success: false, error: 'Post not found' });
+    res.json({ success: true, post: communityFeedPost(data) });
+  } catch (error) {
+    console.error('[SOCIALPILOT] Post read failed:', error.message);
+    res.status(500).json({ success: false, error: 'Unable to load this post' });
   }
 });
 
@@ -63,6 +79,41 @@ router.post("/trends/remix", authenticateUser, async (req, res) => {
       success: false,
       error: error?.message || "Failed to generate AI remix suggestions",
     });
+  }
+});
+
+// 4. Media Proxy for external images / video thumbnails to bypass browser CORS
+router.get("/trends/proxy-media", async (req, res) => {
+  try {
+    const { url } = req.query;
+    if (!url || typeof url !== "string") {
+      return res.status(400).json({ error: "Missing url parameter" });
+    }
+
+    const parsed = new URL(url);
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      return res.status(400).json({ error: "Invalid protocol" });
+    }
+
+    const response = await axios.get(url, {
+      responseType: "stream",
+      timeout: 15000,
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept: "image/*,video/*,*/*",
+      },
+    });
+
+    const contentType = response.headers["content-type"] || "image/jpeg";
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+
+    response.data.pipe(res);
+  } catch (error) {
+    console.error("[TREND-FEED] Proxy media error:", error?.message);
+    res.status(502).json({ error: "Failed to fetch media from upstream" });
   }
 });
 

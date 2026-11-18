@@ -137,17 +137,19 @@ export async function persistInstagramWebhookToUnifiedInbox(payload) {
       const contactTargetId = isEcho ? rawRecipientId : rawSenderId;
 
       const attachments = message.attachments || [];
-      const firstAttachment = attachments[0] || {};
       let imageUrl = null;
       let videoUrl = null;
       let shareUrl = null;
-
-      if (firstAttachment.type === 'image' || firstAttachment.type === 'sticker') {
-        imageUrl = firstAttachment.payload?.url || firstAttachment.image_data?.url || firstAttachment.file_url || null;
-      } else if (firstAttachment.type === 'video' || firstAttachment.type === 'audio') {
-        videoUrl = firstAttachment.payload?.url || firstAttachment.video_data?.url || firstAttachment.file_url || null;
-      } else if (firstAttachment.type === 'share' || firstAttachment.type === 'story_mention' || firstAttachment.type === 'ig_reel') {
-        shareUrl = firstAttachment.payload?.url || firstAttachment.link || null;
+      for (const attachment of attachments) {
+        const url = attachment.payload?.url || attachment.link || null;
+        if (attachment.type === 'image' || attachment.type === 'sticker') {
+          imageUrl ||= url || attachment.image_data?.url || attachment.file_url || null;
+        } else if (attachment.type === 'video' || attachment.type === 'audio') {
+          videoUrl ||= url || attachment.video_data?.url || attachment.file_url || null;
+        } else if (['share', 'story_mention', 'ig_reel', 'ig_post'].includes(attachment.type)) {
+          shareUrl ||= url;
+        }
+        imageUrl ||= attachment.image_data?.url || attachment.video_data?.preview_url || null;
       }
 
       let text = String(message.text || '').trim();

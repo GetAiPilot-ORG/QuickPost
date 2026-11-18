@@ -19,6 +19,7 @@ import billingRouter from './routes/billing.js';
 import youtubeRouter from './routes/youtube.js';
 import inboxRouter from './routes/inbox.js';
 import { initScheduler } from './services/scheduler.js';
+import { initAutoDMFollowups } from './services/autodmFollowupScheduler.js';
 import supabase from './services/supabase.js';
 import { processInstagramWebhook } from './services/instapilot.js';
 import { persistInstagramWebhookToUnifiedInbox } from './services/unifiedInboxWebhook.js';
@@ -401,6 +402,7 @@ const server = app.listen(PORT, () => {
 
   // Initialize Post Scheduler
   initScheduler();
+  initAutoDMFollowups();
 
   console.log(`\n✨ Ready to broadcast!\n`);
 });

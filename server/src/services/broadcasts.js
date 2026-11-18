@@ -63,7 +63,7 @@ export async function saveBroadcast(
       media_urls: mediaUrls,           // Store all URLs
       thumbnail_url: thumbnailUrl,     // Preview thumbnail URL
       selected_channels: platformData.selectedChannels || [],
-      platform_data: { ...platformData, results },
+      platform_data: { ...platformData, results, completedChannels: [...new Set([...(platformData.completedChannels || []), ...Object.entries(results).filter(([, result]) => result?.success === true).map(([channel]) => channel)])] },
 
       // Instagram results
       instagram_success: results.instagram?.success || false,

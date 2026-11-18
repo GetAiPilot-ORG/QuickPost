@@ -360,51 +360,21 @@ export const sendInstagramCommentReply = async (
   requestId?: string
 ) => {
   const url = `${IG_GRAPH_API_BASE_URL}/${commentId}/replies`;
-
-  let lastError: unknown;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          message: messageText,
-        }),
-      });
-
-      const result = await parseGraphResponse<{ id?: string }>(response);
-
-      logInfo('Instagram comment reply sent', {
-        requestId,
-        commentId,
-        attempt,
-        hasId: Boolean(result.id),
-      });
-
-      return { ok: true as const, result };
-    } catch (error) {
-      lastError = error;
-      const message = error instanceof Error ? error.message : String(error);
-      logError('Failed sending Instagram comment reply', {
-        requestId,
-        commentId,
-        attempt,
-        error: message,
-      });
-
-      if (attempt < 3) {
-        await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
-      }
-    }
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      signal: AbortSignal.timeout(15000),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ message: messageText }),
+    });
+    const result = await parseGraphResponse<{ id?: string }>(response);
+    logInfo('Instagram comment reply sent', { requestId, commentId, hasId: Boolean(result.id) });
+    return { ok: true as const, result };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logError('Instagram comment reply failed without retry', { requestId, commentId, error: message });
+    return { ok: false as const, error: message };
   }
-
-  return {
-    ok: false as const,
-    error: lastError instanceof Error ? lastError.message : 'Failed to send comment reply',
-  };
 };
 
 export const likeInstagramComment = async (

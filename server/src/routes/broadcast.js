@@ -1,3 +1,4 @@
+import { publishToSocialpilot } from "../services/socialpilotPublishing.js";
 import express from "express";
 import { upload, handleUploadError } from "../middleware/upload.js";
 import { getTokensForUser } from "../services/supabase.js";
@@ -91,17 +92,19 @@ router.post(
     
     const userId = req.user.userId;
 
-      const channels =
+      let channels =
         typeof selectedChannels === "string"
           ? JSON.parse(selectedChannels)
           : selectedChannels;
       if (!Array.isArray(channels) || channels.length === 0) {
         return res.status(400).json({ success: false, error: "Please select at least one platform." });
       }
+      channels = [...new Set(channels.filter((channel) => typeof channel === 'string' && channel !== 'socialpilot'))];
+      if (!channels.length) return res.status(400).json({ success: false, error: 'Select a social account before sharing on SocialPilot too.' });
       const platData =
         typeof platformData === "string"
           ? JSON.parse(platformData)
-          : platformData;
+          : platformData || {};
       const parsedPresets =
         typeof platformPresets === "string"
           ? JSON.parse(platformPresets)
@@ -131,6 +134,11 @@ router.post(
           : autoDMConfigField;
       const isOnlyInstagram = channels.length > 0 && channels.every(c => c === "instagram" || c.startsWith("instagram:"));
       const canUseAutoDM = isOnlyInstagram && selectedPostType !== "story";
+      if (platData.socialpilot?.enabled === true) {
+        if (!isCloudinaryConfigured()) return res.status(503).json({ success: false, error: 'SocialPilot publishing requires cloud media storage. Please try again once storage is configured.' });
+        channels.push('socialpilot');
+      }
+
 
     // ── Validate scheduled time ───────────────────────────────────────────
     if (isScheduled && scheduledAt) {
@@ -284,7 +292,7 @@ async function processBroadcastJob({
   console.log(
     `\n🚀 [JOB:${jobId}] Starting background broadcast for user: ${userId}`,
   );
-  const isOnlyInstagram = (channels || []).length > 0 && (channels || []).every(c => c === "instagram" || c.startsWith("instagram:"));
+  const isOnlyInstagram = (channels || []).length > 0 && (channels || []).filter(c => c !== "socialpilot").every(c => c === "instagram" || c.startsWith("instagram:"));
   const canUseAutoDM = isOnlyInstagram && postType !== "story";
   const nonYoutubeChannels = (channels || []).filter((c) => !String(c).startsWith("youtube"));
   const needsCloudinary = isScheduled || nonYoutubeChannels.length > 0;
@@ -619,6 +627,10 @@ async function processBroadcastJob({
     });
     return { platform, result };
   };
+
+  if (channels.includes('socialpilot')) {
+    platformPromises.push(publishToSocialpilot({ userId, publicationKey: jobId, caption, mediaUrls, mediaType, thumbnailUrl: finalThumbnailUrl }).then(result => onChannelComplete('socialpilot', result)));
+  }
 
   for (const account of resolveSocialPublishChannels("pinterest", channels, tokens.pinterestAccounts || [])) {
     const resolvedCaption = resolveMentions(platData?.pinterest?.title || caption, 'pinterest', account);
