@@ -1,4 +1,17 @@
 import axios from "axios";
+import {
+  searchPinterestPins,
+  fetchPinterestTrendingPins,
+  getPinterestRssFeed,
+  getPinterestOEmbed,
+  PINTEREST_CURATED_FEEDS,
+} from "./trendPinterestSource.js";
+import {
+  searchBlueskyPosts,
+  getBlueskyTrendingPosts,
+  getBlueskyTrendingTopics,
+} from "./trendBlueskySource.js";
+import { filterAndRankPosts, calculateRelevance } from "./trendRelevance.js";
 
 // Cache expiry durations in seconds
 const CACHE_SHORT = 300; // 5 min
@@ -492,3 +505,67 @@ export async function fetchPexelsTrends({ category = "all", query = "", perPage 
     return [];
   }
 }
+
+// -----------------------------------------------------------------------------
+// 6. PINTEREST OFFICIAL SEARCH & TRENDS (Ported from TrendPulse)
+// -----------------------------------------------------------------------------
+export async function fetchPinterestTrends({ category = "all", query = "", limit = 25, page = 1, token = null } = {}) {
+  const cacheKey = `trends:pinterest:${category}:${query}:${limit}:${page}`;
+  const cached = getMemCache(cacheKey);
+  if (cached) return cached;
+
+  try {
+    let items = [];
+    if (query && String(query).trim()) {
+      const result = await searchPinterestPins({ query: String(query).trim(), token, limit });
+      items = result.pins || [];
+    } else {
+      items = await fetchPinterestTrendingPins({ category, limit });
+    }
+    setMemCache(cacheKey, items, CACHE_SHORT);
+    return items;
+  } catch (err) {
+    console.warn("[TREND-SOURCES] Pinterest fetch notice:", err.message);
+    return [];
+  }
+}
+
+// -----------------------------------------------------------------------------
+// 7. BLUESKY OFFICIAL XRPC SEARCH & TRENDS (Ported from TrendPulse)
+// -----------------------------------------------------------------------------
+export async function fetchBlueskyTrends({ category = "all", query = "", limit = 25, page = 1 } = {}) {
+  const cacheKey = `trends:bluesky:${category}:${query}:${limit}:${page}`;
+  const cached = getMemCache(cacheKey);
+  if (cached) return cached;
+
+  try {
+    let items = [];
+    if (query && String(query).trim()) {
+      const result = await searchBlueskyPosts({ query: String(query).trim(), limit });
+      items = result.posts || [];
+    } else {
+      const topic = category !== "all" ? category : null;
+      const result = await getBlueskyTrendingPosts({ topic, limit });
+      items = result.posts || [];
+    }
+    setMemCache(cacheKey, items, CACHE_SHORT);
+    return items;
+  } catch (err) {
+    console.warn("[TREND-SOURCES] Bluesky fetch notice:", err.message);
+    return [];
+  }
+}
+
+export {
+  searchPinterestPins,
+  fetchPinterestTrendingPins,
+  getPinterestRssFeed,
+  getPinterestOEmbed,
+  PINTEREST_CURATED_FEEDS,
+  searchBlueskyPosts,
+  getBlueskyTrendingPosts,
+  getBlueskyTrendingTopics,
+  filterAndRankPosts,
+  calculateRelevance,
+};
+

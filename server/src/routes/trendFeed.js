@@ -4,6 +4,12 @@ import axios from "axios";
 import { authenticateUser } from "../middleware/authenticateUser.js";
 import { getTrendFeedPage, getHotTopicsRadar } from "../services/trendFeed.js";
 import { generateTrendRemix } from "../services/trends/trendRemixService.js";
+import {
+  searchPinterestPins,
+  searchBlueskyPosts,
+  getBlueskyTrendingTopics,
+  PINTEREST_CURATED_FEEDS,
+} from "../services/trends/trendSources.js";
 
 const router = express.Router();
 
@@ -115,6 +121,95 @@ router.get("/trends/proxy-media", async (req, res) => {
     console.error("[TREND-FEED] Proxy media error:", error?.message);
     res.status(502).json({ error: "Failed to fetch media from upstream" });
   }
+});
+
+// 5. Unified Trends Search (queries official Bluesky & Pinterest search with relevance ranking)
+router.get("/trends/search", authenticateUser, async (req, res) => {
+  try {
+    const { q, query, sort = "top", limit = 25 } = req.query;
+    const searchTerm = q || query;
+    if (!searchTerm || !String(searchTerm).trim()) {
+      return res.status(400).json({ error: 'Query parameter "q" is required' });
+    }
+
+    const token = req.headers["x-pinterest-token"] || process.env.PINTEREST_ACCESS_TOKEN || null;
+
+    const [bskyResult, pinterestResult] = await Promise.allSettled([
+      searchBlueskyPosts({ query: searchTerm, sort, limit: parseInt(limit, 10) }),
+      searchPinterestPins({ query: searchTerm, token, limit: parseInt(limit, 10) }),
+    ]);
+
+    const bskyPosts = bskyResult.status === "fulfilled" ? bskyResult.value.posts || [] : [];
+    const pinterestPins = pinterestResult.status === "fulfilled" ? pinterestResult.value.pins || [] : [];
+
+    // Interleave search results
+    const combined = [];
+    const maxLen = Math.max(bskyPosts.length, pinterestPins.length);
+    for (let i = 0; i < maxLen; i++) {
+      if (i < pinterestPins.length) combined.push(pinterestPins[i]);
+      if (i < bskyPosts.length) combined.push(bskyPosts[i]);
+    }
+
+    res.json({
+      success: true,
+      query: searchTerm,
+      results: combined,
+      stats: {
+        total: combined.length,
+        blueskyCount: bskyPosts.length,
+        pinterestCount: pinterestPins.length,
+      },
+      sources: {
+        bluesky: "Official ATProto searchPosts",
+        pinterest: pinterestResult.status === "fulfilled" ? pinterestResult.value.source : "None",
+      },
+    });
+  } catch (err) {
+    console.error("[TREND-FEED] Unified search error:", err);
+    res.status(500).json({ success: false, error: "Failed to search trends" });
+  }
+});
+
+// 6. Bluesky Search
+router.get("/trends/bluesky/search", authenticateUser, async (req, res) => {
+  try {
+    const { q, query, sort = "top", limit = 25 } = req.query;
+    const searchTerm = q || query;
+    if (!searchTerm) return res.status(400).json({ error: 'Query parameter "q" is required' });
+    const data = await searchBlueskyPosts({ query: searchTerm, sort, limit: parseInt(limit, 10) });
+    res.json({ success: true, ...data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 7. Pinterest Search
+router.get("/trends/pinterest/search", authenticateUser, async (req, res) => {
+  try {
+    const { q, query, limit = 25 } = req.query;
+    const searchTerm = q || query;
+    if (!searchTerm) return res.status(400).json({ error: 'Query parameter "q" is required' });
+    const token = req.headers["x-pinterest-token"] || process.env.PINTEREST_ACCESS_TOKEN || null;
+    const data = await searchPinterestPins({ query: searchTerm, token, limit: parseInt(limit, 10) });
+    res.json({ success: true, ...data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 8. Bluesky Official Trends
+router.get("/trends/bluesky/trends", authenticateUser, async (req, res) => {
+  try {
+    const data = await getBlueskyTrendingTopics();
+    res.json({ success: true, ...data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 9. Pinterest Channels & Curated Boards
+router.get("/trends/pinterest/channels", authenticateUser, (req, res) => {
+  res.json({ success: true, channels: PINTEREST_CURATED_FEEDS });
 });
 
 export default router;

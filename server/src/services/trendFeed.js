@@ -7,6 +7,10 @@ import {
   fetchTrendingNews,
   fetchUnsplashTrends,
   fetchPexelsTrends,
+  fetchPinterestTrends,
+  fetchBlueskyTrends,
+  filterAndRankPosts,
+  getBlueskyTrendingTopics,
 } from "./trends/trendSources.js";
 
 const DEFAULT_LIMIT = 25;
@@ -160,26 +164,40 @@ export function parseSeenPostIds(value) {
 }
 
 // Fetch live external posts based on active type / category & page number
-async function fetchLiveExternalPosts({ type = "all", category = "all", region = "US", search = "", page = 1 }) {
+async function fetchLiveExternalPosts({ type = "all", category = "all", region = "US", search = "", page = 1, token = null }) {
   const promises = [];
 
+  // 1. Pinterest (for all, pinterest tab, or visuals)
+  if (type === "all" || type === "pinterest" || type === "visuals") {
+    promises.push(fetchPinterestTrends({ category, query: search, limit: 25, page, token }));
+  }
+
+  // 2. Bluesky (for all, bluesky tab, or social)
+  if (type === "all" || type === "bluesky" || type === "social") {
+    promises.push(fetchBlueskyTrends({ category, query: search, limit: 25, page }));
+  }
+
+  // 3. YouTube & Pexels (for all or videos)
   if (type === "all" || type === "videos") {
     promises.push(fetchYouTubeTrends({ region, category, maxResults: 25, page }));
     promises.push(fetchPexelsTrends({ category, query: search, perPage: 25, page }));
   }
 
+  // 4. Unsplash visuals (for all or visuals)
   if (type === "all" || type === "visuals") {
     promises.push(fetchUnsplashTrends({ category, query: search, perPage: 25, page }));
   }
 
+  // 5. News (for all or news)
   if (type === "all" || type === "news") {
     promises.push(fetchTrendingNews({ category, region, query: search, page }));
   }
 
+  // 6. Google Trends
   if (type === "searches") {
     promises.push(fetchGoogleTrends({ geo: region, page }));
-  } else if (type === "all" && page === 1) {
-    // Include only top 2 breakout search queries in page 1 so visual pins dominate the feed
+  } else if (type === "all" && page === 1 && !search) {
+    // Include only top 2 breakout search queries in page 1 when browsing without search
     promises.push(
       fetchGoogleTrends({ geo: region, page: 1 })
         .then((items) => (Array.isArray(items) ? items.slice(0, 2) : []))
@@ -263,6 +281,10 @@ export async function getTrendFeedPage(params = {}, options = {}) {
       query = query.in("source_platform", ["reddit", "bluesky", "socialpilot"]);
     } else if (type === "videos") {
       query = query.in("source_platform", ["youtube", "socialpilot"]);
+    } else if (type === "pinterest") {
+      query = query.eq("source_platform", "pinterest");
+    } else if (type === "bluesky") {
+      query = query.eq("source_platform", "bluesky");
     }
 
     const { data, error } = await query.limit(CANDIDATE_LIMIT);
@@ -277,12 +299,14 @@ export async function getTrendFeedPage(params = {}, options = {}) {
   let externalRows = [];
   if (options.skipExternal !== true && type !== "community") {
     try {
+      const token = params.pinterestToken || options.pinterestToken || null;
       externalRows = await fetchLiveExternalPosts({
         type,
         category,
         region,
         search,
         page: pageNumber,
+        token,
       });
     } catch (e) {
       console.warn("[TREND-FEED] External items skipped:", e.message);
@@ -292,15 +316,9 @@ export async function getTrendFeedPage(params = {}, options = {}) {
   // Merge items
   let allCandidates = [...externalRows, ...dbRows];
 
-  // Apply search keyword filter if provided
+  // Apply precision relevance scoring & spam filter when search keyword is provided
   if (search) {
-    allCandidates = allCandidates.filter((item) => {
-      const text = [item.title, item.caption, item.creator, ...(item.niche_tags || [])]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return text.includes(search);
-    });
+    allCandidates = filterAndRankPosts(allCandidates, search);
   }
 
   // Apply type filter if not 'all'
@@ -325,8 +343,15 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     );
   } else if (type === "visuals") {
     allCandidates = allCandidates.filter(
-      (item) => item.source_platform === "unsplash" || item.content_type === "visual"
+      (item) =>
+        item.source_platform === "unsplash" ||
+        item.source_platform === "pinterest" ||
+        item.content_type === "visual"
     );
+  } else if (type === "pinterest") {
+    allCandidates = allCandidates.filter((item) => item.source_platform === "pinterest");
+  } else if (type === "bluesky") {
+    allCandidates = allCandidates.filter((item) => item.source_platform === "bluesky");
   } else if (type === "community") {
     allCandidates = allCandidates.filter((item) => item.source_platform === "socialpilot");
   } else if (type === "social") {
@@ -358,12 +383,18 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     const visuals = [];
     const videos = [];
     const news = [];
+    const pinterest = [];
+    const bluesky = [];
     const others = [];
     const community = [];
 
     posts.forEach((p) => {
       if (p.source_platform === "socialpilot") {
         community.push(p);
+      } else if (p.source_platform === "pinterest") {
+        pinterest.push(p);
+      } else if (p.source_platform === "bluesky") {
+        bluesky.push(p);
       } else if (p.source_platform === "pexels" || p.content_type === "short" || p.content_type === "reel_video") {
         reels.push(p);
       } else if (p.source_platform === "unsplash" || p.content_type === "visual") {
@@ -378,7 +409,7 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     });
 
     const result = [];
-    const pattern = [visuals, reels, videos, community, visuals, reels, news, videos, others];
+    const pattern = [pinterest, visuals, reels, bluesky, videos, community, pinterest, visuals, reels, bluesky, news, videos, others];
     let hasMore = true;
 
     while (result.length < targetLimit && hasMore) {
@@ -395,7 +426,7 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     }
 
     // Append any remaining items if limit not reached
-    const remaining = [...community, ...visuals, ...reels, ...videos, ...news, ...others];
+    const remaining = [...pinterest, ...bluesky, ...community, ...visuals, ...reels, ...videos, ...news, ...others];
     for (const item of remaining) {
       if (result.length >= targetLimit) break;
       if (!result.some((r) => r.id === item.id)) {
@@ -433,28 +464,64 @@ export async function getTrendFeedPage(params = {}, options = {}) {
   return page;
 }
 
-// Hot topics radar
+// Hot topics radar (combining Google Trends & Bluesky official trends)
 export async function getHotTopicsRadar({ geo = "US" } = {}) {
   try {
-    const googleTrends = await fetchGoogleTrends({ geo, page: 1 });
-    const topKeywords = googleTrends.slice(0, 16).map((t) => ({
-      query: t.title,
-      volume: t.metrics?.searchVolume || "200K+",
-      related: t.related_queries || [],
-      url: t.source_url,
-    }));
+    const [googleRes, bskyRes] = await Promise.allSettled([
+      fetchGoogleTrends({ geo, page: 1 }),
+      getBlueskyTrendingTopics(),
+    ]);
+
+    const googleTrends = googleRes.status === "fulfilled" ? googleRes.value || [] : [];
+    const bskyTrends = bskyRes.status === "fulfilled" ? bskyRes.value?.trends || [] : [];
+
+    const topics = [];
+
+    // Map Google Trends
+    for (const t of googleTrends.slice(0, 10)) {
+      topics.push({
+        query: t.title,
+        volume: t.metrics?.searchVolume || "200K+",
+        related: t.related_queries || [],
+        url: t.source_url,
+        source: "Google Trends",
+      });
+    }
+
+    // Map Bluesky Trends
+    for (const bt of bskyTrends.slice(0, 8)) {
+      topics.push({
+        query: bt.displayName || bt.topic,
+        volume: bt.postCount ? `${bt.postCount} posts` : "Rising",
+        category: bt.category || "Social Buzz",
+        source: "Bluesky",
+      });
+    }
+
+    if (topics.length > 0) {
+      return {
+        success: true,
+        hotTopics: topics,
+      };
+    }
+
     return {
       success: true,
-      hotTopics: topKeywords,
+      hotTopics: [
+        { query: "Artificial Intelligence", volume: "1M+", source: "Global" },
+        { query: "Social Media Growth", volume: "500K+", source: "Global" },
+        { query: "Viral Reels Strategy", volume: "350K+", source: "Global" },
+        { query: "AI Content Creation", volume: "250K+", source: "Global" },
+      ],
     };
   } catch (err) {
     return {
       success: true,
       hotTopics: [
-        { query: "Artificial Intelligence", volume: "1M+" },
-        { query: "Social Media Growth", volume: "500K+" },
-        { query: "Viral Reels Strategy", volume: "350K+" },
-        { query: "AI Content Creation", volume: "250K+" },
+        { query: "Artificial Intelligence", volume: "1M+", source: "Global" },
+        { query: "Social Media Growth", volume: "500K+", source: "Global" },
+        { query: "Viral Reels Strategy", volume: "350K+", source: "Global" },
+        { query: "AI Content Creation", volume: "250K+", source: "Global" },
       ],
     };
   }

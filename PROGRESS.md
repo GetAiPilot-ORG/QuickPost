@@ -1,3 +1,23 @@
+## 2026-11-18 — Pinterest & Bluesky live trend search and relevance feeds
+- Ported official search and feed services from TrendPulse for Pinterest (BaseSearchResource/API v5/RSS) and Bluesky (ATProto searchPosts/getFeed/getTrends) with query stopword extraction, multi-field relevance scoring, quality boosts, and author diversification.
+- Added dedicated Pinterest and Bluesky format tabs, search results banner, Pinterest save counters, Bluesky engagement stats, and live hot topics radar combining Google & Bluesky trends.
+- Client build and live verification test suite passed cleanly.
+
+## 2026-11-18 — Trend Feed first-time interest onboarding popup
+- Added an attractive first-visit interest selection modal offering 24 creator topics across 6 categories with search, category filtering, select all/clear, and collapsible advanced tuning.
+- Automatically pops up on first visit (`qp_trend_onboarded_<userKey>`), saves selected keywords to ranking profile, and triggers immediate personalized feed refresh. Accessible anytime via header "Tune" button.
+## 2026-11-18 — Trend Feed interest onboarding modal clean-up
+- Cleaned up the interest popup by removing the subtitle, search bar, and category pills as requested, placing the topic cards directly below the headline for a compact, direct layout.
+- Client build passed cleanly.
+
+## 2026-11-18 — Trend Feed header integration
+- Integrated the "Explore Trends" title, search bar, and action controls directly into the top Header bar's empty space via Header left portal, eliminating the empty header strip and bringing content immediately to the top.
+- Client build passed cleanly.
+
+## 2026-11-18 — Trend Feed header clean-up
+- Compacted Trend Feed top spacing by moving content upwards (reduced padding and header gap), removed the "Live Feed" pill and the subtitle text for a clean, tight layout.
+- Client build passed cleanly.
+
 ## 2026-10-13
 - Added YouTube title input in PlatformCustomization with caption fallback, synced live preview, and wired dedicated title to broadcast uploads.
 - Added YouTube channel detection and missing channel/unverified warnings with direct links to youtube.com/create_channel and youtube.com/verify across intelligence engine, composer, and dashboard.

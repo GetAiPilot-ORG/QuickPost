@@ -1,6 +1,7 @@
 import { useSearchParams } from "react-router-dom";
 import { ScheduledMediaGallery } from "../components/ScheduledMedia";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Masonry from "react-masonry-css";
 import {
   Flame,
@@ -33,6 +34,8 @@ import {
   Heart,
   Share2,
   Zap,
+  Sparkles,
+  Repeat2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
@@ -53,6 +56,8 @@ const MASONRY_BREAKPOINTS = {
 
 const FORMAT_TABS = [
   { id: "all", label: "All Trends" },
+  { id: "pinterest", label: "Pinterest", iconSvg: "/icons/pinterest-round-color-icon.svg" },
+  { id: "bluesky", label: "Bluesky", iconSvg: "/icons/bluesky-circle-color-icon.svg" },
   { id: "videos", label: "Reels & Videos", icon: Video },
   { id: "visuals", label: "Visuals & Photos", icon: ImageIcon },
   { id: "news", label: "News & Stories", icon: Newspaper },
@@ -78,6 +83,51 @@ const REGION_OPTIONS = [
   { code: "GB", label: "United Kingdom", flag: "🇬🇧" },
   { code: "CA", label: "Canada", flag: "🇨🇦" },
   { code: "AU", label: "Australia", flag: "🇦🇺" },
+];
+
+const TREND_INTEREST_CATEGORIES = [
+  "All",
+  "Tech & AI",
+  "Business & Wealth",
+  "Creative & Media",
+  "Lifestyle & Health",
+  "Entertainment",
+];
+
+const TREND_INTEREST_TOPICS = [
+  // Tech & AI
+  { id: "ai_chatgpt", label: "AI & ChatGPT", emoji: "🤖", category: "Tech & AI", keywords: "ai, chatgpt, llm, artificial intelligence, claude, midjourney, prompt" },
+  { id: "tech_gadgets", label: "Tech & Gadgets", emoji: "⚡", category: "Tech & AI", keywords: "tech, gadgets, apple, smartphone, setup, hardware, devices" },
+  { id: "coding_dev", label: "Coding & Dev", emoji: "💻", category: "Tech & AI", keywords: "coding, programmer, developer, software, web development, python, code" },
+  { id: "science_space", label: "Future & Space", emoji: "🚀", category: "Tech & AI", keywords: "science, future, space, astrophysics, robotics, astronomy" },
+
+  // Business & Wealth
+  { id: "startups_saas", label: "Startups & SaaS", emoji: "🏢", category: "Business & Wealth", keywords: "startups, saas, founder, indie hacker, entrepreneurship, building in public" },
+  { id: "marketing_growth", label: "Marketing & Growth", emoji: "📈", category: "Business & Wealth", keywords: "marketing, growth, seo, copywriting, sales, advertising, branding" },
+  { id: "finance_stocks", label: "Investing & Stocks", emoji: "💵", category: "Business & Wealth", keywords: "investing, stocks, wealth, portfolio, passive income, market" },
+  { id: "crypto_bitcoin", label: "Crypto & Bitcoin", emoji: "🪙", category: "Business & Wealth", keywords: "crypto, bitcoin, ethereum, blockchain, web3, solana" },
+
+  // Creative & Media
+  { id: "creator_economy", label: "Creator Economy", emoji: "📱", category: "Creative & Media", keywords: "creator, monetization, youtube growth, hooks, editing, viral" },
+  { id: "reels_video", label: "Reels & Short Video", emoji: "🎥", category: "Creative & Media", keywords: "video editing, reels, tiktok, capcut, cinematography, shortform" },
+  { id: "design_3d", label: "Design & 3D Art", emoji: "🎨", category: "Creative & Media", keywords: "design, ui, ux, 3d, blender, graphic design, animation, typography" },
+  { id: "photography_gear", label: "Photo & Cameras", emoji: "📸", category: "Creative & Media", keywords: "photography, camera, lighting, portraits, aesthetic, photo" },
+
+  // Lifestyle & Health
+  { id: "fitness_gym", label: "Fitness & Gym", emoji: "🏋️", category: "Lifestyle & Health", keywords: "fitness, gym, workout, muscle, bodybuilding, health, training" },
+  { id: "productivity_habits", label: "Productivity & Focus", emoji: "💡", category: "Lifestyle & Health", keywords: "productivity, habits, focus, notion, daily routine, systems" },
+  { id: "mindset_selfhelp", label: "Mindset & Motivation", emoji: "🧠", category: "Lifestyle & Health", keywords: "motivation, discipline, psychology, mindset, self improvement" },
+  { id: "travel_nomad", label: "Travel & Nomad", emoji: "✈️", category: "Lifestyle & Health", keywords: "travel, nomad, adventure, explore, destinations, vacation" },
+  { id: "food_cooking", label: "Food & Recipes", emoji: "🍔", category: "Lifestyle & Health", keywords: "food, cooking, recipes, street food, baking, chef, restaurant" },
+  { id: "fashion_style", label: "Fashion & Outfits", emoji: "👟", category: "Lifestyle & Health", keywords: "fashion, streetwear, outfits, styling, sneakers, luxury, drip" },
+
+  // Entertainment
+  { id: "gaming_stream", label: "Gaming & Esports", emoji: "🎮", category: "Entertainment", keywords: "gaming, gta, playstation, twitch, steam, esports, xbox" },
+  { id: "cinema_movies", label: "Cinema & TV Shows", emoji: "🍿", category: "Entertainment", keywords: "movies, cinema, trailer, series, netflix, hollywood, film" },
+  { id: "comedy_memes", label: "Comedy & Memes", emoji: "😂", category: "Entertainment", keywords: "comedy, memes, jokes, funny, skits, relatable, humor" },
+  { id: "music_audio", label: "Music & Trending Audio", emoji: "🎵", category: "Entertainment", keywords: "music, beats, hiphop, trending audio, sound, artists" },
+  { id: "cars_supercars", label: "Cars & Supercars", emoji: "🏎️", category: "Entertainment", keywords: "cars, supercars, automotive, racing, f1, vehicles, tuning" },
+  { id: "anime_manga", label: "Anime & Manga", emoji: "⛩️", category: "Entertainment", keywords: "anime, manga, animation, japan, otaku, cosplay" },
 ];
 
 function emptyProfile() {
@@ -151,6 +201,18 @@ function getPlatformMeta(platform) {
         iconSvg: "/icons/youtube-color-icon.svg",
         color: "text-red-600",
       };
+    case "pinterest":
+      return {
+        name: "Pinterest",
+        iconSvg: "/icons/pinterest-round-color-icon.svg",
+        color: "text-rose-600",
+      };
+    case "bluesky":
+      return {
+        name: "Bluesky",
+        iconSvg: "/icons/bluesky-circle-color-icon.svg",
+        color: "text-sky-500",
+      };
     case "instagram":
       return {
         name: "Instagram",
@@ -223,7 +285,9 @@ function TrendCard({ post, onUseIdea, onRemix, onCompose, onSave, isSaved, onOpe
   // Engagement stats
   const views = formatCompactNumber(post.metrics?.viewCount ?? post.metrics?.views);
   const likes = formatCompactNumber(post.metrics?.likeCount ?? post.metrics?.likes);
-  const comments = formatCompactNumber(post.metrics?.commentCount ?? post.metrics?.comments);
+  const comments = formatCompactNumber(post.metrics?.commentCount ?? post.metrics?.comments ?? post.metrics?.replies);
+  const saves = formatCompactNumber(post.metrics?.saveCount ?? post.metrics?.saves);
+  const reposts = formatCompactNumber(post.metrics?.repostCount ?? post.metrics?.reposts);
   const searchVolume = post.metrics?.searchVolume || post.metrics?.formattedTraffic;
   const rank = post.metrics?.rank;
 
@@ -241,9 +305,11 @@ function TrendCard({ post, onUseIdea, onRemix, onCompose, onSave, isSaved, onOpe
   // Clean aspect ratio tailored to content
   const getAspectRatioClass = () => {
     if (isPexels || isReel) return "aspect-[4/5] sm:aspect-[9/16]";
+    if (post.source_platform === "pinterest") return "aspect-[2/3] sm:aspect-[3/4]";
     if (post.source_platform === "google_trends") return "aspect-[16/10]";
     if (videoId) return "aspect-[16/9]";
     if (post.content_type === "visual" || post.source_platform === "unsplash") return "aspect-[4/5]";
+    if (post.source_platform === "bluesky" && !post.thumbnail_url) return "aspect-[16/10]";
     return "aspect-[16/10]";
   };
 
@@ -298,8 +364,8 @@ function TrendCard({ post, onUseIdea, onRemix, onCompose, onSave, isSaved, onOpe
             onSave(post);
           }}
           className={`p-1.5 rounded-lg transition-colors ${isSaved
-              ? "text-amber-500 hover:text-amber-600 bg-amber-500/10"
-              : "text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            ? "text-amber-500 hover:text-amber-600 bg-amber-500/10"
+            : "text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800"
             }`}
           title={isSaved ? "Saved to Inspiration Board" : "Bookmark idea"}
         >
@@ -323,12 +389,44 @@ function TrendCard({ post, onUseIdea, onRemix, onCompose, onSave, isSaved, onOpe
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
           />
         ) : post.thumbnail_url ? (
-          <img
-            src={post.thumbnail_url}
-            alt={post.title || ""}
-            loading="lazy"
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
-          />
+          <div className="relative w-full h-full">
+            <img
+              src={post.thumbnail_url}
+              alt={post.title || ""}
+              loading="lazy"
+              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
+            />
+            {post.source_platform === "pinterest" && (
+              <div className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md bg-rose-600/90 backdrop-blur-md text-white text-[10px] font-bold uppercase tracking-wider shadow-sm flex items-center gap-1 pointer-events-none">
+                <img src="/icons/pinterest-round-color-icon.svg" alt="" className="w-3 h-3 object-contain" />
+                <span>Pin</span>
+              </div>
+            )}
+            {post.source_platform === "bluesky" && (
+              <div className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md bg-sky-600/90 backdrop-blur-md text-white text-[10px] font-bold tracking-wider shadow-sm flex items-center gap-1 pointer-events-none">
+                <img src="/icons/bluesky-circle-color-icon.svg" alt="" className="w-3 h-3 object-contain" />
+                <span>Bluesky</span>
+              </div>
+            )}
+          </div>
+        ) : post.source_platform === "bluesky" ? (
+          <div className="w-full h-full p-4 sm:p-5 bg-gradient-to-br from-sky-950 via-slate-900 to-sky-900 text-white flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-sky-500/20 text-[10px] font-semibold text-sky-300">
+                <img src="/icons/bluesky-circle-color-icon.svg" alt="" className="w-3 h-3" />
+                <span>Bluesky Post</span>
+              </span>
+              <span className="text-[10px] font-bold text-sky-400 truncate max-w-[120px]">
+                @{post.creator || "bluesky"}
+              </span>
+            </div>
+            <p className="my-auto text-xs sm:text-sm font-medium text-slate-100 line-clamp-4 leading-relaxed">
+              "{post.caption || post.title}"
+            </p>
+            <div className="text-[10px] text-sky-300/70 font-mono">
+              Official ATProto Post
+            </div>
+          </div>
         ) : post.source_platform === "google_trends" ? (
           <div className="w-full h-full p-4 sm:p-5 bg-gradient-to-br from-neutral-900 via-neutral-950 to-neutral-900 text-white flex flex-col justify-between">
             <div className="flex items-center justify-between">
@@ -412,11 +510,17 @@ function TrendCard({ post, onUseIdea, onRemix, onCompose, onSave, isSaved, onOpe
           </h3>
 
           {/* Minimal Engagement Statistics */}
-          <div className="flex items-center gap-3 mt-2 text-[11px] font-medium text-neutral-400 dark:text-neutral-500">
+          <div className="flex items-center gap-2.5 mt-2 text-[11px] font-medium text-neutral-400 dark:text-neutral-500 flex-wrap">
             {views && (
               <span className="inline-flex items-center gap-1" title={`${views} views`}>
                 <Eye size={12} className="text-neutral-400" />
                 <span>{views}</span>
+              </span>
+            )}
+            {saves && (
+              <span className="inline-flex items-center gap-1 text-rose-500 font-semibold" title={`${saves} saves`}>
+                <Bookmark size={12} className="fill-current" />
+                <span>{saves}</span>
               </span>
             )}
             {likes && (
@@ -425,13 +529,19 @@ function TrendCard({ post, onUseIdea, onRemix, onCompose, onSave, isSaved, onOpe
                 <span>{likes}</span>
               </span>
             )}
+            {reposts && (
+              <span className="inline-flex items-center gap-1 text-emerald-500" title={`${reposts} reposts`}>
+                <Repeat2 size={12} />
+                <span>{reposts}</span>
+              </span>
+            )}
             {comments && (
               <span className="inline-flex items-center gap-1" title={`${comments} comments`}>
                 <MessageSquare size={12} className="text-neutral-400" />
                 <span>{comments}</span>
               </span>
             )}
-            {searchVolume && !views && (
+            {searchVolume && !views && !saves && (
               <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-semibold">
                 <Flame size={12} className="fill-current" />
                 <span>{searchVolume}</span>
@@ -506,7 +616,9 @@ function TrendDetailsBottomSheet({ isOpen, onClose, post, onRemix, onCompose, on
   const platformMeta = getPlatformMeta(post.source_platform);
   const views = formatCompactNumber(post.metrics?.viewCount ?? post.metrics?.views);
   const likes = formatCompactNumber(post.metrics?.likeCount ?? post.metrics?.likes);
-  const comments = formatCompactNumber(post.metrics?.commentCount ?? post.metrics?.comments);
+  const comments = formatCompactNumber(post.metrics?.commentCount ?? post.metrics?.comments ?? post.metrics?.replies);
+  const saves = formatCompactNumber(post.metrics?.saveCount ?? post.metrics?.saves);
+  const reposts = formatCompactNumber(post.metrics?.repostCount ?? post.metrics?.reposts);
 
   return (
     <AnimatePresence>
@@ -582,7 +694,34 @@ function TrendDetailsBottomSheet({ isOpen, onClose, post, onRemix, onCompose, on
                   className="w-full max-h-[50vh] object-contain"
                 />
               ) : mediaUrl ? (
-                <img src={mediaUrl} alt="" className="w-full max-h-[50vh] object-contain" />
+                <div className="relative w-full h-full flex items-center justify-center">
+                  <img src={mediaUrl} alt="" className="w-full max-h-[50vh] object-contain" />
+                  {post.source_platform === "pinterest" && (
+                    <div className="absolute top-3 left-3 flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-600/90 text-white text-xs font-bold uppercase tracking-wider backdrop-blur-md shadow-lg">
+                      <img src="/icons/pinterest-round-color-icon.svg" alt="" className="w-3.5 h-3.5 object-contain" />
+                      <span>Pinterest Pin</span>
+                    </div>
+                  )}
+                  {post.source_platform === "bluesky" && (
+                    <div className="absolute top-3 left-3 flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-600/90 text-white text-xs font-bold tracking-wider backdrop-blur-md shadow-lg">
+                      <img src="/icons/bluesky-circle-color-icon.svg" alt="" className="w-3.5 h-3.5 object-contain" />
+                      <span>Bluesky Media</span>
+                    </div>
+                  )}
+                </div>
+              ) : post.source_platform === "bluesky" ? (
+                <div className="p-8 text-left w-full bg-gradient-to-br from-slate-900 via-slate-950 to-sky-950 text-white rounded-xl">
+                  <div className="flex items-center gap-2 mb-4">
+                    <img src="/icons/bluesky-circle-color-icon.svg" alt="" className="w-6 h-6 object-contain" />
+                    <div>
+                      <h4 className="text-sm font-bold text-white">{post.creator}</h4>
+                      <p className="text-xs text-sky-400 font-mono">Official Bluesky Post</p>
+                    </div>
+                  </div>
+                  <p className="text-base text-slate-100 whitespace-pre-line leading-relaxed">
+                    {post.caption || post.title}
+                  </p>
+                </div>
               ) : (
                 <div className="p-8 text-center text-white">
                   <Flame size={40} className="mx-auto text-amber-500 mb-2" />
@@ -598,17 +737,29 @@ function TrendDetailsBottomSheet({ isOpen, onClose, post, onRemix, onCompose, on
               </h2>
 
               {/* Engagement Pills */}
-              <div className="flex items-center gap-3 py-1 text-xs text-neutral-500 dark:text-neutral-400 font-medium">
+              <div className="flex items-center gap-2.5 py-1 text-xs text-neutral-500 dark:text-neutral-400 font-medium flex-wrap">
                 {views && (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-neutral-100 dark:bg-neutral-800">
                     <Eye size={13} />
                     <span>{views} views</span>
                   </span>
                 )}
+                {saves && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-rose-500/10 text-rose-500 font-semibold">
+                    <Bookmark size={13} className="fill-current" />
+                    <span>{saves} saves</span>
+                  </span>
+                )}
                 {likes && (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-neutral-100 dark:bg-neutral-800">
                     <Heart size={13} />
                     <span>{likes} likes</span>
+                  </span>
+                )}
+                {reposts && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-500 font-semibold">
+                    <Repeat2 size={13} />
+                    <span>{reposts} reposts</span>
                   </span>
                 )}
                 {comments && (
@@ -677,8 +828,8 @@ function TrendDetailsBottomSheet({ isOpen, onClose, post, onRemix, onCompose, on
                 type="button"
                 onClick={() => onSave(post)}
                 className={`h-10 px-3 rounded-xl border transition-colors inline-flex items-center justify-center gap-1.5 text-xs font-medium ${isSaved
-                    ? "bg-amber-500 text-white border-amber-600"
-                    : "border-black/[0.08] dark:border-white/[0.08] bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300"
+                  ? "bg-amber-500 text-white border-amber-600"
+                  : "border-black/[0.08] dark:border-white/[0.08] bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300"
                   }`}
                 title="Save idea"
               >
@@ -835,8 +986,8 @@ function TrendRemixDrawer({ isOpen, onClose, trendPost, onSendToComposer }) {
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={`pb-2.5 px-2.5 text-xs font-semibold border-b-2 inline-flex items-center gap-1.5 transition-colors whitespace-nowrap ${active
-                      ? "border-neutral-900 dark:border-white text-neutral-900 dark:text-white"
-                      : "border-transparent text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
+                    ? "border-neutral-900 dark:border-white text-neutral-900 dark:text-white"
+                    : "border-transparent text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
                     }`}
                 >
                   <Icon size={13} />
@@ -1282,10 +1433,18 @@ export default function TrendFeedPage() {
   // Hot Topics Radar Ticker
   const [hotTopics, setHotTopics] = useState([]);
 
-  // Creator Personalization
+  // Creator Personalization & Interest Onboarding
   const [profile, setProfile] = useState(emptyProfile);
   const [draftProfile, setDraftProfile] = useState(emptyProfile);
-  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showInterestModal, setShowInterestModal] = useState(false);
+  const [selectedTopicIds, setSelectedTopicIds] = useState([
+    "ai_chatgpt",
+    "creator_economy",
+    "marketing_growth",
+  ]);
+  const [modalCategory, setModalCategory] = useState("All");
+  const [modalSearch, setModalSearch] = useState("");
+  const [showAdvancedProfile, setShowAdvancedProfile] = useState(false);
 
   // Saved Inspiration Board
   const [savedIdeas, setSavedIdeas] = useState([]);
@@ -1317,6 +1476,7 @@ export default function TrendFeedPage() {
   const seenStorageKey = `qp_trend_seen_${userKey}`;
   const profileStorageKey = `qp_trend_profile_${userKey}`;
   const savedIdeasStorageKey = `qp_trend_saved_ideas_${userKey}`;
+  const onboardingStorageKey = `qp_trend_onboarded_${userKey}`;
 
   // Debounce search input
   useEffect(() => {
@@ -1326,7 +1486,7 @@ export default function TrendFeedPage() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Load localStorage state
+  // Load localStorage state & First-time visit onboarding
   useEffect(() => {
     try {
       seenRef.current = new Set(JSON.parse(localStorage.getItem(seenStorageKey) || "[]"));
@@ -1336,9 +1496,14 @@ export default function TrendFeedPage() {
 
     try {
       const saved = JSON.parse(localStorage.getItem(profileStorageKey) || "null");
-      if (saved?.interests) {
-        setProfile(saved);
-        setDraftProfile(saved);
+      if (saved) {
+        if (saved.interests || saved.work || saved.goal) {
+          setProfile(saved);
+          setDraftProfile(saved);
+        }
+        if (Array.isArray(saved.selectedTopicIds) && saved.selectedTopicIds.length > 0) {
+          setSelectedTopicIds(saved.selectedTopicIds);
+        }
       }
     } catch {
       // ignore
@@ -1350,7 +1515,20 @@ export default function TrendFeedPage() {
     } catch {
       setSavedIdeas([]);
     }
-  }, [seenStorageKey, profileStorageKey, savedIdeasStorageKey]);
+
+    // First time visitor check: trigger the attractive interest selection popup
+    try {
+      const hasOnboarded = localStorage.getItem(onboardingStorageKey);
+      if (!hasOnboarded) {
+        const timer = setTimeout(() => {
+          setShowInterestModal(true);
+        }, 450);
+        return () => clearTimeout(timer);
+      }
+    } catch {
+      // ignore
+    }
+  }, [seenStorageKey, profileStorageKey, savedIdeasStorageKey, onboardingStorageKey]);
 
   // Load Hot Topics Radar
   useEffect(() => {
@@ -1510,21 +1688,220 @@ export default function TrendFeedPage() {
     handleOpenComposer(post);
   };
 
-  const handleSaveProfile = (e) => {
-    e.preventDefault();
+  // Filtered Topics for Interest Onboarding Modal
+  const filteredTopics = useMemo(() => {
+    return TREND_INTEREST_TOPICS.filter((topic) => {
+      const matchesCategory =
+        modalCategory === "All" || topic.category === modalCategory;
+      const q = modalSearch.trim().toLowerCase();
+      const matchesSearch =
+        !q ||
+        topic.label.toLowerCase().includes(q) ||
+        topic.keywords.toLowerCase().includes(q) ||
+        topic.category.toLowerCase().includes(q);
+      return matchesCategory && matchesSearch;
+    });
+  }, [modalCategory, modalSearch]);
+
+  const toggleTopic = (topicId) => {
+    setSelectedTopicIds((prev) =>
+      prev.includes(topicId)
+        ? prev.filter((id) => id !== topicId)
+        : [...prev, topicId]
+    );
+  };
+
+  const selectAllTopics = () => {
+    setSelectedTopicIds(TREND_INTEREST_TOPICS.map((t) => t.id));
+  };
+
+  const clearAllTopics = () => {
+    setSelectedTopicIds([]);
+  };
+
+  const handleSaveInterests = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    const selectedTopics = TREND_INTEREST_TOPICS.filter((t) =>
+      selectedTopicIds.includes(t.id)
+    );
+    const topicKeywords = selectedTopics.map((t) => t.keywords).join(", ");
+    const customInterests = draftProfile.interests?.trim() || "";
+    const combinedInterests = [topicKeywords, customInterests].filter(Boolean).join(", ");
+
     const nextProfile = {
-      work: draftProfile.work.trim(),
-      interests: draftProfile.interests.trim(),
-      goal: draftProfile.goal.trim(),
+      work: draftProfile.work?.trim() || "",
+      interests: combinedInterests,
+      goal: draftProfile.goal?.trim() || "",
+      selectedTopicIds,
     };
+
     setProfile(nextProfile);
-    localStorage.setItem(profileStorageKey, JSON.stringify(nextProfile));
-    setShowProfileModal(false);
-    toast.success("Personalization saved!");
+    setDraftProfile(nextProfile);
+    try {
+      localStorage.setItem(profileStorageKey, JSON.stringify(nextProfile));
+      localStorage.setItem(onboardingStorageKey, "true");
+    } catch {
+      // ignore
+    }
+    setShowInterestModal(false);
+    toast.success(
+      selectedTopicIds.length > 0
+        ? `Feed personalized with ${selectedTopicIds.length} topic${selectedTopicIds.length === 1 ? "" : "s"}!`
+        : "Feed preferences updated!"
+    );
     pageRef.current = 1;
     cursorRef.current = null;
     loadPage({ reset: true });
   };
+
+  const handleSkipInterests = () => {
+    try {
+      localStorage.setItem(onboardingStorageKey, "true");
+    } catch {
+      // ignore
+    }
+    setShowInterestModal(false);
+  };
+
+  const [headerPortalEl, setHeaderPortalEl] = useState(() =>
+    typeof document !== "undefined" ? document.getElementById("header-left-portal") : null
+  );
+
+  useEffect(() => {
+    if (!headerPortalEl) {
+      const el = document.getElementById("header-left-portal");
+      if (el) setHeaderPortalEl(el);
+    }
+  }, [headerPortalEl]);
+
+  const headerContent = (
+    <div className="flex items-center justify-between w-full gap-2 sm:gap-3">
+      <h1 className="text-lg sm:text-xl font-extrabold tracking-tight text-neutral-900 dark:text-neutral-100 whitespace-nowrap leading-none">
+        Explore Trends
+      </h1>
+
+      {/* Header Right Actions: Search + Tools */}
+      <div className="flex items-center gap-1.5 sm:gap-2 flex-1 justify-end max-w-xl">
+        {/* Integrated Search Bar */}
+        <div className="relative w-36 sm:w-52 md:w-64">
+          <Search
+            size={13}
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none"
+          />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search topics, creators, hooks..."
+            className="w-full h-8 sm:h-9 pl-8 pr-7 rounded-xl bg-white dark:bg-[#161B22] border border-black/[0.08] dark:border-white/[0.08] text-xs font-normal text-neutral-900 dark:text-white placeholder:text-neutral-400 shadow-sm outline-none focus:border-neutral-400 dark:focus:border-neutral-600 transition-all"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 p-0.5"
+            >
+              <X size={12} />
+            </button>
+          )}
+        </div>
+
+        {/* Minimal Region Dropdown */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setRegionOpen(!regionOpen)}
+            className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-xl bg-white dark:bg-[#161B22] border border-black/[0.08] dark:border-white/[0.08] text-xs font-medium text-neutral-700 dark:text-neutral-300 shadow-sm inline-flex items-center gap-1 sm:gap-1.5 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+          >
+            <span>{REGION_OPTIONS.find((r) => r.code === selectedRegion)?.flag || "🌐"}</span>
+            <span className="hidden md:inline text-xs">
+              {REGION_OPTIONS.find((r) => r.code === selectedRegion)?.label || "Region"}
+            </span>
+            <ChevronDown
+              size={12}
+              className={`text-neutral-400 transition-transform ${regionOpen ? "rotate-180" : ""}`}
+            />
+          </button>
+
+          <AnimatePresence>
+            {regionOpen && (
+              <>
+                <div className="fixed inset-0 z-30" onClick={() => setRegionOpen(false)} />
+                <motion.div
+                  initial={{ opacity: 0, y: 4, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 4, scale: 0.98 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute right-0 top-full mt-1.5 w-44 bg-white dark:bg-[#161B22] border border-black/[0.08] dark:border-white/[0.08] rounded-xl shadow-xl overflow-hidden z-40 py-1"
+                >
+                  {REGION_OPTIONS.map((r) => (
+                    <button
+                      key={r.code}
+                      type="button"
+                      onClick={() => {
+                        setSelectedRegion(r.code);
+                        setRegionOpen(false);
+                      }}
+                      className={`w-full text-left px-3.5 py-2 text-xs font-medium flex items-center gap-2 transition-colors ${selectedRegion === r.code
+                          ? "bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-white font-bold"
+                          : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+                        }`}
+                    >
+                      <span>{r.flag}</span>
+                      <span>{r.label}</span>
+                    </button>
+                  ))}
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Saved Inspiration Board Pill */}
+        <button
+          type="button"
+          onClick={() => setShowSavedDrawer(true)}
+          className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-xl bg-white dark:bg-[#161B22] border border-black/[0.08] dark:border-white/[0.08] hover:bg-neutral-50 dark:hover:bg-neutral-800 text-xs font-medium text-neutral-700 dark:text-neutral-300 shadow-sm inline-flex items-center gap-1 sm:gap-1.5 transition-colors whitespace-nowrap"
+        >
+          <BookmarkCheck size={13} className="text-amber-500" />
+          <span className="hidden sm:inline">Saved</span>
+          {savedIdeas.length > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 text-[10px] font-bold">
+              {savedIdeas.length}
+            </span>
+          )}
+        </button>
+
+        {/* Personalize Interests Button */}
+        <button
+          type="button"
+          onClick={() => setShowInterestModal(true)}
+          className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-xl bg-white dark:bg-[#161B22] border border-black/[0.08] dark:border-white/[0.08] hover:bg-neutral-50 dark:hover:bg-neutral-800 text-xs font-medium text-neutral-700 dark:text-neutral-300 shadow-sm inline-flex items-center gap-1 sm:gap-1.5 transition-colors whitespace-nowrap"
+          title="Personalize interest topics"
+        >
+          <SlidersHorizontal size={12} />
+          <span className="hidden sm:inline">Tune</span>
+          {selectedTopicIds.length > 0 && (
+            <span className="w-1.5 h-1.5 rounded-full bg-orange-500 flex-shrink-0" />
+          )}
+        </button>
+
+        {/* Refresh Action */}
+        <button
+          type="button"
+          onClick={() => {
+            pageRef.current = 1;
+            cursorRef.current = null;
+            loadPage({ reset: true });
+          }}
+          disabled={loading}
+          className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-xl bg-neutral-900 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-100 text-xs font-medium shadow-sm inline-flex items-center gap-1 sm:gap-1.5 transition-all disabled:opacity-50 whitespace-nowrap"
+        >
+          <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+          <span className="hidden sm:inline">Refresh</span>
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <div
@@ -1533,211 +1910,110 @@ export default function TrendFeedPage() {
         paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 7rem)",
       }}
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-5 sm:pt-7">
-        {/* 1. CLEAN COMPACT HEADER: "Explore Trends" */}
-        <header className="mb-6 space-y-4">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-neutral-900 dark:text-neutral-100 leading-tight">
-                  Explore Trends
-                </h1>
-                <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[11px] font-bold">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Live Feed
-                </span>
-              </div>
-              <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 mt-1 font-normal">
-                Discover viral formats, rising creators, and breakout topics across social platforms.
-              </p>
-            </div>
+      {/* Portals the Explore Trends header row directly into the top Header bar's empty space */}
+      {headerPortalEl && createPortal(headerContent, headerPortalEl)}
 
-            {/* Header Right Actions: Search + Tools */}
-            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-              {/* Integrated Search Bar */}
-              <div className="relative flex-1 sm:w-64">
-                <Search
-                  size={14}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none"
-                />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search topics, creators, hooks..."
-                  className="w-full h-9 pl-9 pr-8 rounded-xl bg-white dark:bg-[#161B22] border border-black/[0.08] dark:border-white/[0.08] text-xs font-normal text-neutral-900 dark:text-white placeholder:text-neutral-400 shadow-sm outline-none focus:border-neutral-400 dark:focus:border-neutral-600 transition-all"
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery("")}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 p-0.5"
-                  >
-                    <X size={13} />
-                  </button>
-                )}
-              </div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-3 sm:pt-4">
+        {/* Fallback inline header if portal target not mounted */}
+        {!headerPortalEl && (
+          <header className="mb-4 space-y-3">
+            {headerContent}
+          </header>
+        )}
 
-              {/* Minimal Region Dropdown */}
-              <div className="relative">
+        {/* 2. MINIMAL HORIZONTAL FILTERS & CATEGORIES */}
+        <div className="space-y-2.5">
+          {/* Platform / Format Pills (Smooth Horizontal Bar) */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+            {FORMAT_TABS.map((tab) => {
+              const active = selectedFormat === tab.id;
+              const Icon = tab.icon;
+              return (
                 <button
-                  type="button"
-                  onClick={() => setRegionOpen(!regionOpen)}
-                  className="h-9 px-3 rounded-xl bg-white dark:bg-[#161B22] border border-black/[0.08] dark:border-white/[0.08] text-xs font-medium text-neutral-700 dark:text-neutral-300 shadow-sm inline-flex items-center gap-1.5 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+                  key={tab.id}
+                  onClick={() => setSelectedFormat(tab.id)}
+                  className={`h-8 px-3.5 rounded-xl text-xs font-medium whitespace-nowrap transition-all inline-flex items-center gap-1.5 ${active
+                    ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-950 font-bold shadow-sm"
+                    : "bg-white/80 dark:bg-[#161B22]/80 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white border border-black/[0.06] dark:border-white/[0.08]"
+                    }`}
                 >
-                  <span>{REGION_OPTIONS.find((r) => r.code === selectedRegion)?.flag || "🌐"}</span>
-                  <span className="hidden sm:inline">
-                    {REGION_OPTIONS.find((r) => r.code === selectedRegion)?.label || "Region"}
-                  </span>
-                  <ChevronDown
-                    size={13}
-                    className={`text-neutral-400 transition-transform ${regionOpen ? "rotate-180" : ""}`}
-                  />
+                  {tab.iconSvg ? (
+                    <img src={tab.iconSvg} alt="" className="w-3.5 h-3.5 object-contain" />
+                  ) : Icon ? (
+                    <Icon size={13} />
+                  ) : null}
+                  <span>{tab.label}</span>
                 </button>
+              );
+            })}
+          </div>
 
-                <AnimatePresence>
-                  {regionOpen && (
-                    <>
-                      <div className="fixed inset-0 z-30" onClick={() => setRegionOpen(false)} />
-                      <motion.div
-                        initial={{ opacity: 0, y: 4, scale: 0.98 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 4, scale: 0.98 }}
-                        transition={{ duration: 0.15 }}
-                        className="absolute right-0 top-full mt-1.5 w-44 bg-white dark:bg-[#161B22] border border-black/[0.08] dark:border-white/[0.08] rounded-xl shadow-xl overflow-hidden z-40 py-1"
-                      >
-                        {REGION_OPTIONS.map((r) => (
-                          <button
-                            key={r.code}
-                            type="button"
-                            onClick={() => {
-                              setSelectedRegion(r.code);
-                              setRegionOpen(false);
-                            }}
-                            className={`w-full text-left px-3.5 py-2 text-xs font-medium flex items-center gap-2 transition-colors ${selectedRegion === r.code
-                                ? "bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-white font-bold"
-                                : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800"
-                              }`}
-                          >
-                            <span>{r.flag}</span>
-                            <span>{r.label}</span>
-                          </button>
-                        ))}
-                      </motion.div>
-                    </>
-                  )}
-                </AnimatePresence>
+          {/* Niche Categories Pill Row */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+            {NICHE_PILLS.map((niche) => {
+              const active = selectedNiche === niche.id;
+              return (
+                <button
+                  key={niche.id}
+                  onClick={() => setSelectedNiche(niche.id)}
+                  className={`h-7 px-3 rounded-full text-xs font-medium whitespace-nowrap transition-all ${active
+                    ? "bg-neutral-800 text-white dark:bg-neutral-200 dark:text-neutral-900 font-semibold shadow-xs"
+                    : "bg-white/60 dark:bg-[#161B22]/60 text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 border border-black/[0.04] dark:border-white/[0.06]"
+                    }`}
+                >
+                  {niche.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Hot Topics Radar Ticker */}
+          {hotTopics.length > 0 && (
+            <div className="flex items-center gap-2 text-xs text-neutral-500 overflow-hidden pt-1">
+              <span className="font-semibold text-neutral-700 dark:text-neutral-300 text-[11px] uppercase tracking-wider flex items-center gap-1 flex-shrink-0">
+                <Flame size={12} className="text-amber-500 fill-current" />
+                <span>Trending:</span>
+              </span>
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar flex-1 py-0.5">
+                {hotTopics.map((topic, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setSearchQuery(topic.query)}
+                    className={`px-2 py-0.5 rounded-md text-[11px] whitespace-nowrap transition-colors ${searchQuery === topic.query
+                      ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 font-semibold"
+                      : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white bg-black/[0.03] dark:bg-white/[0.05]"
+                      }`}
+                  >
+                    #{topic.query}
+                  </button>
+                ))}
               </div>
+            </div>
+          )}
 
-              {/* Saved Inspiration Board Pill */}
-              <button
-                type="button"
-                onClick={() => setShowSavedDrawer(true)}
-                className="h-9 px-3 rounded-xl bg-white dark:bg-[#161B22] border border-black/[0.08] dark:border-white/[0.08] hover:bg-neutral-50 dark:hover:bg-neutral-800 text-xs font-medium text-neutral-700 dark:text-neutral-300 shadow-sm inline-flex items-center gap-1.5 transition-colors whitespace-nowrap"
-              >
-                <BookmarkCheck size={14} className="text-amber-500" />
-                <span className="hidden sm:inline">Saved</span>
-                {savedIdeas.length > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 text-[10px] font-bold">
-                    {savedIdeas.length}
+          {/* Search Active Status Banner */}
+          {debouncedSearch && (
+            <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-white/90 dark:bg-[#161B22]/90 border border-black/[0.06] dark:border-white/[0.08] shadow-xs">
+              <div className="flex items-center gap-2 text-xs min-w-0">
+                <Search size={13} className="text-sky-500 flex-shrink-0" />
+                <span className="text-neutral-500 dark:text-neutral-400 whitespace-nowrap">Results for</span>
+                <span className="font-bold text-neutral-900 dark:text-white truncate">"{debouncedSearch}"</span>
+                {items.length > 0 && (
+                  <span className="text-[11px] font-semibold text-neutral-400 whitespace-nowrap">
+                    ({items.length} relevant {selectedFormat !== "all" ? selectedFormat : ""} trends)
                   </span>
                 )}
-              </button>
-
-              {/* Personalize Button */}
-              <button
-                type="button"
-                onClick={() => setShowProfileModal(true)}
-                className="h-9 px-3 rounded-xl bg-white dark:bg-[#161B22] border border-black/[0.08] dark:border-white/[0.08] hover:bg-neutral-50 dark:hover:bg-neutral-800 text-xs font-medium text-neutral-700 dark:text-neutral-300 shadow-sm inline-flex items-center gap-1.5 transition-colors whitespace-nowrap"
-                title="Personalize topics"
-              >
-                <SlidersHorizontal size={13} />
-                <span className="hidden sm:inline">Tune</span>
-              </button>
-
-              {/* Refresh Action */}
-              <button
-                type="button"
-                onClick={() => {
-                  pageRef.current = 1;
-                  cursorRef.current = null;
-                  loadPage({ reset: true });
-                }}
-                disabled={loading}
-                className="h-9 px-3 rounded-xl bg-neutral-900 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-100 text-xs font-medium shadow-sm inline-flex items-center gap-1.5 transition-all disabled:opacity-50 whitespace-nowrap"
-              >
-                <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-                <span className="hidden sm:inline">Refresh</span>
-              </button>
-            </div>
-          </div>
-
-          {/* 2. MINIMAL HORIZONTAL FILTERS & CATEGORIES */}
-          <div className="space-y-2.5 pt-1">
-            {/* Platform / Format Pills (Smooth Horizontal Bar) */}
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-              {FORMAT_TABS.map((tab) => {
-                const active = selectedFormat === tab.id;
-                const Icon = tab.icon;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setSelectedFormat(tab.id)}
-                    className={`h-8 px-3.5 rounded-xl text-xs font-medium whitespace-nowrap transition-all inline-flex items-center gap-1.5 ${active
-                        ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-950 font-bold shadow-sm"
-                        : "bg-white/80 dark:bg-[#161B22]/80 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white border border-black/[0.06] dark:border-white/[0.08]"
-                      }`}
-                  >
-                    {Icon && <Icon size={13} />}
-                    <span>{tab.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Niche Categories Pill Row */}
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-              {NICHE_PILLS.map((niche) => {
-                const active = selectedNiche === niche.id;
-                return (
-                  <button
-                    key={niche.id}
-                    onClick={() => setSelectedNiche(niche.id)}
-                    className={`h-7 px-3 rounded-full text-xs font-medium whitespace-nowrap transition-all ${active
-                        ? "bg-neutral-800 text-white dark:bg-neutral-200 dark:text-neutral-900 font-semibold shadow-xs"
-                        : "bg-white/60 dark:bg-[#161B22]/60 text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 border border-black/[0.04] dark:border-white/[0.06]"
-                      }`}
-                  >
-                    {niche.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Hot Topics Radar Ticker */}
-            {hotTopics.length > 0 && (
-              <div className="flex items-center gap-2 text-xs text-neutral-500 overflow-hidden pt-1">
-                <span className="font-semibold text-neutral-700 dark:text-neutral-300 text-[11px] uppercase tracking-wider flex items-center gap-1 flex-shrink-0">
-                  <Flame size={12} className="text-amber-500 fill-current" />
-                  <span>Trending:</span>
-                </span>
-                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar flex-1 py-0.5">
-                  {hotTopics.map((topic, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => setSearchQuery(topic.query)}
-                      className={`px-2 py-0.5 rounded-md text-[11px] whitespace-nowrap transition-colors ${searchQuery === topic.query
-                          ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 font-semibold"
-                          : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white bg-black/[0.03] dark:bg-white/[0.05]"
-                        }`}
-                    >
-                      #{topic.query}
-                    </button>
-                  ))}
-                </div>
               </div>
-            )}
-          </div>
-        </header>
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="text-xs font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white px-2 py-0.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors flex-shrink-0"
+              >
+                Clear
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* 3. TREND FEED CONTENT */}
         {error ? (
@@ -1853,88 +2129,275 @@ export default function TrendFeedPage() {
         initialHashtags={composerInitialData.hashtags}
       />
 
-      {/* 9. TUNE MY FEED / PERSONALIZATION MODAL */}
-      {showProfileModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-md bg-white dark:bg-[#161B22] rounded-2xl border border-black/[0.08] dark:border-white/[0.08] shadow-2xl p-6 text-neutral-900 dark:text-neutral-100"
-          >
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <SlidersHorizontal size={16} className="text-neutral-900 dark:text-white" />
-                <h3 className="text-base font-bold">Tune Your Inspiration</h3>
-              </div>
-              <button
-                onClick={() => setShowProfileModal(false)}
-                className="p-1.5 text-neutral-400 hover:text-neutral-900 dark:hover:text-white rounded-lg"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-4 leading-relaxed font-normal">
-              Specify your creator role, core topics, and primary content formats. Our ranking engine
-              boosts matching signals to the top of your feed.
-            </p>
+      {/* 9. ATTRACTIVE FIRST-TIME & TUNE INTEREST SELECTION MODAL */}
+      <AnimatePresence>
+        {showInterestModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={handleSkipInterests}
+              className="fixed inset-0 bg-black/75 backdrop-blur-md"
+            />
 
-            <form onSubmit={handleSaveProfile} className="space-y-3.5">
-              <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-neutral-500 mb-1">
-                  Your Role / Agency / Brand
-                </label>
-                <input
-                  type="text"
-                  value={draftProfile.work}
-                  onChange={(e) =>
-                    setDraftProfile((cur) => ({ ...cur, work: e.target.value }))
-                  }
-                  placeholder="e.g. AI SaaS Founder, Tech Creator, Agency"
-                  className="w-full h-10 px-3 rounded-xl bg-neutral-50 dark:bg-white/[0.03] border border-black/[0.08] dark:border-white/[0.08] text-xs font-semibold text-neutral-900 dark:text-white outline-none focus:border-neutral-900 dark:focus:border-white"
-                />
+            {/* Modal Container */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 16 }}
+              transition={{ type: "spring", damping: 25, stiffness: 280 }}
+              className="relative w-full max-w-2xl max-h-[92vh] sm:max-h-[88vh] bg-white dark:bg-[#12161F] rounded-3xl border border-black/[0.08] dark:border-white/[0.09] shadow-2xl flex flex-col z-10 overflow-hidden text-neutral-900 dark:text-neutral-100"
+            >
+              {/* Vibrant Top Accent Gradient Line */}
+              <div className="h-1.5 w-full bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 flex-shrink-0" />
+
+              {/* Header */}
+              <div className="px-5 sm:px-6 py-4 sm:py-5 border-b border-black/[0.06] dark:border-white/[0.08] flex-shrink-0">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-600 dark:text-orange-400 text-[11px] font-bold tracking-wide uppercase mb-1">
+                      <Sparkles size={11} className="animate-pulse" />
+                      <span>Creator Inspiration Onboarding</span>
+                    </div>
+                    <h2 className="text-lg sm:text-2xl font-black text-neutral-900 dark:text-neutral-100 tracking-tight leading-tight">
+                      What topics do you create or love?
+                    </h2>
+                    <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">
+                      Select your favorite niches. We will curate trending reels, viral hooks, and breakout ideas tailored to your audience.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSkipInterests}
+                    className="p-1.5 rounded-xl text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors flex-shrink-0"
+                    title="Close"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {/* Search Bar & Action Buttons */}
+                <div className="mt-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search
+                      size={13}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none"
+                    />
+                    <input
+                      type="text"
+                      value={modalSearch}
+                      onChange={(e) => setModalSearch(e.target.value)}
+                      placeholder="Search 24+ creator niches (e.g. AI, Crypto, Reels)..."
+                      className="w-full h-8 sm:h-9 pl-8 pr-7 rounded-xl bg-neutral-100/80 dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.08] text-xs text-neutral-900 dark:text-white placeholder:text-neutral-400 outline-none focus:border-neutral-400 dark:focus:border-neutral-600"
+                    />
+                    {modalSearch && (
+                      <button
+                        onClick={() => setModalSearch("")}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 self-end sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={selectAllTopics}
+                      className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                    >
+                      Select All
+                    </button>
+                    <span className="text-neutral-300 dark:text-neutral-700">|</span>
+                    <button
+                      type="button"
+                      onClick={clearAllTopics}
+                      className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-neutral-400 hover:text-red-500 transition-colors"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+
+                {/* Category Pills */}
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-2.5 -mb-0.5">
+                  {TREND_INTEREST_CATEGORIES.map((cat) => {
+                    const active = modalCategory === cat;
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setModalCategory(cat)}
+                        className={`h-7 px-3 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                          active
+                            ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-950 shadow-sm"
+                            : "bg-neutral-100/70 dark:bg-white/[0.03] text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200/70 dark:hover:bg-neutral-800"
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
-              <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-neutral-500 mb-1">
-                  Core Topics / Keywords
-                </label>
-                <input
-                  type="text"
-                  value={draftProfile.interests}
-                  onChange={(e) =>
-                    setDraftProfile((cur) => ({ ...cur, interests: e.target.value }))
-                  }
-                  placeholder="e.g. AI tools, productivity, growth, startups"
-                  className="w-full h-10 px-3 rounded-xl bg-neutral-50 dark:bg-white/[0.03] border border-black/[0.08] dark:border-white/[0.08] text-xs font-semibold text-neutral-900 dark:text-white outline-none focus:border-neutral-900 dark:focus:border-white"
-                  required
-                />
-              </div>
+              {/* Scrollable Topics Grid */}
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 custom-scrollbar space-y-4">
+                {filteredTopics.length === 0 ? (
+                  <div className="py-12 text-center text-neutral-400">
+                    <p className="text-sm font-semibold">No matching topics found</p>
+                    <p className="text-xs mt-1">Try another keyword or select "All" above.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 sm:gap-2.5">
+                    {filteredTopics.map((topic) => {
+                      const isSelected = selectedTopicIds.includes(topic.id);
+                      return (
+                        <button
+                          key={topic.id}
+                          type="button"
+                          onClick={() => toggleTopic(topic.id)}
+                          className={`relative flex items-center gap-2.5 p-2.5 sm:p-3 rounded-2xl border text-left transition-all duration-150 group ${
+                            isSelected
+                              ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-950 border-neutral-900 dark:border-white shadow-md scale-[1.01]"
+                              : "bg-neutral-50/80 dark:bg-white/[0.03] text-neutral-700 dark:text-neutral-300 border-black/[0.06] dark:border-white/[0.07] hover:border-black/20 dark:hover:border-white/20 hover:bg-neutral-100/80 dark:hover:bg-white/[0.05]"
+                          }`}
+                        >
+                          <span className="text-2xl flex-shrink-0 select-none group-hover:scale-110 transition-transform">
+                            {topic.emoji}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <h4 className="text-xs font-bold truncate leading-snug">
+                              {topic.label}
+                            </h4>
+                            <p
+                              className={`text-[10px] truncate ${
+                                isSelected ? "text-neutral-300 dark:text-neutral-600 font-medium" : "text-neutral-400"
+                              }`}
+                            >
+                              {topic.category}
+                            </p>
+                          </div>
+                          <div
+                            className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
+                              isSelected
+                                ? "bg-white text-neutral-900 dark:bg-neutral-900 dark:text-white"
+                                : "border border-black/[0.15] dark:border-white/[0.15] opacity-40 group-hover:opacity-75"
+                            }`}
+                          >
+                            {isSelected && <Check size={11} strokeWidth={3} />}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
 
-              <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-neutral-500 mb-1">
-                  Target Content Formats
-                </label>
-                <input
-                  type="text"
-                  value={draftProfile.goal}
-                  onChange={(e) =>
-                    setDraftProfile((cur) => ({ ...cur, goal: e.target.value }))
-                  }
-                  placeholder="e.g. 30s Reels, Twitter threads, Carousels"
-                  className="w-full h-10 px-3 rounded-xl bg-neutral-50 dark:bg-white/[0.03] border border-black/[0.08] dark:border-white/[0.08] text-xs font-semibold text-neutral-900 dark:text-white outline-none focus:border-neutral-900 dark:focus:border-white"
-                />
-              </div>
+                          {/* Optional Collapsible Advanced Custom Inputs */}
+                          <div className="pt-2 border-t border-black/[0.06] dark:border-white/[0.08]">
+                            <button
+                              type="button"
+                              onClick={() => setShowAdvancedProfile(!showAdvancedProfile)}
+                              className="w-full flex items-center justify-between py-1.5 text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                            >
+                              <span className="inline-flex items-center gap-1.5">
+                                <SlidersHorizontal size={13} />
+                                <span>Advanced Tuning (Role, Custom Keywords & Formats)</span>
+                              </span>
+                              <ChevronDown
+                                size={14}
+                                className={`transition-transform duration-200 ${showAdvancedProfile ? "rotate-180" : ""
+                                  }`}
+                              />
+                            </button>
 
-              <button
-                type="submit"
-                className="w-full h-10 mt-2 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white dark:bg-white dark:text-neutral-950 text-xs font-bold transition-all shadow-sm"
-              >
-                Save & Tune Feed
-              </button>
-            </form>
-          </motion.div>
-        </div>
-      )}
-    </div>
-  );
+                            {showAdvancedProfile && (
+                              <motion.div
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: "auto" }}
+                                exit={{ opacity: 0, height: 0 }}
+                                className="pt-2 pb-1 space-y-3"
+                              >
+                                <div>
+                                  <label className="block text-[10px] font-bold uppercase tracking-wider text-neutral-500 mb-1">
+                                    Your Creator / Brand Role
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={draftProfile.work}
+                                    onChange={(e) =>
+                                      setDraftProfile((cur) => ({ ...cur, work: e.target.value }))
+                                    }
+                                    placeholder="e.g. AI SaaS Founder, YouTube Creator, Agency Lead"
+                                    className="w-full h-9 px-3 rounded-xl bg-neutral-50 dark:bg-white/[0.03] border border-black/[0.08] dark:border-white/[0.08] text-xs font-medium text-neutral-900 dark:text-white outline-none focus:border-neutral-500"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] font-bold uppercase tracking-wider text-neutral-500 mb-1">
+                                    Additional Custom Keywords (comma-separated)
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={draftProfile.interests}
+                                    onChange={(e) =>
+                                      setDraftProfile((cur) => ({ ...cur, interests: e.target.value }))
+                                    }
+                                    placeholder="e.g. prompt engineering, notion templates, blender tutorials"
+                                    className="w-full h-9 px-3 rounded-xl bg-neutral-50 dark:bg-white/[0.03] border border-black/[0.08] dark:border-white/[0.08] text-xs font-medium text-neutral-900 dark:text-white outline-none focus:border-neutral-500"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] font-bold uppercase tracking-wider text-neutral-500 mb-1">
+                                    Preferred Content Formats
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={draftProfile.goal}
+                                    onChange={(e) =>
+                                      setDraftProfile((cur) => ({ ...cur, goal: e.target.value }))
+                                    }
+                                    placeholder="e.g. 30s Viral Reels, Carousels, Twitter/X Threads"
+                                    className="w-full h-9 px-3 rounded-xl bg-neutral-50 dark:bg-white/[0.03] border border-black/[0.08] dark:border-white/[0.08] text-xs font-medium text-neutral-900 dark:text-white outline-none focus:border-neutral-500"
+                                  />
+                                </div>
+                              </motion.div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Sticky Footer */ }
+                        <div className="p-3.5 sm:px-6 sm:py-3.5 border-t border-black/[0.06] dark:border-white/[0.08] bg-neutral-50/90 dark:bg-[#161B22]/90 backdrop-blur-sm flex items-center justify-between gap-3 flex-shrink-0">
+                          <button
+                            type="button"
+                            onClick={handleSkipInterests}
+                            className="text-xs font-semibold text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white px-2 py-1 rounded-lg transition-colors"
+                          >
+                            Skip for now
+                          </button>
+
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+                              <strong className="text-neutral-900 dark:text-white font-bold">
+                                {selectedTopicIds.length}
+                              </strong>{" "}
+                              selected
+                            </span>
+                            <button
+                              type="button"
+                              onClick={handleSaveInterests}
+                              className="h-9 sm:h-10 px-4 sm:px-5 rounded-xl bg-neutral-950 hover:bg-neutral-800 text-white dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100 text-xs font-bold shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all inline-flex items-center gap-1.5"
+                            >
+                              <Sparkles size={13} className="text-amber-400 fill-amber-400" />
+                              <span>Personalize Feed</span>
+                            </button>
+                          </div>
+                        </div>
+            </motion.div>
+                  </div>
+        )}
+                </AnimatePresence>
+              </div>
+              );
 }
