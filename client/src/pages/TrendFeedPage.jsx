@@ -502,6 +502,12 @@ function TrendCard({ post, onUseIdea, onRemix, onCompose, onSave, isSaved, onOpe
       <div className="p-3.5 sm:p-4 flex flex-col flex-1 justify-between gap-3">
         {/* Title: 2 lines max, readable font weight */}
         <div>
+          {post.matched_topic && (
+            <div className="flex items-center gap-1.5 mb-1.5 text-[11px] font-semibold text-sky-600 dark:text-sky-400">
+              <span>{post.topic_emoji || "✨"}</span>
+              <span className="truncate">{post.matched_topic}</span>
+            </div>
+          )}
           <h3
             onClick={() => onOpenDetails(post)}
             className="text-[14px] sm:text-[15px] font-bold text-neutral-900 dark:text-neutral-100 leading-snug line-clamp-2 cursor-pointer hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
@@ -1433,15 +1439,35 @@ export default function TrendFeedPage() {
   // Hot Topics Radar Ticker
   const [hotTopics, setHotTopics] = useState([]);
 
+  const userKey = user?.userId || user?.email || "anon";
+  const seenStorageKey = `qp_trend_seen_${userKey}`;
+  const profileStorageKey = `qp_trend_profile_${userKey}`;
+  const savedIdeasStorageKey = `qp_trend_saved_ideas_${userKey}`;
+  const onboardingStorageKey = `qp_trend_onboarded_${userKey}`;
+
   // Creator Personalization & Interest Onboarding
-  const [profile, setProfile] = useState(emptyProfile);
-  const [draftProfile, setDraftProfile] = useState(emptyProfile);
+  const [profile, setProfile] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(profileStorageKey) || "null");
+      if (saved && (saved.interests || saved.work || saved.goal || saved.selectedTopicIds)) {
+        return saved;
+      }
+    } catch {}
+    return emptyProfile;
+  });
+  const [draftProfile, setDraftProfile] = useState(() => profile);
   const [showInterestModal, setShowInterestModal] = useState(false);
-  const [selectedTopicIds, setSelectedTopicIds] = useState([
-    "ai_chatgpt",
-    "creator_economy",
-    "marketing_growth",
-  ]);
+  const [selectedTopicIds, setSelectedTopicIds] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(profileStorageKey) || "null");
+      if (saved && Array.isArray(saved.selectedTopicIds) && saved.selectedTopicIds.length > 0) {
+        return saved.selectedTopicIds;
+      }
+    } catch {}
+    return ["ai_chatgpt", "creator_economy", "marketing_growth"];
+  });
+  const [selectedTopicFilter, setSelectedTopicFilter] = useState(null);
+  const [feedMode, setFeedMode] = useState("personalized");
   const [modalCategory, setModalCategory] = useState("All");
   const [modalSearch, setModalSearch] = useState("");
   const [showAdvancedProfile, setShowAdvancedProfile] = useState(false);
@@ -1471,12 +1497,6 @@ export default function TrendFeedPage() {
   const pageRef = useRef(1);
   const cursorRef = useRef(null);
   const seenRef = useRef(new Set());
-
-  const userKey = user?.userId || user?.email || "anon";
-  const seenStorageKey = `qp_trend_seen_${userKey}`;
-  const profileStorageKey = `qp_trend_profile_${userKey}`;
-  const savedIdeasStorageKey = `qp_trend_saved_ideas_${userKey}`;
-  const onboardingStorageKey = `qp_trend_onboarded_${userKey}`;
 
   // Debounce search input
   useEffect(() => {
@@ -1562,7 +1582,12 @@ export default function TrendFeedPage() {
 
   // Load page with true infinite pagination
   const loadPage = useCallback(
-    async ({ reset = false } = {}) => {
+    async ({
+      reset = false,
+      overrideProfile = null,
+      overrideTopic = undefined,
+      overrideMode = null,
+    } = {}) => {
       if (loadingRef.current || (!reset && exhaustedRef.current)) return;
       if (reset) exhaustedRef.current = false;
       loadingRef.current = true;
@@ -1572,24 +1597,42 @@ export default function TrendFeedPage() {
       const targetPage = reset ? 1 : pageRef.current;
       const targetCursor = reset ? null : cursorRef.current;
 
+      const activeProfile = overrideProfile || profile;
+      const activeTopic = overrideTopic !== undefined ? overrideTopic : selectedTopicFilter;
+      const activeMode = overrideMode || feedMode;
+
       try {
-        const interestQuery = [profile.work, profile.interests, profile.goal]
+        const topicIds = activeProfile.selectedTopicIds || selectedTopicIds || [];
+        const isPersonalized =
+          activeMode === "personalized" && (topicIds.length > 0 || activeProfile.interests);
+
+        const interestQuery = [activeProfile.work, activeProfile.interests, activeProfile.goal]
           .filter(Boolean)
           .join(",");
 
-        const { data } = await apiClient.get("/api/trends/feed", {
-          params: {
-            limit: PAGE_SIZE,
-            page: targetPage,
-            cursor: targetCursor || undefined,
-            type: selectedFormat,
-            category: selectedNiche,
-            region: selectedRegion,
-            search: debouncedSearch || undefined,
-            seen: Array.from(seenRef.current).join(",") || undefined,
-            interests: interestQuery || undefined,
-          },
-        });
+        const params = {
+          limit: PAGE_SIZE,
+          page: targetPage,
+          cursor: targetCursor || undefined,
+          type: selectedFormat,
+          category: selectedNiche,
+          region: selectedRegion,
+          search: debouncedSearch || undefined,
+          seen: Array.from(seenRef.current).join(",") || undefined,
+        };
+
+        if (isPersonalized && !debouncedSearch) {
+          if (activeTopic) {
+            params.topic = activeTopic;
+          } else if (topicIds.length > 0) {
+            params.topics = topicIds.join(",");
+          }
+          if (interestQuery) {
+            params.interests = interestQuery;
+          }
+        }
+
+        const { data } = await apiClient.get("/api/trends/feed", { params });
 
         const nextItems = data.items || [];
         rememberSeen(nextItems);
@@ -1611,7 +1654,17 @@ export default function TrendFeedPage() {
         setLoading(false);
       }
     },
-    [selectedFormat, selectedNiche, selectedRegion, debouncedSearch, profile, rememberSeen]
+    [
+      selectedFormat,
+      selectedNiche,
+      selectedRegion,
+      debouncedSearch,
+      profile,
+      selectedTopicIds,
+      selectedTopicFilter,
+      feedMode,
+      rememberSeen,
+    ]
   );
 
   // Trigger reload on filter changes
@@ -1619,7 +1672,15 @@ export default function TrendFeedPage() {
     pageRef.current = 1;
     cursorRef.current = null;
     loadPage({ reset: true });
-  }, [selectedFormat, selectedNiche, selectedRegion, debouncedSearch, loadPage]);
+  }, [
+    selectedFormat,
+    selectedNiche,
+    selectedRegion,
+    debouncedSearch,
+    selectedTopicFilter,
+    feedMode,
+    loadPage,
+  ]);
 
   // Infinite scroll observer
   useEffect(() => {
@@ -1737,6 +1798,8 @@ export default function TrendFeedPage() {
 
     setProfile(nextProfile);
     setDraftProfile(nextProfile);
+    setSelectedTopicFilter(null);
+    setFeedMode("personalized");
     try {
       localStorage.setItem(profileStorageKey, JSON.stringify(nextProfile));
       localStorage.setItem(onboardingStorageKey, "true");
@@ -1751,7 +1814,12 @@ export default function TrendFeedPage() {
     );
     pageRef.current = 1;
     cursorRef.current = null;
-    loadPage({ reset: true });
+    loadPage({
+      reset: true,
+      overrideProfile: nextProfile,
+      overrideTopic: null,
+      overrideMode: "personalized",
+    });
   };
 
   const handleSkipInterests = () => {
@@ -1923,6 +1991,113 @@ export default function TrendFeedPage() {
 
         {/* 2. MINIMAL HORIZONTAL FILTERS & CATEGORIES */}
         <div className="space-y-2.5">
+          {/* My Curated Topics (Personalized Onboarding Interests Bar) */}
+          {selectedTopicIds.length > 0 && (
+            <div className="p-2.5 sm:p-3 rounded-2xl bg-white/90 dark:bg-[#161B22]/90 border border-black/[0.06] dark:border-white/[0.08] shadow-xs space-y-2">
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold text-[11px] tracking-wide uppercase">
+                    <Sparkles size={11} className="fill-current text-amber-500" />
+                    <span>My Curated Topics ({selectedTopicIds.length})</span>
+                  </span>
+                  <span className="text-[11px] text-neutral-400 dark:text-neutral-500 truncate hidden sm:inline">
+                    {feedMode === "personalized"
+                      ? selectedTopicFilter
+                        ? `Filtered specifically to ${TREND_INTEREST_TOPICS.find((t) => t.id === selectedTopicFilter)?.label || selectedTopicFilter}`
+                        : "Feed strictly tailored to your selected onboarding topics"
+                      : "Viewing global trending"}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {/* Toggle Personalized vs Global */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextMode = feedMode === "personalized" ? "global" : "personalized";
+                      setFeedMode(nextMode);
+                      setSelectedTopicFilter(null);
+                      pageRef.current = 1;
+                      cursorRef.current = null;
+                      loadPage({ reset: true, overrideMode: nextMode, overrideTopic: null });
+                    }}
+                    className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold transition-all inline-flex items-center gap-1 border ${
+                      feedMode === "personalized"
+                        ? "bg-sky-500/10 border-sky-500/30 text-sky-600 dark:text-sky-400"
+                        : "bg-neutral-100 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
+                    }`}
+                    title="Toggle between your personalized interests and global trending"
+                  >
+                    <Globe size={11} />
+                    <span>{feedMode === "personalized" ? "Personalized Active" : "Global"}</span>
+                  </button>
+
+                  {/* Edit Topics Button */}
+                  <button
+                    type="button"
+                    onClick={() => setShowInterestModal(true)}
+                    className="px-2.5 py-1 rounded-xl text-[11px] font-semibold bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 transition-colors inline-flex items-center gap-1"
+                  >
+                    <SlidersHorizontal size={11} />
+                    <span>Customize</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Scrollable Topic Pills */}
+              {feedMode === "personalized" && (
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+                  {/* All Topics Combined */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedTopicFilter(null);
+                      pageRef.current = 1;
+                      cursorRef.current = null;
+                      loadPage({ reset: true, overrideTopic: null });
+                    }}
+                    className={`h-7 px-3 rounded-full text-xs font-semibold whitespace-nowrap transition-all inline-flex items-center gap-1.5 ${
+                      selectedTopicFilter === null
+                        ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-950 shadow-xs"
+                        : "bg-black/[0.04] dark:bg-white/[0.06] text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
+                    }`}
+                  >
+                    <Sparkles size={11} className={selectedTopicFilter === null ? "text-amber-400 fill-amber-400" : "text-neutral-400"} />
+                    <span>All My Topics Combined</span>
+                  </button>
+
+                  {/* Individual Selected Topics */}
+                  {selectedTopicIds.map((topicId) => {
+                    const topicDef = TREND_INTEREST_TOPICS.find((t) => t.id === topicId);
+                    if (!topicDef) return null;
+                    const isSelected = selectedTopicFilter === topicId;
+                    return (
+                      <button
+                        key={topicId}
+                        type="button"
+                        onClick={() => {
+                          const nextTopic = isSelected ? null : topicId;
+                          setSelectedTopicFilter(nextTopic);
+                          pageRef.current = 1;
+                          cursorRef.current = null;
+                          loadPage({ reset: true, overrideTopic: nextTopic });
+                        }}
+                        className={`h-7 px-3 rounded-full text-xs font-medium whitespace-nowrap transition-all inline-flex items-center gap-1.5 ${
+                          isSelected
+                            ? "bg-sky-600 text-white font-bold shadow-xs"
+                            : "bg-black/[0.04] dark:bg-white/[0.06] text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
+                        }`}
+                      >
+                        <span>{topicDef.emoji}</span>
+                        <span>{topicDef.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Platform / Format Pills (Smooth Horizontal Bar) */}
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
             {FORMAT_TABS.map((tab) => {

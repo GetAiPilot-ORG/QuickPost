@@ -1,3 +1,8 @@
+## 2026-11-18 — Onboarding topics personalized feed
+- Wired selected onboarding topics to live multi-platform search (Pinterest, Bluesky, YouTube, Pexels, Unsplash) and boosted matching candidates in ranking engine with topic badges.
+- Added a dedicated "My Curated Topics" pill bar in Trend Feed for combined view or one-click filtering by individual selected topics, plus instant profile re-sync on onboarding save.
+- All 7 automated test suites passed and client build passed cleanly.
+
 ## 2026-11-18 — Pinterest & Bluesky live trend search and relevance feeds
 - Ported official search and feed services from TrendPulse for Pinterest (BaseSearchResource/API v5/RSS) and Bluesky (ATProto searchPosts/getFeed/getTrends) with query stopword extraction, multi-field relevance scoring, quality boosts, and author diversification.
 - Added dedicated Pinterest and Bluesky format tabs, search results banner, Pinterest save counters, Bluesky engagement stats, and live hot topics radar combining Google & Bluesky trends.

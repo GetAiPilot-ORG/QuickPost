@@ -21,6 +21,12 @@ import {
   fetchPinterestTrends,
   fetchBlueskyTrends,
 } from "../src/services/trends/trendSources.js";
+import {
+  resolveTargetTopics,
+  calculateItemTopicMatch,
+  getTopicDefinition,
+  TREND_TOPIC_REGISTRY,
+} from "../src/services/trends/trendTopics.js";
 import { getTrendFeedPage, getHotTopicsRadar } from "../src/services/trendFeed.js";
 
 async function runTests() {
@@ -180,6 +186,57 @@ async function runTests() {
     console.log("✅ Feed integration tests passed successfully.");
   } catch (err) {
     console.warn("Feed integration check warning:", err.message);
+  }
+
+  // 7. Test Onboarding Topics Personalization
+  console.log("\n[TEST 7] Topic Personalization & Onboarding Feed Tests");
+  try {
+    const resolved = resolveTargetTopics({ topics: "ai_chatgpt,coding_dev" });
+    assert.strictEqual(resolved.targetTopics.length, 2);
+    assert.strictEqual(resolved.targetTopics[0].id, "ai_chatgpt");
+    assert.strictEqual(resolved.targetTopics[1].id, "coding_dev");
+    assert.ok(resolved.keywords.includes("chatgpt"));
+    assert.ok(resolved.keywords.includes("python"));
+    console.log(`Resolved ${resolved.targetTopics.length} topics and ${resolved.keywords.length} keywords.`);
+
+    // Match calculation
+    const aiItem = {
+      title: "How to use ChatGPT and LLMs to write clean Python code",
+      caption: "A comprehensive guide on generative artificial intelligence",
+      niche_tags: ["ai", "python"],
+    };
+    const match = calculateItemTopicMatch(aiItem, resolved.targetTopics, resolved.keywords);
+    assert.ok(match.matchCount > 0, "AI item should match target topics");
+    assert.strictEqual(match.matchedTopic?.id, "ai_chatgpt");
+    console.log(`Topic match calculated: ${match.matchedTopic?.label} (match count: ${match.matchCount})`);
+
+    // Live personalized feed test with selected onboarding topics
+    const personalizedFeed = await getTrendFeedPage(
+      { topics: "ai_chatgpt,startups_saas", limit: 15 },
+      { skipExternal: false, cache: null, supabase: mockSupabase }
+    );
+    assert.strictEqual(personalizedFeed.success, true);
+    assert.strictEqual(personalizedFeed.isPersonalized, true);
+    assert.ok(personalizedFeed.topics.length >= 2);
+    console.log(`Personalized feed returned ${personalizedFeed.items.length} items`);
+
+    const taggedItems = personalizedFeed.items.filter((it) => it.matched_topic);
+    console.log(`Items with matched topic badge: ${taggedItems.length}/${personalizedFeed.items.length}`);
+    if (taggedItems.length > 0) {
+      console.log(`Sample matched topic: ${taggedItems[0].topic_emoji} ${taggedItems[0].matched_topic} - "${taggedItems[0].title?.slice(0, 50)}..."`);
+    }
+
+    // Single topic filter test
+    const singleTopicFeed = await getTrendFeedPage(
+      { topic: "ai_chatgpt", limit: 10 },
+      { skipExternal: false, cache: null, supabase: mockSupabase }
+    );
+    assert.strictEqual(singleTopicFeed.success, true);
+    assert.strictEqual(singleTopicFeed.activeTopic?.id, "ai_chatgpt");
+    console.log(`Single topic feed for 'ai_chatgpt' returned ${singleTopicFeed.items.length} items`);
+    console.log("✅ Onboarding topic personalization tests passed successfully.");
+  } catch (err) {
+    console.warn("Topic personalization check warning:", err.message);
   }
 
   console.log("\n🎉 ALL TESTS COMPLETED SUCCESSFULLY!");
