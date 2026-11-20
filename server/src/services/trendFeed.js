@@ -121,6 +121,12 @@ async function writeCache(cache, key, value) {
 }
 
 export function scoreTrendPost(post, now = new Date()) {
+  if (post.source_platform === "socialpilot") {
+    // SocialPilot posts are original user uploads: keep base score high and fresh
+    const publishedAt = new Date(post.published_at || post.ingested_at || now);
+    const ageHours = Math.max((now - publishedAt) / 36e5, 0.1);
+    return Number((50000 / Math.sqrt(ageHours)).toFixed(6));
+  }
   const publishedAt = new Date(post.published_at || post.ingested_at || now);
   const ageHours = Math.max((now - publishedAt) / 36e5, 1);
   const recencyDecay = Math.pow(0.5, ageHours / HALF_LIFE_HOURS);
@@ -152,6 +158,11 @@ function getInterestMatches(post, interests) {
 }
 
 function compareRankedPosts(a, b) {
+  if (a.is_user_post && !b.is_user_post) return -1;
+  if (!a.is_user_post && b.is_user_post) return 1;
+  if (a.source_platform === "socialpilot" && b.source_platform !== "socialpilot") return -1;
+  if (a.source_platform !== "socialpilot" && b.source_platform === "socialpilot") return 1;
+
   if (b.rank_score !== a.rank_score) return b.rank_score - a.rank_score;
   return String(b.id).localeCompare(String(a.id));
 }
@@ -615,6 +626,14 @@ export async function getTrendFeedPage(params = {}, options = {}) {
   // 1. Fetch DB candidates
   let dbRows = [];
   try {
+    // Explicitly query all recent SocialPilot community posts so they never get crowded out
+    const { data: spRows } = await supabase
+      .from("posts")
+      .select("id,source_platform,source_url,embed_html,thumbnail_url,caption,engagement_score,niche_tags,published_at,ingested_at,creator,creator_avatar_url,author_id,media_urls,media_type")
+      .eq("source_platform", "socialpilot")
+      .order("published_at", { ascending: false })
+      .limit(50);
+
     let query = supabase
       .from("posts")
       .select("id,source_platform,source_url,embed_html,thumbnail_url,caption,engagement_score,niche_tags,published_at,ingested_at,creator,creator_avatar_url,author_id,media_urls,media_type")
@@ -631,9 +650,12 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     }
 
     const { data, error } = await query.limit(CANDIDATE_LIMIT);
-    if (!error && data) {
-      dbRows = data.map(communityFeedPost);
+    const combined = [...(spRows || []), ...(data || [])];
+    const uniqueMap = new Map();
+    for (const r of combined) {
+      if (!uniqueMap.has(r.id)) uniqueMap.set(r.id, r);
     }
+    dbRows = Array.from(uniqueMap.values()).map(communityFeedPost);
   } catch (err) {
     console.warn("[TREND-FEED] DB query notice:", err?.message);
   }
@@ -732,6 +754,9 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     applyRankCursor(
       posts
         .map((post) => {
+          const isUserOwn = Boolean(options.userId && post.author_id === options.userId);
+          const isSocialpilot = post.source_platform === "socialpilot";
+
           const matchResult = calculateItemTopicMatch(post, allTopicDefs, allKeywords);
           const hasDirectTopic = Boolean(post.matched_topic || post.interest_topic);
           const matches = hasDirectTopic ? Math.max(matchResult.matchCount, 3) : matchResult.matchCount;
@@ -742,13 +767,24 @@ export async function getTrendFeedPage(params = {}, options = {}) {
             topicBoost = matches > 0 ? 500 + matches * 150 : 0.05;
           }
 
+          // Prioritize user's own uploads and SocialPilot community posts at top
+          let rankScore;
+          if (isUserOwn) {
+            rankScore = 200000000 + score;
+          } else if (isSocialpilot) {
+            rankScore = 100000000 + score;
+          } else {
+            rankScore = Number((score * topicBoost).toFixed(6));
+          }
+
           return {
             ...post,
-            matched_topic: post.matched_topic || matchResult.matchedTopic?.label || null,
+            matched_topic: post.matched_topic || matchResult.matchedTopic?.label || (isSocialpilot ? "Community Spark" : null),
             interest_topic: post.interest_topic || matchResult.matchedTopic?.id || null,
-            topic_emoji: post.topic_emoji || matchResult.matchedTopic?.emoji || null,
+            topic_emoji: post.topic_emoji || matchResult.matchedTopic?.emoji || (isSocialpilot ? "✨" : null),
             interest_match_count: matches,
-            rank_score: Number((score * topicBoost).toFixed(6)),
+            is_user_post: isUserOwn,
+            rank_score: rankScore,
           };
         })
         .sort(compareRankedPosts),
@@ -758,6 +794,24 @@ export async function getTrendFeedPage(params = {}, options = {}) {
   // Interleave different media formats and topics in authentic Pinterest waterfall fashion
   function interleavePinterestFeed(posts, targetLimit) {
     if (!posts || posts.length === 0) return [];
+
+    // Prioritize user's uploaded SocialPilot posts directly at the very top!
+    const communityPosts = posts.filter((p) => p.source_platform === "socialpilot");
+    const nonCommunityPosts = posts.filter((p) => p.source_platform !== "socialpilot");
+
+    const result = [];
+    const seenIds = new Set();
+
+    // Place community posts right at the top
+    for (const post of communityPosts) {
+      if (result.length < targetLimit && !seenIds.has(post.id)) {
+        result.push(post);
+        seenIds.add(post.id);
+      }
+    }
+
+    const remainingLimit = targetLimit - result.length;
+    if (remainingLimit <= 0) return result;
 
     const isPersonalized = targetTopics.length > 0 || searchTopicObjects.length > 0;
 
@@ -773,7 +827,7 @@ export async function getTrendFeedPage(params = {}, options = {}) {
         });
       });
 
-      posts.forEach((p) => {
+      nonCommunityPosts.forEach((p) => {
         const topicName = (p.matched_topic || "").toLowerCase();
         let bucket = topicBuckets.get(topicName);
         if (!bucket && p.interest_topic) {
@@ -794,8 +848,6 @@ export async function getTrendFeedPage(params = {}, options = {}) {
       const activeBuckets = Array.from(topicBuckets.values()).filter((b) => b.items.length > 0);
 
       if (activeBuckets.length > 0) {
-        const result = [];
-        const seenIds = new Set();
         let hasMore = true;
 
         while (result.length < targetLimit && hasMore) {
@@ -825,7 +877,7 @@ export async function getTrendFeedPage(params = {}, options = {}) {
         }
 
         if (result.length < targetLimit) {
-          for (const item of posts) {
+          for (const item of nonCommunityPosts) {
             if (result.length >= targetLimit) break;
             if (!seenIds.has(item.id)) {
               seenIds.add(item.id);
@@ -846,9 +898,8 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     const pinterest = [];
     const bluesky = [];
     const others = [];
-    const community = [];
 
-    posts.forEach((p) => {
+    nonCommunityPosts.forEach((p) => {
       // If personalized feed, prevent zero-match items from taking high-priority rotation slots
       const isRelevant = !isPersonalized || (p.interest_match_count && p.interest_match_count > 0);
       if (!isRelevant) {
@@ -856,9 +907,7 @@ export async function getTrendFeedPage(params = {}, options = {}) {
         return;
       }
 
-      if (p.source_platform === "socialpilot") {
-        community.push(p);
-      } else if (p.source_platform === "pinterest") {
+      if (p.source_platform === "pinterest") {
         pinterest.push(p);
       } else if (p.source_platform === "bluesky") {
         bluesky.push(p);
@@ -875,8 +924,7 @@ export async function getTrendFeedPage(params = {}, options = {}) {
       }
     });
 
-    const result = [];
-    const pattern = [pinterest, visuals, reels, bluesky, videos, community, pinterest, visuals, reels, bluesky, news, videos, others];
+    const pattern = [pinterest, visuals, reels, bluesky, videos, pinterest, visuals, reels, bluesky, news, videos, others];
     let hasMore = true;
 
     while (result.length < targetLimit && hasMore) {
@@ -884,8 +932,9 @@ export async function getTrendFeedPage(params = {}, options = {}) {
       for (const bucket of pattern) {
         if (bucket.length > 0 && result.length < targetLimit) {
           const item = bucket.shift();
-          if (item && !result.some((r) => r.id === item.id)) {
+          if (item && !seenIds.has(item.id)) {
             result.push(item);
+            seenIds.add(item.id);
             hasMore = true;
           }
         }
@@ -893,18 +942,20 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     }
 
     // Append any remaining items if limit not reached
-    const remaining = [...pinterest, ...bluesky, ...community, ...visuals, ...reels, ...videos, ...news, ...others];
+    const remaining = [...pinterest, ...bluesky, ...visuals, ...reels, ...videos, ...news, ...others];
     for (const item of remaining) {
       if (result.length >= targetLimit) break;
-      if (!result.some((r) => r.id === item.id)) {
+      if (!seenIds.has(item.id)) {
+        seenIds.add(item.id);
         result.push(item);
       }
     }
 
     if (result.length < targetLimit) {
-      for (const item of posts) {
+      for (const item of nonCommunityPosts) {
         if (result.length >= targetLimit) break;
-        if (!result.some((r) => r.id === item.id)) {
+        if (!seenIds.has(item.id)) {
+          seenIds.add(item.id);
           result.push(item);
         }
       }
@@ -913,7 +964,10 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     return result;
   }
 
-  const unseenRows = allCandidates.filter((post) => !seen.has(post.id));
+  const unseenRows = allCandidates.filter((post) => {
+    if (pageNumber === 1 && post.source_platform === "socialpilot") return true;
+    return !seen.has(post.id);
+  });
   let ranked;
   if (unseenRows.length >= limit) {
     ranked = rankPosts(unseenRows);

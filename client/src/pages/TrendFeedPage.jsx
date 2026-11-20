@@ -2566,6 +2566,7 @@ export default function TrendFeedPage() {
         <button
           type="button"
           onClick={() => {
+            seenRef.current.clear();
             pageRef.current = 1;
             cursorRef.current = null;
             loadPage({ reset: true });
@@ -2836,6 +2837,12 @@ export default function TrendFeedPage() {
         initialCaption={composerInitialData.caption}
         initialMediaUrls={composerInitialData.mediaUrls}
         initialHashtags={composerInitialData.hashtags}
+        onPostCreated={() => {
+          seenRef.current.clear();
+          pageRef.current = 1;
+          cursorRef.current = null;
+          loadPageRef.current && loadPageRef.current({ reset: true });
+        }}
       />
 
       {/* 9. ATTRACTIVE ONBOARDING & TUNE MODAL */}
