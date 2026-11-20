@@ -10,13 +10,27 @@ import {
   getBlueskyTrendingTopics,
   PINTEREST_CURATED_FEEDS,
 } from "../services/trends/trendSources.js";
+import {
+  getUserTrendPreferences,
+  saveUserTrendPreferences,
+  recordUserSearch,
+  getUserRecentSearches,
+  deleteUserSearch,
+  addSearchQueryToUserInterests,
+} from "../services/trends/userTrendPreferencesService.js";
 
 const router = express.Router();
 
 // 1. Unified paginated trend feed with rich multi-source filtering
 router.get("/trends/feed", authenticateUser, async (req, res) => {
   try {
-    const page = await getTrendFeedPage(req.query);
+    const userId = req.user?.userId || req.user?.id || null;
+    const search = req.query.search || req.query.q || null;
+    if (userId && search && String(search).trim()) {
+      recordUserSearch(userId, search).catch(() => {});
+      addSearchQueryToUserInterests(userId, search).catch(() => {});
+    }
+    const page = await getTrendFeedPage(req.query, { userId });
     res.json(page);
   } catch (error) {
     console.error("[TREND-FEED] Feed error:", error);
@@ -210,6 +224,75 @@ router.get("/trends/bluesky/trends", authenticateUser, async (req, res) => {
 // 9. Pinterest Channels & Curated Boards
 router.get("/trends/pinterest/channels", authenticateUser, (req, res) => {
   res.json({ success: true, channels: PINTEREST_CURATED_FEEDS });
+});
+
+// 10. User Trend Preferences (Read/Save to Supabase DB)
+router.get("/trends/preferences", authenticateUser, async (req, res) => {
+  try {
+    const userId = req.user?.userId || req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized" });
+    }
+    const preferences = await getUserTrendPreferences(userId);
+    res.json({ success: true, preferences });
+  } catch (err) {
+    console.error("[TREND-FEED] Get preferences error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post("/trends/preferences", authenticateUser, async (req, res) => {
+  try {
+    const userId = req.user?.userId || req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized" });
+    }
+    const { selectedTopicIds, interests, work, goal, onboarded } = req.body || {};
+    const result = await saveUserTrendPreferences(userId, { selectedTopicIds, interests, work, goal, onboarded });
+    res.json(result);
+  } catch (err) {
+    console.error("[TREND-FEED] Save preferences error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 11. User Search History & Auto-Add to Interests
+router.post("/trends/search-history", authenticateUser, async (req, res) => {
+  try {
+    const userId = req.user?.userId || req.user?.id;
+    const { query } = req.body || {};
+    let updatedPrefs = null;
+    if (userId && query) {
+      await recordUserSearch(userId, query);
+      updatedPrefs = await addSearchQueryToUserInterests(userId, query);
+    }
+    res.json({ success: true, preferences: updatedPrefs?.preferences || null });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get("/trends/search-history", authenticateUser, async (req, res) => {
+  try {
+    const userId = req.user?.userId || req.user?.id;
+    const searches = await getUserRecentSearches(userId, 10);
+    res.json({ success: true, searches });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.delete("/trends/search-history", authenticateUser, async (req, res) => {
+  try {
+    const userId = req.user?.userId || req.user?.id;
+    const query = req.body?.query || req.query?.query;
+    if (userId && query) {
+      await deleteUserSearch(userId, query);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 export default router;

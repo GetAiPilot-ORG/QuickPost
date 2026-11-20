@@ -1,3 +1,8 @@
+## 2026-11-20 — First-time per-user interest onboarding, isolated DB persistence & dynamic search topics
+- Fixed first-time visit onboarding modal: removed global browser-wide localStorage blocker (`GLOBAL_ONBOARDED_KEY`) and hardcoded default topic IDs, strictly scoping onboarding state and storage keys to each authenticated `userKey`.
+- Guaranteed per-user persistence: saved preferences, niche topics, and custom interests directly into Supabase Auth `user_metadata.trend_preferences` for each specific user UUID, completely isolating User A and User B.
+- Dynamic searched topics rail: added a dedicated curated & searched topics rail below the command bar displaying all selected interest topics plus auto-accumulated searched topics with 1-click filtering and removal.
+
 ## 2026-11-20 — Integrated YouTube Shorts into Trend Feed & Detail modal
 - Added dedicated `fetchYouTubeShorts` using SerpApi YouTube engine (`search_query: "trending #shorts viral"`, `gl: region`) with fallback to YouTube Data API videos, extracting vertical thumbnails (`frame0.jpg`), views, and short IDs.
 - Added "YouTube Shorts" format tab (`/icons/youtube-color-icon.svg`), `type=shorts` filtering in `trendFeed.js`, and distinct red `YouTube Short` badge on feed cards.

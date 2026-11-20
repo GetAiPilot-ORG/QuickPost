@@ -1843,7 +1843,7 @@ function CreatorInterestModal({
 // MAIN REDESIGNED TREND FEED COMPONENT
 // -----------------------------------------------------------------------------
 export default function TrendFeedPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Feed State
@@ -1883,12 +1883,11 @@ export default function TrendFeedPage() {
   // Hot Topics Radar Ticker
   const [hotTopics, setHotTopics] = useState([]);
 
-  const userKey = user?.userId || user?.email || "anon";
+  const userKey = user?.userId || user?.id || user?.email || "anon";
   const seenStorageKey = `qp_trend_seen_${userKey}`;
   const profileStorageKey = `qp_trend_profile_${userKey}`;
   const savedIdeasStorageKey = `qp_trend_saved_ideas_${userKey}`;
   const onboardingStorageKey = `qp_trend_onboarded_${userKey}`;
-  const GLOBAL_ONBOARDED_KEY = "qp_trend_onboarded_completed";
   const onboardingTriggeredRef = useRef(false);
 
   // Creator Personalization & Interest Onboarding
@@ -1916,7 +1915,7 @@ export default function TrendFeedPage() {
         return saved.selectedTopicIds;
       }
     } catch { }
-    return ["ai_chatgpt", "creator_economy", "marketing_growth"];
+    return [];
   });
   const [selectedTopicFilter, setSelectedTopicFilter] = useState(null);
   const [feedMode, setFeedMode] = useState("personalized");
@@ -2020,89 +2019,108 @@ export default function TrendFeedPage() {
       // ignore
     }
 
+    // Load local storage saved profile & saved ideas
     try {
       const savedIdeasRaw = JSON.parse(localStorage.getItem(savedIdeasStorageKey) || "[]");
       setSavedIdeas(Array.isArray(savedIdeasRaw) ? savedIdeasRaw : []);
     } catch {
       setSavedIdeas([]);
     }
+  }, [seenStorageKey, profileStorageKey, savedIdeasStorageKey]);
 
-    // First time visitor check: trigger the attractive interest selection popup ONLY ONCE
-    if (!onboardingTriggeredRef.current) {
-      try {
-        const globalOnboarded = localStorage.getItem(GLOBAL_ONBOARDED_KEY);
-        const userOnboarded = localStorage.getItem(onboardingStorageKey);
-        const anonOnboarded = localStorage.getItem("qp_trend_onboarded_anon");
-        const hasSavedProfile = localStorage.getItem(profileStorageKey);
-
-        const isAlreadyOnboarded =
-          globalOnboarded === "true" ||
-          userOnboarded === "true" ||
-          anonOnboarded === "true" ||
-          (hasSavedProfile && JSON.parse(hasSavedProfile)?.selectedTopicIds?.length > 0) ||
-          selectedTopicIds.length > 0;
-
-        if (isAlreadyOnboarded) {
-          onboardingTriggeredRef.current = true;
-        } else {
-          onboardingTriggeredRef.current = true;
-          const timer = setTimeout(() => {
-            setInterestModalMode("onboarding");
-            setShowInterestModal(true);
-          }, 500);
-          return () => clearTimeout(timer);
-        }
-      } catch {
-        // ignore
-      }
-    }
-  }, [seenStorageKey, profileStorageKey, savedIdeasStorageKey, onboardingStorageKey]);
-
-  // Load user's saved trend preferences & search history from Supabase DB
+  // Load user's saved trend preferences & search history strictly for this specific user from Supabase DB
   useEffect(() => {
     let isMounted = true;
+
     async function loadDbPreferences() {
       try {
         const { data } = await apiClient.get("/api/trends/preferences");
-        if (!isMounted || !data?.success || !data?.preferences) return;
+        if (!isMounted || !data?.success) return;
 
         const dbPrefs = data.preferences;
-        if (Array.isArray(dbPrefs.selectedTopicIds) && dbPrefs.selectedTopicIds.length > 0) {
+        const hasDbTopics = Array.isArray(dbPrefs?.selectedTopicIds) && dbPrefs.selectedTopicIds.length > 0;
+        const isDbOnboarded = Boolean(dbPrefs?.onboarded) || hasDbTopics || Boolean(dbPrefs?.isCustomized);
+
+        if (hasDbTopics) {
           setSelectedTopicIds(dbPrefs.selectedTopicIds);
           const dbProfile = {
             work: dbPrefs.work || "",
             interests: sanitizeSavedInterests(dbPrefs.interests || ""),
             goal: dbPrefs.goal || "",
             selectedTopicIds: dbPrefs.selectedTopicIds,
+            onboarded: true,
           };
           setProfile(dbProfile);
           setDraftProfile(dbProfile);
           try {
             localStorage.setItem(profileStorageKey, JSON.stringify(dbProfile));
             localStorage.setItem(onboardingStorageKey, "true");
-            localStorage.setItem(GLOBAL_ONBOARDED_KEY, "true");
-            localStorage.setItem("qp_trend_onboarded_anon", "true");
             onboardingTriggeredRef.current = true;
           } catch { }
-          // Dismiss onboarding modal if user already has saved preferences
-          setShowInterestModal((cur) => (interestModalMode === "onboarding" ? false : cur));
+          setShowInterestModal(false);
+        } else if (isDbOnboarded) {
+          try {
+            localStorage.setItem(onboardingStorageKey, "true");
+            onboardingTriggeredRef.current = true;
+          } catch { }
+          setShowInterestModal(false);
+        } else {
+          // FIRST TIME VISIT: User has not onboarded in database or localStorage
+          const userLocalOnboarded = localStorage.getItem(onboardingStorageKey);
+          if (userLocalOnboarded !== "true" && !onboardingTriggeredRef.current) {
+            onboardingTriggeredRef.current = true;
+            const timer = setTimeout(() => {
+              if (isMounted) {
+                setInterestModalMode("onboarding");
+                setShowInterestModal(true);
+              }
+            }, 300);
+            return () => clearTimeout(timer);
+          }
         }
-        if (Array.isArray(dbPrefs.recentSearches)) {
+
+        if (Array.isArray(dbPrefs?.recentSearches) && dbPrefs.recentSearches.length > 0) {
           setRecentDbSearches(dbPrefs.recentSearches);
         }
       } catch (err) {
-        // Fallback gracefully to localStorage
+        // Fallback to per-user localStorage check if network / auth fails
+        const userLocalOnboarded = localStorage.getItem(onboardingStorageKey);
+        if (userLocalOnboarded !== "true" && !onboardingTriggeredRef.current) {
+          onboardingTriggeredRef.current = true;
+          const timer = setTimeout(() => {
+            if (isMounted) {
+              setInterestModalMode("onboarding");
+              setShowInterestModal(true);
+            }
+          }, 300);
+          return () => clearTimeout(timer);
+        }
       }
     }
 
-    if (user?.userId || user?.email) {
-      loadDbPreferences();
+    if (!authLoading) {
+      if (user?.userId || user?.email) {
+        loadDbPreferences();
+      } else {
+        // Anonymous visitor first-time check
+        const anonOnboarded = localStorage.getItem(onboardingStorageKey);
+        if (anonOnboarded !== "true" && !onboardingTriggeredRef.current) {
+          onboardingTriggeredRef.current = true;
+          const timer = setTimeout(() => {
+            if (isMounted) {
+              setInterestModalMode("onboarding");
+              setShowInterestModal(true);
+            }
+          }, 300);
+          return () => clearTimeout(timer);
+        }
+      }
     }
 
     return () => {
       isMounted = false;
     };
-  }, [user?.userId, user?.email, profileStorageKey, onboardingStorageKey, interestModalMode]);
+  }, [user?.userId, user?.email, authLoading, profileStorageKey, onboardingStorageKey]);
 
   // Automatically add search topic to DB, to user's interests, and to active topics rail
   const registerSearchTopic = useCallback((rawQuery) => {
@@ -2131,6 +2149,22 @@ export default function TrendFeedPage() {
         } catch { }
         return next;
       });
+    } else {
+      // Custom search topic (e.g. Spiderman, Batman) - add to user's interests keywords
+      setProfile((prev) => {
+        const curList = prev?.interests ? prev.interests.split(",").map((s) => s.trim()).filter(Boolean) : [];
+        if (!curList.some((s) => s.toLowerCase() === cleanLower)) {
+          const nextInterests = [...curList, term].join(", ");
+          const next = { ...prev, interests: nextInterests };
+          try {
+            const stored = JSON.parse(localStorage.getItem(profileStorageKey) || "{}");
+            stored.interests = nextInterests;
+            localStorage.setItem(profileStorageKey, JSON.stringify(stored));
+          } catch { }
+          return next;
+        }
+        return prev;
+      });
     }
 
     // 2. Add to recent searched topics (avoid prefix fragments)
@@ -2144,21 +2178,34 @@ export default function TrendFeedPage() {
       return [term, ...filtered].slice(0, 10);
     });
 
-    // 3. Save to database (/api/trends/search-history records query in DB)
+    // 3. Save to database (/api/trends/search-history records query in DB and adds to user's interests)
     apiClient
       .post("/api/trends/search-history", { query: term })
       .then((res) => {
-        const returnedIds = res.data?.preferences?.selectedTopicIds;
-        if (Array.isArray(returnedIds) && returnedIds.length > 0) {
-          setSelectedTopicIds((prev) => {
-            const merged = Array.from(new Set([...prev, ...returnedIds]));
-            try {
-              const stored = JSON.parse(localStorage.getItem(profileStorageKey) || "{}");
-              stored.selectedTopicIds = merged;
-              localStorage.setItem(profileStorageKey, JSON.stringify(stored));
-            } catch { }
-            return merged;
-          });
+        const prefs = res.data?.preferences;
+        if (prefs) {
+          if (Array.isArray(prefs.selectedTopicIds) && prefs.selectedTopicIds.length > 0) {
+            setSelectedTopicIds((prev) => {
+              const merged = Array.from(new Set([...prev, ...prefs.selectedTopicIds]));
+              try {
+                const stored = JSON.parse(localStorage.getItem(profileStorageKey) || "{}");
+                stored.selectedTopicIds = merged;
+                localStorage.setItem(profileStorageKey, JSON.stringify(stored));
+              } catch { }
+              return merged;
+            });
+          }
+          if (prefs.interests) {
+            setProfile((prev) => {
+              const next = { ...prev, interests: prefs.interests };
+              try {
+                const stored = JSON.parse(localStorage.getItem(profileStorageKey) || "{}");
+                stored.interests = prefs.interests;
+                localStorage.setItem(profileStorageKey, JSON.stringify(stored));
+              } catch { }
+              return next;
+            });
+          }
         }
       })
       .catch(() => { });
@@ -2391,8 +2438,6 @@ export default function TrendFeedPage() {
   const handleSaveInterests = (nextSelectedTopicIds = selectedTopicIds, updatedProfile = draftProfile) => {
     try {
       localStorage.setItem(onboardingStorageKey, "true");
-      localStorage.setItem(GLOBAL_ONBOARDED_KEY, "true");
-      localStorage.setItem("qp_trend_onboarded_anon", "true");
       onboardingTriggeredRef.current = true;
     } catch { }
 
@@ -2404,6 +2449,7 @@ export default function TrendFeedPage() {
       interests: customInterests,
       goal: updatedProfile?.goal?.trim() || "",
       selectedTopicIds: nextSelectedTopicIds,
+      onboarded: true,
     };
 
     setProfile(nextProfile);
@@ -2416,7 +2462,7 @@ export default function TrendFeedPage() {
       // ignore
     }
 
-    // Persist to Supabase Database
+    // Persist strictly to Supabase for this user
     apiClient
       .post("/api/trends/preferences", nextProfile)
       .catch((err) => console.warn("[TREND-FEED] Could not save preferences to database:", err?.message));
@@ -2446,13 +2492,11 @@ export default function TrendFeedPage() {
   const handleSkipInterests = () => {
     try {
       localStorage.setItem(onboardingStorageKey, "true");
-      localStorage.setItem(GLOBAL_ONBOARDED_KEY, "true");
-      localStorage.setItem("qp_trend_onboarded_anon", "true");
       onboardingTriggeredRef.current = true;
     } catch {
       // ignore
     }
-    apiClient.post("/api/trends/preferences", { selectedTopicIds: [] }).catch(() => { });
+    apiClient.post("/api/trends/preferences", { selectedTopicIds: [], onboarded: true }).catch(() => { });
     setShowInterestModal(false);
   };
 
@@ -2460,10 +2504,9 @@ export default function TrendFeedPage() {
     if (interestModalMode === "onboarding") {
       try {
         localStorage.setItem(onboardingStorageKey, "true");
-        localStorage.setItem(GLOBAL_ONBOARDED_KEY, "true");
-        localStorage.setItem("qp_trend_onboarded_anon", "true");
         onboardingTriggeredRef.current = true;
       } catch { }
+      apiClient.post("/api/trends/preferences", { selectedTopicIds: selectedTopicIds, onboarded: true }).catch(() => { });
     }
     setShowInterestModal(false);
   };
@@ -2750,13 +2793,118 @@ export default function TrendFeedPage() {
                   setSearchQuery("");
                   setDebouncedSearch("");
                 }}
-                className="text-[11px] font-semibold text-sky-700 dark:text-sky-300 hover:underline px-1.5 py-0.5 transition-colors flex-shrink-0"
+                className="text-[11px] font-semibold text-sky-700 dark:text-sky-300 hover:underline px-1.5 py-0.5 transition-colors flex-shrink-0 cursor-pointer"
               >
                 Clear
               </button>
             </div>
           )}
         </div>
+
+        {/* 2B. USER'S CURATED & SEARCHED TOPICS RAIL */}
+        {totalTopicsCount > 0 && (
+          <div className="rounded-xl bg-white/95 dark:bg-[#161B22]/95 backdrop-blur-md border border-black/[0.07] dark:border-white/[0.08] shadow-xs px-2.5 sm:px-3 py-1.5 mb-2 sm:mb-2.5">
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+              {/* All Topics Combined Pill */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedTopicFilter(null);
+                  if (debouncedSearch) {
+                    setSearchQuery("");
+                    setDebouncedSearch("");
+                  }
+                }}
+                className={`h-7 px-3 rounded-lg text-xs font-semibold whitespace-nowrap transition-all inline-flex items-center gap-1.5 flex-shrink-0 cursor-pointer ${
+                  selectedTopicFilter === null && !debouncedSearch
+                    ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-950 shadow-xs"
+                    : "bg-neutral-100/70 hover:bg-neutral-200/80 dark:bg-neutral-800/60 dark:hover:bg-neutral-700/80 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
+                }`}
+              >
+                <Sparkles size={11} className={selectedTopicFilter === null && !debouncedSearch ? "text-amber-400 fill-amber-400" : "text-neutral-400"} />
+                <span>All My Topics ({totalTopicsCount})</span>
+              </button>
+
+              {/* Selected Onboarding Topics */}
+              {selectedTopicIds.map((topicId) => {
+                const topicDef = TREND_INTEREST_TOPICS.find((t) => t.id === topicId);
+                if (!topicDef) return null;
+                const isSelected = selectedTopicFilter === topicId;
+                return (
+                  <button
+                    key={topicId}
+                    type="button"
+                    onClick={() => {
+                      const next = isSelected ? null : topicId;
+                      setSelectedTopicFilter(next);
+                      if (debouncedSearch) {
+                        setSearchQuery("");
+                        setDebouncedSearch("");
+                      }
+                    }}
+                    className={`h-7 px-2.5 sm:px-3 rounded-lg text-xs font-medium whitespace-nowrap transition-all inline-flex items-center gap-1.5 flex-shrink-0 border cursor-pointer ${
+                      isSelected
+                        ? "bg-sky-600 text-white border-sky-600 font-bold shadow-xs"
+                        : "bg-neutral-100/70 hover:bg-neutral-200/80 dark:bg-neutral-800/60 dark:hover:bg-neutral-700/80 text-neutral-700 dark:text-neutral-300 border-black/[0.04] dark:border-white/[0.06]"
+                    }`}
+                  >
+                    <span>{topicDef.emoji}</span>
+                    <span>{topicDef.label}</span>
+                  </button>
+                );
+              })}
+
+              {/* Searched Topics (Auto Added-On!) */}
+              {recentDbSearches.map((term) => {
+                const isCurrentSearch = debouncedSearch.toLowerCase() === term.toLowerCase();
+                return (
+                  <div
+                    key={term}
+                    className={`h-7 pl-2.5 pr-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all inline-flex items-center gap-1 flex-shrink-0 border ${
+                      isCurrentSearch
+                        ? "bg-amber-500 text-white border-amber-500 font-bold shadow-xs"
+                        : "bg-neutral-100/70 hover:bg-neutral-200/80 dark:bg-neutral-800/60 dark:hover:bg-neutral-700/80 text-neutral-700 dark:text-neutral-300 border-black/[0.04] dark:border-white/[0.06]"
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isCurrentSearch) {
+                          setSearchQuery("");
+                          setDebouncedSearch("");
+                        } else {
+                          setSelectedTopicFilter(null);
+                          setSearchQuery(term);
+                          setDebouncedSearch(term);
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      <Search size={10} className={isCurrentSearch ? "text-white" : "text-amber-500"} />
+                      <span>{term}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRecentDbSearches((prev) => prev.filter((q) => q !== term));
+                        apiClient.delete("/api/trends/search-history", { data: { query: term } }).catch(() => { });
+                        if (debouncedSearch.toLowerCase() === term.toLowerCase()) {
+                          setSearchQuery("");
+                          setDebouncedSearch("");
+                        }
+                      }}
+                      className="p-0.5 hover:bg-black/10 dark:hover:bg-white/10 rounded-md transition-colors cursor-pointer text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
+                      title={`Remove "${term}"`}
+                    >
+                      <X size={10} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* 3. TREND FEED CONTENT */}
         {error ? (

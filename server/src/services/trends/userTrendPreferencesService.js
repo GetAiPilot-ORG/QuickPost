@@ -1,6 +1,6 @@
 /**
  * User Trend Preferences & Search History Service
- * Persists creator niche topics and search queries to Supabase database,
+ * Persists creator niche topics and search queries strictly per-user to Supabase,
  * and personalizes the live trend feed based on both topics and search history.
  */
 
@@ -9,19 +9,23 @@ import { getTopicDefinition } from "./trendTopics.js";
 
 // Fast in-memory cache to prevent redundant DB hits on rapid infinite-scroll triggers
 const preferencesCache = new Map();
-const PREF_CACHE_TTL_MS = 45 * 1000; // 45 seconds
+const PREF_CACHE_TTL_MS = 30 * 1000; // 30 seconds
 
 const searchHistoryCache = new Map();
-const SEARCH_CACHE_TTL_MS = 60 * 1000; // 60 seconds
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isValidUUID(id) {
+  return typeof id === "string" && UUID_REGEX.test(id.trim());
+}
 
 /**
- * Get user's saved trend preferences & recent searches from Supabase DB
+ * Get user's saved trend preferences & recent searches from Supabase
  */
 export async function getUserTrendPreferences(userId) {
   if (!userId) return null;
 
   const now = Date.now();
-  const cached = preferencesCache.get(userId);
+  const cached = preferencesCache.get(String(userId));
   if (cached && now - cached._cachedAt < PREF_CACHE_TTL_MS) {
     return cached.data;
   }
@@ -32,54 +36,65 @@ export async function getUserTrendPreferences(userId) {
     work: "",
     goal: "",
     recentSearches: [],
+    onboarded: false,
     isCustomized: false,
   };
 
   try {
-    // 1. Query user_trend_preferences table
-    const { data, error } = await supabase
-      .from("user_trend_preferences")
-      .select("selected_topic_ids, interests, work, goal, updated_at")
-      .eq("user_id", String(userId))
-      .maybeSingle();
-
-    if (!error && data) {
-      preferences.selectedTopicIds = Array.isArray(data.selected_topic_ids) ? data.selected_topic_ids : [];
-      let loadedInterests = data.interests || "";
-      // Clean legacy search query accumulation bug if present
-      if (loadedInterests.includes("gta6") && loadedInterests.includes("footbal")) {
-        loadedInterests = "";
-        supabase
-          .from("user_trend_preferences")
-          .update({ interests: "" })
-          .eq("user_id", String(userId))
-          .then(() => {})
-          .catch(() => {});
-      }
-      preferences.interests = loadedInterests;
-      preferences.work = data.work || "";
-      preferences.goal = data.goal || "";
-      preferences.isCustomized = preferences.selectedTopicIds.length > 0 || Boolean(preferences.interests);
-    } else if (error && error.code !== "PGRST116") {
-      // If table doesn't exist yet, fallback to Supabase Auth metadata
+    // 1. Primary & direct: Read from Supabase Auth user_metadata for this specific user
+    if (isValidUUID(userId)) {
       try {
-        const { data: authUser } = await supabase.auth.admin.getUserById(userId);
+        const { data: authUser } = await supabase.auth.admin.getUserById(String(userId));
         const meta = authUser?.user?.user_metadata?.trend_preferences;
         if (meta) {
           preferences.selectedTopicIds = Array.isArray(meta.selectedTopicIds) ? meta.selectedTopicIds : [];
-          preferences.interests = meta.interests || "";
-          preferences.work = meta.work || "";
-          preferences.goal = meta.goal || "";
-          preferences.isCustomized = preferences.selectedTopicIds.length > 0 || Boolean(preferences.interests);
+          preferences.interests = typeof meta.interests === "string" ? meta.interests : "";
+          preferences.work = typeof meta.work === "string" ? meta.work : "";
+          preferences.goal = typeof meta.goal === "string" ? meta.goal : "";
+          preferences.recentSearches = Array.isArray(meta.recentSearches) ? meta.recentSearches : [];
+          preferences.onboarded = Boolean(meta.onboarded);
+          preferences.isCustomized =
+            preferences.selectedTopicIds.length > 0 ||
+            Boolean(preferences.interests) ||
+            preferences.onboarded;
         }
-      } catch {}
+      } catch (authErr) {
+        console.warn("[USER-TRENDS] Auth metadata read notice:", authErr.message);
+      }
     }
 
-    // 2. Fetch user's recent trend searches
-    const recentSearches = await getUserRecentSearches(userId, 10);
-    preferences.recentSearches = recentSearches;
+    // 2. Also check public.user_trend_preferences table if it exists
+    try {
+      const { data, error } = await supabase
+        .from("user_trend_preferences")
+        .select("selected_topic_ids, interests, work, goal, updated_at")
+        .eq("user_id", String(userId))
+        .maybeSingle();
 
-    preferencesCache.set(userId, { data: preferences, _cachedAt: now });
+      if (!error && data) {
+        if (Array.isArray(data.selected_topic_ids) && data.selected_topic_ids.length > 0) {
+          preferences.selectedTopicIds = data.selected_topic_ids;
+        }
+        if (data.interests) preferences.interests = data.interests;
+        if (data.work) preferences.work = data.work;
+        if (data.goal) preferences.goal = data.goal;
+        preferences.isCustomized = true;
+      }
+    } catch {
+      // Table may not exist yet, user_metadata is authoritative
+    }
+
+    // 3. Fallback for recent searches if not in metadata
+    if (preferences.recentSearches.length === 0) {
+      try {
+        const dbSearches = await getUserRecentSearchesFromTable(userId, 10);
+        if (dbSearches.length > 0) {
+          preferences.recentSearches = dbSearches;
+        }
+      } catch { }
+    }
+
+    preferencesCache.set(String(userId), { data: preferences, _cachedAt: now });
     return preferences;
   } catch (err) {
     console.warn("[USER-TRENDS] Error fetching user preferences:", err.message);
@@ -88,55 +103,76 @@ export async function getUserTrendPreferences(userId) {
 }
 
 /**
- * Save user's selected trend topics & profile to Supabase DB
+ * Save user's selected trend topics & profile strictly for that specific user
  */
-export async function saveUserTrendPreferences(userId, { selectedTopicIds = [], interests = "", work = "", goal = "" } = {}) {
+export async function saveUserTrendPreferences(
+  userId,
+  { selectedTopicIds = [], interests = "", work = "", goal = "", recentSearches = null, onboarded = true } = {}
+) {
   if (!userId) throw new Error("userId is required to save preferences");
 
+  const cleanUserId = String(userId);
   const cleanTopicIds = Array.isArray(selectedTopicIds) ? selectedTopicIds.filter(Boolean) : [];
   const cleanInterests = String(interests || "").trim();
   const cleanWork = String(work || "").trim();
   const cleanGoal = String(goal || "").trim();
-
-  const payload = {
-    user_id: String(userId),
-    selected_topic_ids: cleanTopicIds,
-    interests: cleanInterests,
-    work: cleanWork,
-    goal: cleanGoal,
-    updated_at: new Date().toISOString(),
-  };
+  const nowIso = new Date().toISOString();
 
   try {
-    // 1. Upsert into public.user_trend_preferences table
-    const { data, error } = await supabase
-      .from("user_trend_preferences")
-      .upsert(payload, { onConflict: "user_id" })
-      .select()
-      .maybeSingle();
+    let currentMeta = {};
+    let existingTrend = {};
+    let nextRecentSearches = Array.isArray(recentSearches) ? recentSearches : [];
 
-    if (error) {
-      console.warn("[USER-TRENDS] Table upsert notice:", error.message);
-      // Fallback: save into Supabase auth user_metadata for persistence
+    if (isValidUUID(cleanUserId)) {
       try {
-        await supabase.auth.admin.updateUserById(userId, {
-          user_metadata: {
-            trend_preferences: {
-              selectedTopicIds: cleanTopicIds,
-              interests: cleanInterests,
-              work: cleanWork,
-              goal: cleanGoal,
-              updatedAt: payload.updated_at,
-            },
-          },
-        });
-      } catch (authErr) {
-        console.warn("[USER-TRENDS] Auth metadata fallback notice:", authErr.message);
+        const { data: authUser } = await supabase.auth.admin.getUserById(cleanUserId);
+        currentMeta = authUser?.user?.user_metadata || {};
+        existingTrend = currentMeta.trend_preferences || {};
+      } catch { }
+
+      if (!Array.isArray(recentSearches) && Array.isArray(existingTrend.recentSearches)) {
+        nextRecentSearches = existingTrend.recentSearches;
       }
+
+      const updatedTrend = {
+        ...existingTrend,
+        selectedTopicIds: cleanTopicIds,
+        interests: cleanInterests,
+        work: cleanWork,
+        goal: cleanGoal,
+        recentSearches: nextRecentSearches,
+        onboarded: Boolean(onboarded),
+        updatedAt: nowIso,
+      };
+
+      // Save directly into Supabase Auth user_metadata for this specific user
+      await supabase.auth.admin.updateUserById(cleanUserId, {
+        user_metadata: {
+          ...currentMeta,
+          trend_preferences: updatedTrend,
+        },
+      });
+    }
+
+    // 3. Also upsert into public.user_trend_preferences table if available
+    try {
+      await supabase.from("user_trend_preferences").upsert(
+        {
+          user_id: cleanUserId,
+          selected_topic_ids: cleanTopicIds,
+          interests: cleanInterests,
+          work: cleanWork,
+          goal: cleanGoal,
+          updated_at: nowIso,
+        },
+        { onConflict: "user_id" }
+      );
+    } catch {
+      // Ignore if table does not exist
     }
 
     // Invalidate local in-memory cache
-    preferencesCache.delete(userId);
+    preferencesCache.delete(cleanUserId);
 
     return {
       success: true,
@@ -145,54 +181,77 @@ export async function saveUserTrendPreferences(userId, { selectedTopicIds = [], 
         interests: cleanInterests,
         work: cleanWork,
         goal: cleanGoal,
-        isCustomized: cleanTopicIds.length > 0 || Boolean(cleanInterests),
+        recentSearches: nextRecentSearches,
+        onboarded: Boolean(onboarded),
+        isCustomized: cleanTopicIds.length > 0 || Boolean(cleanInterests) || Boolean(onboarded),
       },
     };
   } catch (err) {
-    console.error("[USER-TRENDS] Error saving preferences:", err.message);
+    console.error("[USER-TRENDS] Error saving preferences for user:", cleanUserId, err.message);
     throw err;
   }
 }
 
 /**
- * Record a search query made by the user to Supabase DB
+ * Record a search query made by the user
  */
 export async function recordUserSearch(userId, query) {
   if (!userId || !query || typeof query !== "string") return null;
 
+  const cleanUserId = String(userId);
   const cleanQuery = query.trim().slice(0, 150);
   if (cleanQuery.length < 2) return null;
 
   const now = Date.now();
-
-  // Avoid spamming identical search query within 2 minutes
-  const userRecent = searchHistoryCache.get(userId);
-  if (userRecent && userRecent.lastQuery === cleanQuery.toLowerCase() && now - userRecent.timestamp < 120000) {
+  const userRecent = searchHistoryCache.get(cleanUserId);
+  if (userRecent && userRecent.lastQuery === cleanQuery.toLowerCase() && now - userRecent.timestamp < 30000) {
     return null;
   }
 
   try {
-    // 1. Insert into public.user_trend_searches
-    const { error } = await supabase.from("user_trend_searches").insert({
-      user_id: String(userId),
-      query: cleanQuery,
-      created_at: new Date().toISOString(),
-    });
+    let updatedSearches = [];
 
-    if (error) {
-      console.warn("[USER-TRENDS] Search history table insert notice:", error.message);
+    // 1. Update user_metadata.trend_preferences.recentSearches if valid UUID
+    if (isValidUUID(cleanUserId)) {
+      try {
+        const { data: authUser } = await supabase.auth.admin.getUserById(cleanUserId);
+        const currentMeta = authUser?.user?.user_metadata || {};
+        const currentTrend = currentMeta.trend_preferences || {};
+        const existingSearches = Array.isArray(currentTrend.recentSearches) ? currentTrend.recentSearches : [];
+
+        const lowerQuery = cleanQuery.toLowerCase();
+        const filtered = existingSearches.filter((q) => q.toLowerCase() !== lowerQuery);
+        updatedSearches = [cleanQuery, ...filtered].slice(0, 15);
+
+        await supabase.auth.admin.updateUserById(cleanUserId, {
+          user_metadata: {
+            ...currentMeta,
+            trend_preferences: {
+              ...currentTrend,
+              recentSearches: updatedSearches,
+              updatedAt: new Date().toISOString(),
+            },
+          },
+        });
+      } catch { }
     }
 
-    // Update in-memory search cache
-    searchHistoryCache.set(userId, {
-      lastQuery: cleanQuery.toLowerCase(),
+    // 2. Also try insert into table if exists
+    try {
+      await supabase.from("user_trend_searches").insert({
+        user_id: cleanUserId,
+        query: cleanQuery,
+        created_at: new Date().toISOString(),
+      });
+    } catch { }
+
+    searchHistoryCache.set(cleanUserId, {
+      lastQuery: lowerQuery,
       timestamp: now,
     });
+    preferencesCache.delete(cleanUserId);
 
-    // Invalidate preferences cache so recent searches refresh
-    preferencesCache.delete(userId);
-
-    return { success: true, query: cleanQuery };
+    return { success: true, query: cleanQuery, recentSearches: updatedSearches };
   } catch (err) {
     console.warn("[USER-TRENDS] Error recording search:", err.message);
     return null;
@@ -200,17 +259,18 @@ export async function recordUserSearch(userId, query) {
 }
 
 /**
- * Automatically add a searched topic to user's saved interests in Supabase DB
+ * Automatically add a searched topic to user's saved interests in Supabase
  * and update their selected_topic_ids if it matches a registered topic.
  */
 export async function addSearchQueryToUserInterests(userId, query) {
   if (!userId || !query || typeof query !== "string") return null;
 
+  const cleanUserId = String(userId);
   const cleanQuery = query.trim().replace(/^#/, "");
   if (cleanQuery.length < 2) return null;
 
   try {
-    const currentPrefs = await getUserTrendPreferences(userId);
+    const currentPrefs = await getUserTrendPreferences(cleanUserId);
     let selectedTopicIds = Array.isArray(currentPrefs?.selectedTopicIds) ? [...currentPrefs.selectedTopicIds] : [];
     let interestsList = currentPrefs?.interests
       ? currentPrefs.interests.split(",").map((s) => s.trim()).filter(Boolean)
@@ -218,18 +278,29 @@ export async function addSearchQueryToUserInterests(userId, query) {
 
     // Check if the query matches a predefined registered topic
     const matched = getTopicDefinition(cleanQuery);
-    if (matched && matched.id && !selectedTopicIds.includes(matched.id)) {
-      selectedTopicIds.push(matched.id);
+    if (matched && matched.id) {
+      if (!selectedTopicIds.includes(matched.id)) {
+        selectedTopicIds.push(matched.id);
+      }
+    } else {
+      // Add custom search query to user's custom interests keywords!
+      const lowerQuery = cleanQuery.toLowerCase();
+      const alreadyHas = interestsList.some((item) => item.toLowerCase() === lowerQuery);
+      if (!alreadyHas) {
+        interestsList.push(cleanQuery);
+      }
     }
 
-    const saved = await saveUserTrendPreferences(userId, {
+    const nextInterests = interestsList.join(", ");
+    const saved = await saveUserTrendPreferences(cleanUserId, {
       selectedTopicIds,
-      interests: currentPrefs?.interests || "",
+      interests: nextInterests,
       work: currentPrefs?.work || "",
       goal: currentPrefs?.goal || "",
+      onboarded: true,
     });
 
-    preferencesCache.delete(userId);
+    preferencesCache.delete(cleanUserId);
     return saved;
   } catch (err) {
     console.warn("[USER-TRENDS] Error adding search to interests:", err.message);
@@ -240,9 +311,13 @@ export async function addSearchQueryToUserInterests(userId, query) {
 /**
  * Get recent search terms for a user
  */
-export async function getUserRecentSearches(userId, limit = 6) {
+export async function getUserRecentSearches(userId, limit = 10) {
   if (!userId) return [];
+  const prefs = await getUserTrendPreferences(userId);
+  return Array.isArray(prefs?.recentSearches) ? prefs.recentSearches.slice(0, limit) : [];
+}
 
+async function getUserRecentSearchesFromTable(userId, limit = 10) {
   try {
     const { data, error } = await supabase
       .from("user_trend_searches")
@@ -252,7 +327,6 @@ export async function getUserRecentSearches(userId, limit = 6) {
       .limit(limit * 2);
 
     if (!error && Array.isArray(data)) {
-      // Deduplicate queries while preserving recency order
       const seen = new Set();
       const unique = [];
       for (const row of data) {
@@ -266,28 +340,52 @@ export async function getUserRecentSearches(userId, limit = 6) {
       }
       return unique;
     }
-
     return [];
-  } catch (err) {
-    console.warn("[USER-TRENDS] Error reading recent searches:", err.message);
+  } catch {
     return [];
   }
 }
 
 /**
- * Delete a search query for a user from Supabase DB
+ * Delete a search query for a user from Supabase
  */
 export async function deleteUserSearch(userId, query) {
   if (!userId || !query || typeof query !== "string") return false;
-  try {
-    const cleanQuery = query.trim();
-    await supabase
-      .from("user_trend_searches")
-      .delete()
-      .eq("user_id", String(userId))
-      .ilike("query", cleanQuery);
+  const cleanUserId = String(userId);
+  const cleanQuery = query.trim().toLowerCase();
 
-    preferencesCache.delete(userId);
+  try {
+    if (isValidUUID(cleanUserId)) {
+      try {
+        const { data: authUser } = await supabase.auth.admin.getUserById(cleanUserId);
+        const currentMeta = authUser?.user?.user_metadata || {};
+        const currentTrend = currentMeta.trend_preferences || {};
+        const existingSearches = Array.isArray(currentTrend.recentSearches) ? currentTrend.recentSearches : [];
+
+        const updated = existingSearches.filter((q) => q.toLowerCase() !== cleanQuery);
+
+        await supabase.auth.admin.updateUserById(cleanUserId, {
+          user_metadata: {
+            ...currentMeta,
+            trend_preferences: {
+              ...currentTrend,
+              recentSearches: updated,
+              updatedAt: new Date().toISOString(),
+            },
+          },
+        });
+      } catch { }
+    }
+
+    try {
+      await supabase
+        .from("user_trend_searches")
+        .delete()
+        .eq("user_id", cleanUserId)
+        .ilike("query", query.trim());
+    } catch { }
+
+    preferencesCache.delete(cleanUserId);
     return true;
   } catch (err) {
     console.warn("[USER-TRENDS] Error deleting search:", err.message);
