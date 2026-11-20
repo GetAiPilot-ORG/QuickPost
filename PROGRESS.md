@@ -1,3 +1,8 @@
+## 2026-11-20 — Guaranteed equal round-robin card distribution across all feed columns
+- Implemented pure sequential round-robin distribution (`items[i % colCount]`): as items load, they are immediately spread 1-by-1 across all columns equally.
+- Guarantees no column can ever be more than 1 card ahead of any other column (eliminating the 4-in-one, 0-in-another bug).
+- Flex-based multi-column layout guarantees equal column widths and natural Pinterest vertical stacking. Client built cleanly in 4.39s.
+
 ## 2026-11-20 — Integrated react-masonry-css for bulletproof Pinterest waterfall layout
 - Replaced manual array partitioning with production-grade `react-masonry-css` matching the rest of the application.
 - Eliminates blank gaps and orphaned column stops completely by dynamically balancing feed items and loading skeletons across columns; all lines now advance evenly side by side. Client built cleanly in 4.53s.

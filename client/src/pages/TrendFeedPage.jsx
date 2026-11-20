@@ -1,5 +1,4 @@
 import { useSearchParams } from "react-router-dom";
-import Masonry from "react-masonry-css";
 import { ScheduledMediaGallery } from "../components/ScheduledMedia";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -58,14 +57,28 @@ const SKELETON_HEIGHTS = [
   "h-60 sm:h-68",
 ];
 
-const TREND_MASONRY_BREAKPOINTS = {
-  default: 4,
-  1600: 4,
-  1280: 4,
-  1024: 3,
-  768: 2,
-  500: 1,
-};
+function useFeedColumns() {
+  const [colCount, setColCount] = useState(() => {
+    if (typeof window === "undefined") return 4;
+    const w = window.innerWidth;
+    if (w < 640) return 1;
+    if (w < 1024) return 2;
+    if (w < 1280) return 3;
+    return 4;
+  });
+
+  useEffect(() => {
+    const onResize = () => {
+      const w = window.innerWidth;
+      const next = w < 640 ? 1 : w < 1024 ? 2 : w < 1280 ? 3 : 4;
+      setColCount(next);
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  return colCount;
+}
 
 const FORMAT_TABS = [
   { id: "all", label: "All Trends" },
@@ -1787,6 +1800,17 @@ export default function TrendFeedPage() {
   const [initialLoaded, setInitialLoaded] = useState(false);
   const [error, setError] = useState("");
 
+  const colCount = useFeedColumns();
+
+  // Pure equal round-robin distribution across all columns (Pinterest Waterfall)
+  const columns = useMemo(() => {
+    const cols = Array.from({ length: colCount }, () => []);
+    items.forEach((item, index) => {
+      cols[index % colCount].push(item);
+    });
+    return cols;
+  }, [items, colCount]);
+
   // Filters State
   const [selectedFormat, setSelectedFormat] = useState("all");
   const [selectedNiche, setSelectedNiche] = useState("all");
@@ -2693,36 +2717,37 @@ export default function TrendFeedPage() {
             </button>
           </div>
         ) : (
-          /* Authentic Pinterest Multi-Column Masonry (Natural Proportions, Perfectly Balanced Lines) */
-          <Masonry
-            breakpointCols={TREND_MASONRY_BREAKPOINTS}
-            className="flex w-auto -ml-4 sm:-ml-5 items-start"
-            columnClassName="pl-4 sm:pl-5 space-y-4 sm:space-y-5 flex-1 min-w-0"
-          >
-            {items.map((post) => (
-              <div key={post.id} className="w-full">
-                <TrendCard
-                  post={post}
-                  onUseIdea={handleUseIdea}
-                  onRemix={handleOpenRemix}
-                  onCompose={handleOpenComposer}
-                  onSave={toggleSaveIdea}
-                  isSaved={savedIdeas.some((item) => item.id === post.id)}
-                  onOpenDetails={(p) => setDetailsPost(p)}
-                />
+          /* Pure Equal-Distribution Multi-Column Pinterest Waterfall */
+          <div className="flex w-full gap-4 sm:gap-5 items-start">
+            {columns.map((colItems, colIdx) => (
+              <div key={colIdx} className="flex-1 min-w-0 flex flex-col gap-4 sm:gap-5">
+                {colItems.map((post) => (
+                  <TrendCard
+                    key={post.id}
+                    post={post}
+                    onUseIdea={handleUseIdea}
+                    onRemix={handleOpenRemix}
+                    onCompose={handleOpenComposer}
+                    onSave={toggleSaveIdea}
+                    isSaved={savedIdeas.some((item) => item.id === post.id)}
+                    onOpenDetails={(p) => setDetailsPost(p)}
+                  />
+                ))}
+
+                {/* Skeletons distributed simultaneously in all columns while loading */}
+                {loading && (
+                  <>
+                    <TrendCardSkeleton
+                      heightClass={SKELETON_HEIGHTS[(colIdx * 2) % SKELETON_HEIGHTS.length]}
+                    />
+                    <TrendCardSkeleton
+                      heightClass={SKELETON_HEIGHTS[(colIdx * 2 + 1) % SKELETON_HEIGHTS.length]}
+                    />
+                  </>
+                )}
               </div>
             ))}
-
-            {/* SKELETON PLACEHOLDERS DISTRIBUTED IN ALL COLUMNS SIMULTANEOUSLY WHILE LOADING */}
-            {loading &&
-              Array.from({ length: 8 }).map((_, i) => (
-                <div key={`skel-${i}`} className="w-full">
-                  <TrendCardSkeleton
-                    heightClass={SKELETON_HEIGHTS[i % SKELETON_HEIGHTS.length]}
-                  />
-                </div>
-              ))}
-          </Masonry>
+          </div>
         )}
 
         {/* 4. INFINITE SCROLL SENTINEL WITH SUBTLE STATUS */}
