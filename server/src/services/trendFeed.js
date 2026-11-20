@@ -93,7 +93,7 @@ function cacheKey(params) {
         params.topic || "",
         params.type || "all",
         params.category || "all",
-        params.region || "US",
+        params.region || "IN",
         params.search || "",
         params.page || 1,
       ].join("|")
@@ -184,7 +184,7 @@ export function parseSeenPostIds(value) {
 async function fetchLiveExternalPosts({
   type = "all",
   category = "all",
-  region = "US",
+  region = "IN",
   search = "",
   targetTopics = [],
   searchQueries = [],
@@ -201,7 +201,7 @@ async function fetchLiveExternalPosts({
     const q = String(search).trim();
     if (type === "all" || type === "pinterest" || type === "visuals") {
       const pLimit = type === "pinterest" ? 40 : 25;
-      promises.push(fetchPinterestTrends({ category, query: q, limit: pLimit, page, token }));
+      promises.push(fetchPinterestTrends({ category, query: q, limit: pLimit, page, token, region }));
     }
     if (type === "all" || type === "bluesky" || type === "social") {
       const bLimit = type === "bluesky" ? 35 : 25;
@@ -209,10 +209,10 @@ async function fetchLiveExternalPosts({
     }
     if (type === "all" || type === "videos") {
       promises.push(fetchYouTubeTrends({ region, category, query: q, maxResults: 25, page }));
-      promises.push(fetchPexelsTrends({ category, query: q, perPage: 25, page }));
+      promises.push(fetchPexelsTrends({ category, query: q, perPage: 25, page, region }));
     }
     if (type === "all" || type === "visuals") {
-      promises.push(fetchUnsplashTrends({ category, query: q, perPage: 25, page }));
+      promises.push(fetchUnsplashTrends({ category, query: q, perPage: 25, page, region }));
     }
     if (type === "all" || type === "news") {
       promises.push(fetchTrendingNews({ category, region, query: q, page }));
@@ -227,17 +227,17 @@ async function fetchLiveExternalPosts({
     const bLimit = type === "bluesky" ? 35 : 25;
 
     if (type === "all" || type === "pinterest" || type === "visuals") {
-      promises.push(fetchPinterestTrends({ category, query: "", limit: pLimit, page, token }));
+      promises.push(fetchPinterestTrends({ category, query: "", limit: pLimit, page, token, region }));
     }
     if (type === "all" || type === "bluesky" || type === "social") {
       promises.push(fetchBlueskyTrends({ category, query: "", limit: bLimit, page }));
     }
     if (type === "all" || type === "videos") {
       promises.push(fetchYouTubeTrends({ region, category, maxResults: 25, page }));
-      promises.push(fetchPexelsTrends({ category, query: "", perPage: 25, page }));
+      promises.push(fetchPexelsTrends({ category, query: "", perPage: 25, page, region }));
     }
     if (type === "all" || type === "visuals") {
-      promises.push(fetchUnsplashTrends({ category, query: "", perPage: 25, page }));
+      promises.push(fetchUnsplashTrends({ category, query: "", perPage: 25, page, region }));
     }
     if (type === "all" || type === "news") {
       promises.push(fetchTrendingNews({ category, region, query: "", page }));
@@ -262,7 +262,7 @@ async function fetchLiveExternalPosts({
 
       if (type === "all" || type === "pinterest" || type === "visuals") {
         promises.push(
-          fetchPinterestTrends({ category: subCat, query: pinQ, limit: 25, page, token })
+          fetchPinterestTrends({ category: subCat, query: pinQ, limit: 25, page, token, region })
             .then((pins) =>
               Array.isArray(pins)
                 ? pins
@@ -313,10 +313,10 @@ async function fetchLiveExternalPosts({
             )
             .catch(() => [])
         );
-        promises.push(fetchPexelsTrends({ category: subCat, query: pinQ, perPage: 20, page }));
+        promises.push(fetchPexelsTrends({ category: subCat, query: pinQ, perPage: 20, page, region }));
       }
       if (type === "all" || type === "visuals") {
-        promises.push(fetchUnsplashTrends({ category: subCat, query: pinQ, perPage: 20, page }));
+        promises.push(fetchUnsplashTrends({ category: subCat, query: pinQ, perPage: 20, page, region }));
       }
       if (type === "all" || type === "news") {
         promises.push(fetchTrendingNews({ category: subCat, region, query: ytQ, page }));
@@ -362,7 +362,7 @@ async function fetchLiveExternalPosts({
 
         if (type === "all" || type === "pinterest" || type === "visuals") {
           promises.push(
-            fetchPinterestTrends({ category: subCat, query: pinQ, limit: limitPerTopic, page, token })
+            fetchPinterestTrends({ category: subCat, query: pinQ, limit: limitPerTopic, page, token, region })
               .then((pins) =>
                 Array.isArray(pins)
                   ? pins
@@ -423,10 +423,10 @@ async function fetchLiveExternalPosts({
         const pYt = primary.searchQuery || primary.label;
         const pCat = primary.subCategory || "all";
         if (type === "all" || type === "videos") {
-          promises.push(fetchPexelsTrends({ category: pCat, query: pQuery, perPage: 15, page }));
+          promises.push(fetchPexelsTrends({ category: pCat, query: pQuery, perPage: 15, page, region }));
         }
         if (type === "all" || type === "visuals") {
-          promises.push(fetchUnsplashTrends({ category: pCat, query: pQuery, perPage: 15, page }));
+          promises.push(fetchUnsplashTrends({ category: pCat, query: pQuery, perPage: 15, page, region }));
         }
         if (type === "all" || type === "news") {
           promises.push(fetchTrendingNews({ category: pCat, region, query: pYt, page }));
@@ -438,7 +438,7 @@ async function fetchLiveExternalPosts({
   else {
     if (type === "all" || type === "pinterest" || type === "visuals") {
       const pLimit = type === "pinterest" ? 40 : 25;
-      promises.push(fetchPinterestTrends({ category, query: "", limit: pLimit, page, token }));
+      promises.push(fetchPinterestTrends({ category, query: "", limit: pLimit, page, token, region }));
     }
     if (type === "all" || type === "bluesky" || type === "social") {
       const bLimit = type === "bluesky" ? 35 : 25;
@@ -446,13 +446,24 @@ async function fetchLiveExternalPosts({
     }
     if (type === "all" || type === "videos") {
       promises.push(fetchYouTubeTrends({ region, category, maxResults: 25, page }));
-      promises.push(fetchPexelsTrends({ category, query: "", perPage: 25, page }));
+      promises.push(fetchPexelsTrends({ category, query: "", perPage: 25, page, region }));
     }
     if (type === "all" || type === "visuals") {
-      promises.push(fetchUnsplashTrends({ category, query: "", perPage: 25, page }));
+      promises.push(fetchUnsplashTrends({ category, query: "", perPage: 25, page, region }));
     }
     if (type === "all" || type === "news") {
       promises.push(fetchTrendingNews({ category, region, query: "", page }));
+    }
+    if (type === "searches") {
+      promises.push(fetchGoogleTrends({ geo: region, page }));
+    } else if (type === "all" && page === 1) {
+      promises.push(
+        fetchGoogleTrends({ geo: region, page: 1 })
+          .then((items) => (Array.isArray(items) ? items.slice(0, 2) : []))
+          .catch(() => [])
+      );
+    }
+  }
     }
     if (type === "searches") {
       promises.push(fetchGoogleTrends({ geo: region, page }));
@@ -506,7 +517,7 @@ export async function getTrendFeedPage(params = {}, options = {}) {
   const interests = parseTrendInterests(params.interests || params.topics);
   const type = params.type || "all";
   const category = params.category || "all";
-  const region = params.region || params.geo || "US";
+  const region = params.region || params.geo || "IN";
   const search = (params.search || params.q || "").trim().toLowerCase();
 
   const topicParam = params.topic || "";
@@ -945,7 +956,7 @@ export async function getTrendFeedPage(params = {}, options = {}) {
 }
 
 // Hot topics radar (combining Google Trends & Bluesky official trends)
-export async function getHotTopicsRadar({ geo = "US" } = {}) {
+export async function getHotTopicsRadar({ geo = "IN" } = {}) {
   try {
     const [googleRes, bskyRes] = await Promise.allSettled([
       fetchGoogleTrends({ geo, page: 1 }),
@@ -985,24 +996,42 @@ export async function getHotTopicsRadar({ geo = "US" } = {}) {
       };
     }
 
+    const isIndia = String(geo || "IN").toUpperCase() === "IN";
     return {
       success: true,
-      hotTopics: [
-        { query: "Artificial Intelligence", volume: "1M+", source: "Global" },
-        { query: "Social Media Growth", volume: "500K+", source: "Global" },
-        { query: "Viral Reels Strategy", volume: "350K+", source: "Global" },
-        { query: "AI Content Creation", volume: "250K+", source: "Global" },
-      ],
+      hotTopics: isIndia
+        ? [
+            { query: "IPL & Cricket", volume: "2M+", source: "India Trends" },
+            { query: "AI in India", volume: "1M+", source: "India Tech" },
+            { query: "Bollywood & Music", volume: "800K+", source: "India Entertainment" },
+            { query: "Indian Startups & SaaS", volume: "500K+", source: "India Business" },
+            { query: "Viral Reels India", volume: "650K+", source: "India Creators" },
+          ]
+        : [
+            { query: "Artificial Intelligence", volume: "1M+", source: "Global" },
+            { query: "Social Media Growth", volume: "500K+", source: "Global" },
+            { query: "Viral Reels Strategy", volume: "350K+", source: "Global" },
+            { query: "AI Content Creation", volume: "250K+", source: "Global" },
+          ],
     };
   } catch (err) {
+    const isIndia = String(geo || "IN").toUpperCase() === "IN";
     return {
       success: true,
-      hotTopics: [
-        { query: "Artificial Intelligence", volume: "1M+", source: "Global" },
-        { query: "Social Media Growth", volume: "500K+", source: "Global" },
-        { query: "Viral Reels Strategy", volume: "350K+", source: "Global" },
-        { query: "AI Content Creation", volume: "250K+", source: "Global" },
-      ],
+      hotTopics: isIndia
+        ? [
+            { query: "IPL & Cricket", volume: "2M+", source: "India Trends" },
+            { query: "AI in India", volume: "1M+", source: "India Tech" },
+            { query: "Bollywood & Music", volume: "800K+", source: "India Entertainment" },
+            { query: "Indian Startups & SaaS", volume: "500K+", source: "India Business" },
+            { query: "Viral Reels India", volume: "650K+", source: "India Creators" },
+          ]
+        : [
+            { query: "Artificial Intelligence", volume: "1M+", source: "Global" },
+            { query: "Social Media Growth", volume: "500K+", source: "Global" },
+            { query: "Viral Reels Strategy", volume: "350K+", source: "Global" },
+            { query: "AI Content Creation", volume: "250K+", source: "Global" },
+          ],
     };
   }
 }

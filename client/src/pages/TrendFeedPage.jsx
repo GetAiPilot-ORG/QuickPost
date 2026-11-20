@@ -122,9 +122,9 @@ const NICHE_PILLS = [
 ];
 
 const REGION_OPTIONS = [
-  { code: "GLOBAL", label: "Global", flag: "🌐" },
-  { code: "US", label: "United States", flag: "🇺🇸" },
   { code: "IN", label: "India", flag: "🇮🇳" },
+  { code: "US", label: "United States", flag: "🇺🇸" },
+  { code: "GLOBAL", label: "Global", flag: "🌐" },
   { code: "GB", label: "United Kingdom", flag: "🇬🇧" },
   { code: "CA", label: "Canada", flag: "🇨🇦" },
   { code: "AU", label: "Australia", flag: "🇦🇺" },
@@ -480,11 +480,10 @@ function TrendCard({ post, onUseIdea, onRemix, onCompose, onSave, isSaved, onOpe
                 e.stopPropagation();
                 onSave(post);
               }}
-              className={`h-8 px-3 rounded-full text-xs font-bold shadow-md backdrop-blur-md transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer ${
-                isSaved
-                  ? "bg-amber-500 text-white hover:bg-amber-600"
-                  : "bg-white/95 hover:bg-white text-neutral-900 hover:text-black dark:bg-neutral-900/90 dark:hover:bg-neutral-900 dark:text-white"
-              }`}
+              className={`h-8 px-3 rounded-full text-xs font-bold shadow-md backdrop-blur-md transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer ${isSaved
+                ? "bg-amber-500 text-white hover:bg-amber-600"
+                : "bg-white/95 hover:bg-white text-neutral-900 hover:text-black dark:bg-neutral-900/90 dark:hover:bg-neutral-900 dark:text-white"
+                }`}
               title={isSaved ? "Saved to Inspiration Board" : "Bookmark idea"}
             >
               {isSaved ? (
@@ -715,11 +714,10 @@ function TrendCard({ post, onUseIdea, onRemix, onCompose, onSave, isSaved, onOpe
               e.stopPropagation();
               onSave(post);
             }}
-            className={`sm:hidden w-8 h-8 rounded-lg border border-black/[0.08] dark:border-white/[0.08] inline-flex items-center justify-center transition-colors cursor-pointer ${
-              isSaved
-                ? "text-amber-500 bg-amber-500/10 border-amber-500/30"
-                : "text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
-            }`}
+            className={`sm:hidden w-8 h-8 rounded-lg border border-black/[0.08] dark:border-white/[0.08] inline-flex items-center justify-center transition-colors cursor-pointer ${isSaved
+              ? "text-amber-500 bg-amber-500/10 border-amber-500/30"
+              : "text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
+              }`}
             title={isSaved ? "Saved" : "Save"}
           >
             {isSaved ? <BookmarkCheck size={14} className="fill-current text-amber-500" /> : <Bookmark size={14} />}
@@ -1608,9 +1606,8 @@ function CreatorInterestModal({
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 10 }}
         transition={{ duration: 0.18, ease: "easeOut" }}
-        className={`relative w-full ${
-          isTune ? "max-w-lg" : "max-w-3xl"
-        } max-h-[90vh] sm:max-h-[85vh] bg-white dark:bg-[#12161F] rounded-3xl border border-black/[0.08] dark:border-white/[0.12] shadow-[0_20px_60px_rgba(0,0,0,0.3)] flex flex-col z-10 overflow-hidden text-neutral-900 dark:text-neutral-100`}
+        className={`relative w-full ${isTune ? "max-w-lg" : "max-w-3xl"
+          } max-h-[90vh] sm:max-h-[85vh] bg-white dark:bg-[#12161F] rounded-3xl border border-black/[0.08] dark:border-white/[0.12] shadow-[0_20px_60px_rgba(0,0,0,0.3)] flex flex-col z-10 overflow-hidden text-neutral-900 dark:text-neutral-100`}
       >
         {/* Glowing Top Brand Rainbow Line */}
         <div className="h-1.5 w-full bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 shadow-[0_2px_10px_rgba(245,158,11,0.35)] flex-shrink-0" />
@@ -1701,19 +1698,17 @@ function CreatorInterestModal({
                     key={topic.id}
                     type="button"
                     onClick={() => toggleTopic(topic.id)}
-                    className={`relative flex items-center gap-3 p-3 rounded-2xl border text-left transition-all duration-150 active:scale-[0.98] hover:-translate-y-0.5 group overflow-hidden cursor-pointer select-none ${
-                      isSelected
-                        ? "bg-gradient-to-br from-amber-500/15 via-orange-500/10 to-rose-500/5 dark:from-amber-400/20 dark:via-orange-400/10 dark:to-transparent border-amber-500/60 dark:border-amber-400/50 shadow-[0_4px_16px_rgba(245,158,11,0.14)]"
-                        : "bg-neutral-50/70 dark:bg-white/[0.03] text-neutral-700 dark:text-neutral-300 border-black/[0.06] dark:border-white/[0.07] hover:border-black/[0.15] dark:hover:border-white/[0.15] hover:bg-neutral-100/80 dark:hover:bg-white/[0.05]"
-                    }`}
+                    className={`relative flex items-center gap-3 p-3 rounded-2xl border text-left transition-all duration-150 active:scale-[0.98] hover:-translate-y-0.5 group overflow-hidden cursor-pointer select-none ${isSelected
+                      ? "bg-gradient-to-br from-amber-500/15 via-orange-500/10 to-rose-500/5 dark:from-amber-400/20 dark:via-orange-400/10 dark:to-transparent border-amber-500/60 dark:border-amber-400/50 shadow-[0_4px_16px_rgba(245,158,11,0.14)]"
+                      : "bg-neutral-50/70 dark:bg-white/[0.03] text-neutral-700 dark:text-neutral-300 border-black/[0.06] dark:border-white/[0.07] hover:border-black/[0.15] dark:hover:border-white/[0.15] hover:bg-neutral-100/80 dark:hover:bg-white/[0.05]"
+                      }`}
                   >
                     {/* Emoji Badge with Smooth Animation */}
                     <div
-                      className={`w-11 h-11 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0 transition-transform duration-150 group-hover:scale-105 ${
-                        isSelected
-                          ? "bg-gradient-to-br from-amber-500/20 to-orange-500/20 shadow-xs"
-                          : "bg-black/[0.04] dark:bg-white/[0.05]"
-                      }`}
+                      className={`w-11 h-11 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0 transition-transform duration-150 group-hover:scale-105 ${isSelected
+                        ? "bg-gradient-to-br from-amber-500/20 to-orange-500/20 shadow-xs"
+                        : "bg-black/[0.04] dark:bg-white/[0.05]"
+                        }`}
                     >
                       <span>{topic.emoji}</span>
                     </div>
@@ -1721,20 +1716,18 @@ function CreatorInterestModal({
                     {/* Topic Details */}
                     <div className="min-w-0 flex-1">
                       <h4
-                        className={`text-xs font-bold truncate leading-snug transition-colors ${
-                          isSelected
-                            ? "text-neutral-950 dark:text-white"
-                            : "text-neutral-800 dark:text-neutral-200"
-                        }`}
+                        className={`text-xs font-bold truncate leading-snug transition-colors ${isSelected
+                          ? "text-neutral-950 dark:text-white"
+                          : "text-neutral-800 dark:text-neutral-200"
+                          }`}
                       >
                         {topic.label}
                       </h4>
                       <p
-                        className={`text-[10px] truncate transition-colors ${
-                          isSelected
-                            ? "text-amber-700 dark:text-amber-300/80 font-medium"
-                            : "text-neutral-400 dark:text-neutral-500"
-                        }`}
+                        className={`text-[10px] truncate transition-colors ${isSelected
+                          ? "text-amber-700 dark:text-amber-300/80 font-medium"
+                          : "text-neutral-400 dark:text-neutral-500"
+                          }`}
                       >
                         {topic.category}
                       </p>
@@ -1742,11 +1735,10 @@ function CreatorInterestModal({
 
                     {/* Tactile Checkbox Pill with Instant CSS Animation */}
                     <div
-                      className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-150 ${
-                        isSelected
-                          ? "bg-gradient-to-tr from-amber-500 to-orange-500 text-white shadow-xs scale-100"
-                          : "border-2 border-black/[0.15] dark:border-white/[0.15] opacity-50 group-hover:opacity-100 group-hover:border-amber-500/60 scale-95"
-                      }`}
+                      className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-150 ${isSelected
+                        ? "bg-gradient-to-tr from-amber-500 to-orange-500 text-white shadow-xs scale-100"
+                        : "border-2 border-black/[0.15] dark:border-white/[0.15] opacity-50 group-hover:opacity-100 group-hover:border-amber-500/60 scale-95"
+                        }`}
                     >
                       {isSelected && (
                         <Check size={11} strokeWidth={3} className="transition-transform duration-150" />
@@ -1853,7 +1845,13 @@ export default function TrendFeedPage() {
   // Filters State
   const [selectedFormat, setSelectedFormat] = useState("all");
   const [selectedNiche, setSelectedNiche] = useState("all");
-  const [selectedRegion, setSelectedRegion] = useState("US");
+  const [selectedRegion, setSelectedRegion] = useState(() => {
+    try {
+      return localStorage.getItem("qp_trend_region") || "IN";
+    } catch {
+      return "IN";
+    }
+  });
   const [regionOpen, setRegionOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -1881,7 +1879,7 @@ export default function TrendFeedPage() {
           selectedTopicIds: Array.isArray(saved.selectedTopicIds) ? saved.selectedTopicIds : [],
         };
       }
-    } catch {}
+    } catch { }
     return emptyProfile();
   });
   const [draftProfile, setDraftProfile] = useState(() => profile);
@@ -1893,7 +1891,7 @@ export default function TrendFeedPage() {
       if (saved && Array.isArray(saved.selectedTopicIds) && saved.selectedTopicIds.length > 0) {
         return saved.selectedTopicIds;
       }
-    } catch {}
+    } catch { }
     return ["ai_chatgpt", "creator_economy", "marketing_growth"];
   });
   const [selectedTopicFilter, setSelectedTopicFilter] = useState(null);
@@ -2061,7 +2059,7 @@ export default function TrendFeedPage() {
             localStorage.setItem(GLOBAL_ONBOARDED_KEY, "true");
             localStorage.setItem("qp_trend_onboarded_anon", "true");
             onboardingTriggeredRef.current = true;
-          } catch {}
+          } catch { }
           // Dismiss onboarding modal if user already has saved preferences
           setShowInterestModal((cur) => (interestModalMode === "onboarding" ? false : cur));
         }
@@ -2106,7 +2104,7 @@ export default function TrendFeedPage() {
           const stored = JSON.parse(localStorage.getItem(profileStorageKey) || "{}");
           stored.selectedTopicIds = next;
           localStorage.setItem(profileStorageKey, JSON.stringify(stored));
-        } catch {}
+        } catch { }
         return next;
       });
     }
@@ -2134,12 +2132,12 @@ export default function TrendFeedPage() {
               const stored = JSON.parse(localStorage.getItem(profileStorageKey) || "{}");
               stored.selectedTopicIds = merged;
               localStorage.setItem(profileStorageKey, JSON.stringify(stored));
-            } catch {}
+            } catch { }
             return merged;
           });
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [profileStorageKey]);
 
   // Persist search queries to Supabase database whenever user searches
@@ -2367,7 +2365,7 @@ export default function TrendFeedPage() {
       localStorage.setItem(GLOBAL_ONBOARDED_KEY, "true");
       localStorage.setItem("qp_trend_onboarded_anon", "true");
       onboardingTriggeredRef.current = true;
-    } catch {}
+    } catch { }
 
     setSelectedTopicIds(nextSelectedTopicIds);
     const customInterests = updatedProfile?.interests?.trim() || "";
@@ -2399,8 +2397,8 @@ export default function TrendFeedPage() {
       interestModalMode === "tune"
         ? "Tuning saved to database & feed refreshed!"
         : (nextSelectedTopicIds.length > 0
-            ? `Saved ${nextSelectedTopicIds.length} topic${nextSelectedTopicIds.length === 1 ? "" : "s"} & personalized feed!`
-            : "Preferences saved to database!")
+          ? `Saved ${nextSelectedTopicIds.length} topic${nextSelectedTopicIds.length === 1 ? "" : "s"} & personalized feed!`
+          : "Preferences saved to database!")
     );
     pageRef.current = 1;
     cursorRef.current = null;
@@ -2421,7 +2419,7 @@ export default function TrendFeedPage() {
     } catch {
       // ignore
     }
-    apiClient.post("/api/trends/preferences", { selectedTopicIds: [] }).catch(() => {});
+    apiClient.post("/api/trends/preferences", { selectedTopicIds: [] }).catch(() => { });
     setShowInterestModal(false);
   };
 
@@ -2432,7 +2430,7 @@ export default function TrendFeedPage() {
         localStorage.setItem(GLOBAL_ONBOARDED_KEY, "true");
         localStorage.setItem("qp_trend_onboarded_anon", "true");
         onboardingTriggeredRef.current = true;
-      } catch {}
+      } catch { }
     }
     setShowInterestModal(false);
   };
@@ -2500,9 +2498,9 @@ export default function TrendFeedPage() {
             onClick={() => setRegionOpen(!regionOpen)}
             className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-xl bg-white dark:bg-[#161B22] border border-black/[0.08] dark:border-white/[0.08] text-xs font-medium text-neutral-700 dark:text-neutral-300 shadow-sm inline-flex items-center gap-1 sm:gap-1.5 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
           >
-            <span>{REGION_OPTIONS.find((r) => r.code === selectedRegion)?.flag || "🌐"}</span>
+            <span>{REGION_OPTIONS.find((r) => r.code === selectedRegion)?.flag || "🇮🇳"}</span>
             <span className="hidden md:inline text-xs">
-              {REGION_OPTIONS.find((r) => r.code === selectedRegion)?.label || "Region"}
+              {REGION_OPTIONS.find((r) => r.code === selectedRegion)?.label || "India"}
             </span>
             <ChevronDown
               size={12}
@@ -2527,11 +2525,14 @@ export default function TrendFeedPage() {
                       type="button"
                       onClick={() => {
                         setSelectedRegion(r.code);
+                        try {
+                          localStorage.setItem("qp_trend_region", r.code);
+                        } catch {}
                         setRegionOpen(false);
                       }}
                       className={`w-full text-left px-3.5 py-2 text-xs font-medium flex items-center gap-2 transition-colors ${selectedRegion === r.code
-                          ? "bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-white font-bold"
-                          : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+                        ? "bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-white font-bold"
+                        : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800"
                         }`}
                     >
                       <span>{r.flag}</span>
@@ -2624,11 +2625,10 @@ export default function TrendFeedPage() {
                   <button
                     key={tab.id}
                     onClick={() => setSelectedFormat(tab.id)}
-                    className={`h-7 px-2.5 sm:px-3 rounded-lg text-xs font-semibold whitespace-nowrap transition-all inline-flex items-center gap-1.5 ${
-                      active
-                        ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-950 shadow-xs"
-                        : "bg-neutral-100/70 hover:bg-neutral-200/80 dark:bg-neutral-800/60 dark:hover:bg-neutral-700/80 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
-                    }`}
+                    className={`h-7 px-2.5 sm:px-3 rounded-lg text-xs font-semibold whitespace-nowrap transition-all inline-flex items-center gap-1.5 ${active
+                      ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-950 shadow-xs"
+                      : "bg-neutral-100/70 hover:bg-neutral-200/80 dark:bg-neutral-800/60 dark:hover:bg-neutral-700/80 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
+                      }`}
                   >
                     {tab.iconSvg ? (
                       <img src={tab.iconSvg} alt="" className="w-3.5 h-3.5 object-contain flex-shrink-0" />
@@ -2674,11 +2674,10 @@ export default function TrendFeedPage() {
                             registerSearchTopic(topic.query);
                           }
                         }}
-                        className={`h-6.5 px-2.5 rounded-full text-[11px] whitespace-nowrap transition-all border flex items-center gap-1 flex-shrink-0 ${
-                          isCurrent
-                            ? "bg-amber-500 text-white border-amber-500 font-bold shadow-xs"
-                            : "bg-black/[0.02] dark:bg-white/[0.03] border-black/[0.06] dark:border-white/[0.08] text-neutral-600 dark:text-neutral-300 hover:border-amber-500/50 hover:text-amber-600 dark:hover:text-amber-400"
-                        }`}
+                        className={`h-6.5 px-2.5 rounded-full text-[11px] whitespace-nowrap transition-all border flex items-center gap-1 flex-shrink-0 ${isCurrent
+                          ? "bg-amber-500 text-white border-amber-500 font-bold shadow-xs"
+                          : "bg-black/[0.02] dark:bg-white/[0.03] border-black/[0.06] dark:border-white/[0.08] text-neutral-600 dark:text-neutral-300 hover:border-amber-500/50 hover:text-amber-600 dark:hover:text-amber-400"
+                          }`}
                         title={topic.volume ? `${topic.volume} searches/mentions` : "Live trend"}
                       >
                         <span>#{topic.query}</span>

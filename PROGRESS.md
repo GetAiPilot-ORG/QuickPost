@@ -1,3 +1,7 @@
+## 2026-11-20 — Set India (IN) as default region & made country feed filtering fully functional
+- Defaulted region selection across client and server to India (`IN`), persisted user choice in `localStorage`, and prioritized India in the header country dropdown.
+- Wired `region` through YouTube (`regionCode: IN`), Google Trends (`geo: IN`), Breaking News (`country: in`), Pinterest (`query + region`), and visual sources (Unsplash/Pexels), making country filtering genuinely affect returned content and hot topics radar. Client build passed in 4.03s.
+
 ## 2026-11-20 — Balanced Multi-Column Pinterest Waterfall & Multi-Column Simultaneous Skeleton Loading
 - Resolved uneven column heights and blank gaps by replacing naive modulo distribution with greedy shortest-column height balancing; columns now progress evenly on the same lines.
 - Integrated skeleton placeholder cards directly inside every column simultaneously during loading (`TrendCardSkeleton` across all 4 columns), eliminating blank spaces matching user annotations (`15ce7641.png`).

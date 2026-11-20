@@ -54,11 +54,12 @@ export const NICHE_KEYWORDS = {
 // -----------------------------------------------------------------------------
 // 1. YOUTUBE DATA API (Trending Videos & Shorts with 25+ items)
 // -----------------------------------------------------------------------------
-export async function fetchYouTubeTrends({ region = "US", category = "all", maxResults = 25, page = 1 } = {}) {
+export async function fetchYouTubeTrends({ region = "IN", category = "all", query = "", maxResults = 25, page = 1 } = {}) {
   const apiKey = process.env.YOUTUBE_DATA_API_KEY;
   if (!apiKey) return [];
 
-  const cacheKey = `trends:yt:${region}:${category}:${maxResults}:${page}`;
+  const cleanQuery = (query || "").trim();
+  const cacheKey = `trends:yt:${region}:${category}:${cleanQuery}:${maxResults}:${page}`;
   const cached = getMemCache(cacheKey);
   if (cached) return cached;
 
@@ -73,16 +74,17 @@ export async function fetchYouTubeTrends({ region = "US", category = "all", maxR
     const videoCategoryId = categoryMapping[category];
     let items = [];
 
-    // For page > 1 or specific niche queries, use YouTube Search API or trending chart
-    if (page > 1 || (category !== "all" && !videoCategoryId)) {
-      const q = NICHE_KEYWORDS[category] || "trending viral shorts podcast interview";
+    // For page > 1, explicit query, or specific niche queries, use YouTube Search API or trending chart
+    if (cleanQuery || page > 1 || (category !== "all" && !videoCategoryId)) {
+      const q = cleanQuery || NICHE_KEYWORDS[category] || "trending viral shorts podcast interview";
       const searchRes = await axios.get("https://www.googleapis.com/youtube/v3/search", {
         params: {
           part: "snippet",
           q,
           type: "video",
           order: "viewCount",
-          regionCode: region.toUpperCase() === "GLOBAL" ? "US" : region.toUpperCase(),
+          videoCategoryId: videoCategoryId || undefined,
+          regionCode: region.toUpperCase() === "GLOBAL" ? "IN" : region.toUpperCase(),
           maxResults: Math.min(maxResults, 50),
           key: apiKey,
         },
@@ -105,7 +107,7 @@ export async function fetchYouTubeTrends({ region = "US", category = "all", maxR
       const params = {
         part: "snippet,statistics,contentDetails",
         chart: "mostPopular",
-        regionCode: region.toUpperCase() === "GLOBAL" ? "US" : region.toUpperCase(),
+        regionCode: region.toUpperCase() === "GLOBAL" ? "IN" : region.toUpperCase(),
         maxResults: Math.min(maxResults, 50),
         key: apiKey,
       };
@@ -164,7 +166,7 @@ export async function fetchYouTubeTrends({ region = "US", category = "all", maxR
 // -----------------------------------------------------------------------------
 // 2. SERPAPI (Google Trends & Real-Time Rising Searches)
 // -----------------------------------------------------------------------------
-export async function fetchGoogleTrends({ geo = "US", page = 1 } = {}) {
+export async function fetchGoogleTrends({ geo = "IN", page = 1 } = {}) {
   const apiKey = process.env.SERPAPI_KEY;
   if (!apiKey) return [];
 
@@ -176,7 +178,7 @@ export async function fetchGoogleTrends({ geo = "US", page = 1 } = {}) {
     const response = await axios.get("https://serpapi.com/search.json", {
       params: {
         engine: "google_trends_trending_now",
-        geo: geo.toUpperCase() === "GLOBAL" ? "US" : geo.toUpperCase(),
+        geo: geo.toUpperCase() === "GLOBAL" ? "IN" : geo.toUpperCase(),
         api_key: apiKey,
       },
       timeout: 9000,
@@ -227,7 +229,7 @@ export async function fetchGoogleTrends({ geo = "US", page = 1 } = {}) {
 // -----------------------------------------------------------------------------
 // 3. GNEWS & NEWSAPI (Global & Niche Breaking News)
 // -----------------------------------------------------------------------------
-export async function fetchTrendingNews({ category = "all", region = "US", query = "", page = 1 } = {}) {
+export async function fetchTrendingNews({ category = "all", region = "IN", query = "", page = 1 } = {}) {
   const gnewsKey = process.env.GNEWS_KEY;
   const newsApiKey = process.env.NEWSAPI_KEY;
 
@@ -255,6 +257,7 @@ export async function fetchTrendingNews({ category = "all", region = "US", query
       const q = query || (category === "tech_ai" ? "AI OR technology" : "");
       const params = {
         lang: "en",
+        country: region.toLowerCase() === "global" ? undefined : region.toLowerCase(),
         max: 25,
         page,
         apikey: gnewsKey,
@@ -309,6 +312,7 @@ export async function fetchTrendingNews({ category = "all", region = "US", query
         params: {
           category: q ? undefined : nCategory,
           q: q || undefined,
+          country: q ? undefined : (region.toLowerCase() === "global" ? undefined : region.toLowerCase()),
           language: "en",
           pageSize: 25,
           page,
@@ -352,11 +356,11 @@ export async function fetchTrendingNews({ category = "all", region = "US", query
 // -----------------------------------------------------------------------------
 // 4. UNSPLASH API (Aesthetic Visuals)
 // -----------------------------------------------------------------------------
-export async function fetchUnsplashTrends({ category = "all", query = "", perPage = 25, page = 1 } = {}) {
+export async function fetchUnsplashTrends({ category = "all", query = "", perPage = 25, page = 1, region = "IN" } = {}) {
   const accessKey = process.env.UNSPLASH_ACCESS_KEY;
   if (!accessKey) return [];
 
-  const cacheKey = `trends:unsplash:${category}:${query}:${perPage}:${page}`;
+  const cacheKey = `trends:unsplash:${category}:${query}:${perPage}:${page}:${region}`;
   const cached = getMemCache(cacheKey);
   if (cached) return cached;
 
@@ -372,7 +376,25 @@ export async function fetchUnsplashTrends({ category = "all", query = "", perPag
       science_space: "galaxy universe astronomy science space",
     };
 
-    const q = query || searchTerms[category];
+    const regionUpper = String(region || "IN").toUpperCase();
+    const regionTerm =
+      regionUpper === "IN"
+        ? " India"
+        : regionUpper === "GB"
+        ? " UK"
+        : regionUpper === "CA"
+        ? " Canada"
+        : regionUpper === "AU"
+        ? " Australia"
+        : "";
+
+    const q = query
+      ? query
+      : searchTerms[category]
+      ? `${searchTerms[category]}${regionTerm}`
+      : regionUpper === "IN"
+      ? "India aesthetic architecture culture design"
+      : "";
     const url = q ? "https://api.unsplash.com/search/photos" : "https://api.unsplash.com/photos";
     const params = {
       page,
@@ -429,11 +451,11 @@ export async function fetchUnsplashTrends({ category = "all", query = "", perPag
 // -----------------------------------------------------------------------------
 // 5. PEXELS API (Vertical Reels & Shorts Stock)
 // -----------------------------------------------------------------------------
-export async function fetchPexelsTrends({ category = "all", query = "", perPage = 25, page = 1 } = {}) {
+export async function fetchPexelsTrends({ category = "all", query = "", perPage = 25, page = 1, region = "IN" } = {}) {
   const apiKey = process.env.PEXELS_KEY;
   if (!apiKey) return [];
 
-  const cacheKey = `trends:pexels:${category}:${query}:${perPage}:${page}`;
+  const cacheKey = `trends:pexels:${category}:${query}:${perPage}:${page}:${region}`;
   const cached = getMemCache(cacheKey);
   if (cached) return cached;
 
@@ -449,7 +471,25 @@ export async function fetchPexelsTrends({ category = "all", query = "", perPage 
       science_space: "space galaxy science nature drone drone footage",
     };
 
-    const q = query || searchTerms[category];
+    const regionUpper = String(region || "IN").toUpperCase();
+    const regionTerm =
+      regionUpper === "IN"
+        ? " India"
+        : regionUpper === "GB"
+        ? " UK"
+        : regionUpper === "CA"
+        ? " Canada"
+        : regionUpper === "AU"
+        ? " Australia"
+        : "";
+
+    const q = query
+      ? query
+      : searchTerms[category]
+      ? `${searchTerms[category]}${regionTerm}`
+      : regionUpper === "IN"
+      ? "India travel culture aesthetic"
+      : "";
     const url = q ? "https://api.pexels.com/videos/search" : "https://api.pexels.com/videos/popular";
     const params = {
       page,
@@ -509,18 +549,18 @@ export async function fetchPexelsTrends({ category = "all", query = "", perPage 
 // -----------------------------------------------------------------------------
 // 6. PINTEREST OFFICIAL SEARCH & TRENDS (Ported from TrendPulse)
 // -----------------------------------------------------------------------------
-export async function fetchPinterestTrends({ category = "all", query = "", limit = 25, page = 1, token = null } = {}) {
-  const cacheKey = `trends:pinterest:${category}:${query}:${limit}:${page}`;
+export async function fetchPinterestTrends({ category = "all", query = "", limit = 30, page = 1, token = null, region = "IN" } = {}) {
+  const cacheKey = `trends:pinterest:${category}:${query}:${limit}:${page}:${region}`;
   const cached = getMemCache(cacheKey);
   if (cached) return cached;
 
   try {
     let items = [];
     if (query && String(query).trim()) {
-      const result = await searchPinterestPins({ query: String(query).trim(), token, limit });
+      const result = await searchPinterestPins({ query: String(query).trim(), token, limit, page });
       items = result.pins || [];
     } else {
-      items = await fetchPinterestTrendingPins({ category, limit });
+      items = await fetchPinterestTrendingPins({ category, limit, page, region });
     }
     setMemCache(cacheKey, items, CACHE_SHORT);
     return items;
@@ -533,7 +573,7 @@ export async function fetchPinterestTrends({ category = "all", query = "", limit
 // -----------------------------------------------------------------------------
 // 7. BLUESKY OFFICIAL XRPC SEARCH & TRENDS (Ported from TrendPulse)
 // -----------------------------------------------------------------------------
-export async function fetchBlueskyTrends({ category = "all", query = "", limit = 25, page = 1 } = {}) {
+export async function fetchBlueskyTrends({ category = "all", query = "", limit = 30, page = 1 } = {}) {
   const cacheKey = `trends:bluesky:${category}:${query}:${limit}:${page}`;
   const cached = getMemCache(cacheKey);
   if (cached) return cached;
@@ -541,11 +581,10 @@ export async function fetchBlueskyTrends({ category = "all", query = "", limit =
   try {
     let items = [];
     if (query && String(query).trim()) {
-      const result = await searchBlueskyPosts({ query: String(query).trim(), limit });
+      const result = await searchBlueskyPosts({ query: String(query).trim(), limit, page });
       items = result.posts || [];
     } else {
-      const topic = category !== "all" ? category : null;
-      const result = await getBlueskyTrendingPosts({ topic, limit });
+      const result = await getBlueskyTrendingPosts({ category, limit, page });
       items = result.posts || [];
     }
     setMemCache(cacheKey, items, CACHE_SHORT);
