@@ -1614,19 +1614,12 @@ function CreatorInterestModal({
         <div className="relative px-5 sm:px-6 py-3.5 sm:py-4 border-b border-black/[0.06] dark:border-white/[0.08] flex-shrink-0 bg-neutral-50/70 dark:bg-white/[0.02]">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-orange-500/10 dark:bg-orange-500/15 border border-orange-500/25 text-orange-700 dark:text-orange-400 text-[10px] sm:text-[11px] font-bold tracking-wider uppercase mb-1">
-                {isTune ? (
-                  <>
-                    <SlidersHorizontal size={11} className="text-orange-500" />
-                    <span>Feed Tuning & Advanced AI</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="w-1.5 h-1.5 rounded-full bg-orange-500 shadow-[0_0_6px_rgba(249,115,22,0.6)]" />
-                    <span>Creator Inspiration Engine</span>
-                  </>
-                )}
-              </div>
+              {!isTune && (
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-orange-500/10 dark:bg-orange-500/15 border border-orange-500/25 text-orange-700 dark:text-orange-400 text-[10px] sm:text-[11px] font-bold tracking-wider uppercase mb-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-orange-500 shadow-[0_0_6px_rgba(249,115,22,0.6)]" />
+                  <span>Creator Inspiration Engine</span>
+                </div>
+              )}
               <h2 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-neutral-100 tracking-tight leading-snug">
                 {isTune ? "Tune Your Inspiration Feed" : "What topics do you create or love?"}
               </h2>
@@ -1647,8 +1640,8 @@ function CreatorInterestModal({
           /* Tune Button View: Clean, compact 3 inputs without secondary lines or card boxes (Original UI) */
           <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 custom-scrollbar overscroll-contain">
             <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-neutral-600 dark:text-neutral-400 mb-1.5">
-                Your Creator / Brand Role
+              <label className="block text-xs sm:text-[13px] font-normal text-neutral-700 dark:text-neutral-300 mb-1.5">
+                Your creator / brand role
               </label>
               <input
                 type="text"
@@ -1660,8 +1653,8 @@ function CreatorInterestModal({
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-neutral-600 dark:text-neutral-400 mb-1.5">
-                Additional Custom Keywords (comma-separated)
+              <label className="block text-xs sm:text-[13px] font-normal text-neutral-700 dark:text-neutral-300 mb-1.5">
+                Additional custom keywords (comma-separated)
               </label>
               <input
                 type="text"
@@ -1673,8 +1666,8 @@ function CreatorInterestModal({
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-neutral-600 dark:text-neutral-400 mb-1.5">
-                Preferred Content Formats
+              <label className="block text-xs sm:text-[13px] font-normal text-neutral-700 dark:text-neutral-300 mb-1.5">
+                Preferred content formats
               </label>
               <input
                 type="text"
@@ -2516,7 +2509,7 @@ export default function TrendFeedPage() {
                         setSelectedRegion(r.code);
                         try {
                           localStorage.setItem("qp_trend_region", r.code);
-                        } catch {}
+                        } catch { }
                         setRegionOpen(false);
                       }}
                       className={`w-full text-left px-3.5 py-2 text-xs font-medium flex items-center gap-2 transition-colors ${selectedRegion === r.code

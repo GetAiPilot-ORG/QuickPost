@@ -1,3 +1,7 @@
+## 2026-11-20 — Removed Tune modal badge & formatted input labels to regular case
+- Removed the top "Feed Tuning & Advanced AI" pill badge from `CreatorInterestModal` when in tune mode.
+- Formatted input labels to regular casing and non-bold weight (`font-normal`), removing uppercase tracking and bold styling.
+
 ## 2026-11-20 — Compact card body layout & tight vertical spacing in TrendCard
 - Eliminated artificial flex stretching (`justify-between`), tightly grouping title, creator, and actions with natural compact spacing (`gap-1.5`).
 - Scaled down padding (`px-2.5 py-2`), font sizes (`text-xs sm:text-[13px]`), icons (`w-4 h-4`), and button heights (`h-7`), reducing card body height by ~40% to match authentic Pinterest pin proportions.
