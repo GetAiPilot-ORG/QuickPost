@@ -608,7 +608,7 @@ function TrendCard({ post, onUseIdea, onRemix, onCompose, onSave, isSaved, onOpe
       {/* 2. CARD BODY: Title, Creator Info, Stats & Actions */}
       <div className="p-3 sm:p-3.5 flex flex-col flex-1 justify-between gap-2.5">
         <div>
-          {post.matched_topic && (
+          {post.matched_topic && post.matched_topic !== "Community Spark" && (
             <div className="flex items-center gap-1.5 mb-1 text-[11px] font-semibold text-sky-600 dark:text-sky-400">
               <span>{post.topic_emoji || "✨"}</span>
               <span className="truncate">{post.matched_topic}</span>

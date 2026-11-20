@@ -784,9 +784,9 @@ export async function getTrendFeedPage(params = {}, options = {}) {
 
           return {
             ...post,
-            matched_topic: post.matched_topic || matchResult.matchedTopic?.label || (isSocialpilot ? "Community Spark" : null),
+            matched_topic: post.matched_topic || matchResult.matchedTopic?.label || null,
             interest_topic: post.interest_topic || matchResult.matchedTopic?.id || null,
-            topic_emoji: post.topic_emoji || matchResult.matchedTopic?.emoji || (isSocialpilot ? "✨" : null),
+            topic_emoji: post.topic_emoji || matchResult.matchedTopic?.emoji || null,
             interest_match_count: matches,
             is_user_post: isUserOwn,
             rank_score: rankScore,

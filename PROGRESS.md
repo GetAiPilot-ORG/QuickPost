@@ -1,3 +1,7 @@
+## 2026-11-20 — Removed "Community Spark" badge from community and user post cards
+- Removed the hardcoded "Community Spark" fallback label and emoji from `server/src/services/trendFeed.js`.
+- Filtered out "Community Spark" from `TrendFeedPage.jsx` card body header, keeping cards clean with direct title and creator info.
+
 ## 2026-11-20 — Multi-platform creator username resolution, video playback & universal feed sync
 - Resolved foreign key failure on `posts.author_id` by checking `auth.users` existence, persisting `author:${userId}` in `niche_tags` and ranking user uploads at the top.
 - Auto-synced all broadcast uploads across every platform to Trend Feed community posts with video hover-playback support.
