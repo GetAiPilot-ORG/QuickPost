@@ -1,3 +1,7 @@
+## 2026-11-20 — Fixed server crash caused by duplicate closing bracket in trendFeed.js
+- Resolved `SyntaxError: Unexpected token '}'` in `server/src/services/trendFeed.js` caused by an orphaned duplicate block.
+- Restored backend server availability on port 5000, eliminating Vite dev proxy `ECONNREFUSED` errors across all `/api/` endpoints.
+
 ## 2026-11-20 — Set India (IN) as default region & made country feed filtering fully functional
 - Defaulted region selection across client and server to India (`IN`), persisted user choice in `localStorage`, and prioritized India in the header country dropdown.
 - Wired `region` through YouTube (`regionCode: IN`), Google Trends (`geo: IN`), Breaking News (`country: in`), Pinterest (`query + region`), and visual sources (Unsplash/Pexels), making country filtering genuinely affect returned content and hot topics radar. Client build passed in 4.03s.

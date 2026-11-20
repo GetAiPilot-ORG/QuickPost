@@ -464,17 +464,6 @@ async function fetchLiveExternalPosts({
       );
     }
   }
-    }
-    if (type === "searches") {
-      promises.push(fetchGoogleTrends({ geo: region, page }));
-    } else if (type === "all" && page === 1) {
-      promises.push(
-        fetchGoogleTrends({ geo: region, page: 1 })
-          .then((items) => (Array.isArray(items) ? items.slice(0, 2) : []))
-          .catch(() => [])
-      );
-    }
-  }
 
   try {
     const results = await Promise.allSettled(promises);
