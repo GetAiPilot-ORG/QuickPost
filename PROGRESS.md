@@ -1,3 +1,7 @@
+## 2026-11-20 — Pinned user uploaded SocialPilot posts to top of Trend Feed
+- Explicitly prioritized SocialPilot uploads and user-authored posts with highest ranking tier (`rank_score > 100,000,000`), placing them at the very top of page 1.
+- Updated `interleavePinterestFeed` to lead with community uploads before interleaving external platforms, and wired `onPostCreated` in `ComposerModal` to auto-refresh feed immediately upon upload.
+
 ## 2026-11-20 — Dynamic creator handle resolution for SocialPilot uploads & feed column alignment
 - Posts uploaded to connected social accounts (e.g. Instagram) now extract and display the target platform username (e.g. `@hapfsunion`) with the platform icon; uploads only to SocialPilot display "GAP Social-pilot".
 - Unlocked posting solely to SocialPilot in `broadcast.js` and `ComposerModal`, enabling direct community publishing without requiring external channels.
