@@ -82,6 +82,7 @@ function useFeedColumns() {
 
 const FORMAT_TABS = [
   { id: "all", label: "All Trends" },
+  { id: "shorts", label: "YouTube Shorts", iconSvg: "/icons/youtube-color-icon.svg" },
   { id: "pinterest", label: "Pinterest", iconSvg: "/icons/pinterest-round-color-icon.svg" },
   { id: "bluesky", label: "Bluesky", iconSvg: "/icons/bluesky-circle-color-icon.svg" },
   { id: "videos", label: "Reels & Videos", icon: Video },
@@ -225,10 +226,10 @@ function formatTimeAgo(value) {
 
 function getYouTubeVideoId(post) {
   if (!post) return null;
-  if (post.source_platform === "youtube" && post.video_id && post.video_id.length === 11) {
+  if ((post.source_platform === "youtube" || post.target_platform === "youtube") && post.video_id && post.video_id.length === 11) {
     return post.video_id;
   }
-  const candidates = [post.source_url, post.embed_html, post.id];
+  const candidates = [post.video_id, post.source_url, post.embed_html, post.id];
   for (const value of candidates) {
     if (!value || typeof value !== "string") continue;
     try {
@@ -345,7 +346,8 @@ function TrendCard({ post, onUseIdea, onRemix, onCompose, onSave, isSaved, onOpe
   const directVideoUrl = post.video_url || (post.media_type === "video" ? post.media_urls?.[0] : null);
   const hasDirectVideo = Boolean(directVideoUrl);
   const isVideo = isPexels || hasDirectVideo || Boolean(videoId);
-  const isReel = post.content_type === "short" || post.source_url?.includes("/shorts/") || post.media_type === "video" || isPexels;
+  const isYouTubeShort = (post.source_platform === "youtube" || post.target_platform === "youtube") && (post.content_type === "short" || post.source_url?.includes("/shorts/") || post.is_short);
+  const isReel = isYouTubeShort || post.content_type === "short" || post.source_url?.includes("/shorts/") || post.media_type === "video" || isPexels;
   const effectivePlatform = post.target_platform || (post.source_platform === "socialpilot"
     ? (post.creator?.startsWith("@") ? "instagram" : "socialpilot")
     : post.source_platform);
@@ -520,7 +522,12 @@ function TrendCard({ post, onUseIdea, onRemix, onCompose, onSave, isSaved, onOpe
           )}
 
           {/* Video Type Chip */}
-          {isVideo && (
+          {isYouTubeShort ? (
+            <div className="absolute bottom-2.5 left-2.5 px-2 py-0.5 rounded-md bg-red-600/90 backdrop-blur-md text-white text-[10px] font-semibold flex items-center gap-1 shadow-sm pointer-events-none">
+              <img src="/icons/youtube-color-icon.svg" alt="" className="w-3 h-3 object-contain" />
+              <span>YouTube Short</span>
+            </div>
+          ) : isVideo && (
             <div className="absolute bottom-2.5 left-2.5 px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-md text-white text-[10px] font-medium flex items-center gap-1 shadow-sm pointer-events-none">
               <Play size={9} className="fill-current text-white" />
               <span>{isReel ? "Short / Reel" : "Video"}</span>
@@ -729,7 +736,13 @@ function TrendCard({ post, onUseIdea, onRemix, onCompose, onSave, isSaved, onOpe
 function TrendDetailsBottomSheet({ isOpen, onClose, post, onRemix, onCompose, onSave, isSaved }) {
   if (!isOpen || !post) return null;
 
-  const videoId = post.source_platform === "youtube" ? getYouTubeVideoId(post) : null;
+  const isYouTubeShort =
+    (post.source_platform === "youtube" || post.target_platform === "youtube") &&
+    (post.content_type === "short" || post.source_url?.includes("/shorts/") || post.is_short);
+  const videoId =
+    post.source_platform === "youtube" || post.target_platform === "youtube"
+      ? getYouTubeVideoId(post)
+      : null;
   const mediaUrl = post.video_url || post.full_image_url || post.thumbnail_url;
   const effectivePlatform = post.source_platform === "socialpilot"
     ? (post.target_platform || (post.creator?.startsWith("@") ? "instagram" : "socialpilot"))
@@ -796,7 +809,30 @@ function TrendDetailsBottomSheet({ isOpen, onClose, post, onRemix, onCompose, on
           {/* Scrollable Content */}
           <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar">
             {/* Player / Preview (Clean, Hugging Image with Zero Dark Letterboxing) */}
-            {videoId ? (
+            {isYouTubeShort && videoId ? (
+              <div className="w-full flex flex-col items-center justify-center py-1">
+                <div className="w-full max-w-[340px] aspect-[9/16] rounded-2xl overflow-hidden bg-black shadow-2xl relative border border-white/10">
+                  <iframe
+                    src={`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&loop=1&playlist=${videoId}&rel=0&modestbranding=1`}
+                    title={post.title || "YouTube Short Preview"}
+                    className="w-full h-full border-0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                </div>
+                <div className="mt-3 flex items-center gap-2">
+                  <a
+                    href={post.source_url || `https://www.youtube.com/shorts/${videoId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-all shadow-md active:scale-95"
+                  >
+                    <Play size={12} className="fill-current text-white" />
+                    <span>Watch on YouTube Shorts ↗</span>
+                  </a>
+                </div>
+              </div>
+            ) : videoId ? (
               <div className="w-full rounded-2xl overflow-hidden bg-neutral-950 aspect-video shadow-sm">
                 <iframe
                   src={`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1`}
@@ -827,6 +863,12 @@ function TrendDetailsBottomSheet({ isOpen, onClose, post, onRemix, onCompose, on
                     alt={post.title || ""}
                     className="max-h-[58vh] w-auto max-w-full h-auto object-contain block mx-auto rounded-2xl"
                   />
+                  {isYouTubeShort && (
+                    <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-600/90 text-white text-[11px] font-bold tracking-wider backdrop-blur-md shadow-md pointer-events-none">
+                      <img src="/icons/youtube-color-icon.svg" alt="" className="w-3.5 h-3.5 object-contain" />
+                      <span>YouTube Short</span>
+                    </div>
+                  )}
                   {post.source_platform === "pinterest" && (
                     <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-600/90 text-white text-[11px] font-bold uppercase tracking-wider backdrop-blur-md shadow-md pointer-events-none">
                       <img src="/icons/pinterest-round-color-icon.svg" alt="" className="w-3.5 h-3.5 object-contain" />

@@ -3,6 +3,7 @@ import IORedis from "ioredis";
 import crypto from "crypto";
 import {
   fetchYouTubeTrends,
+  fetchYouTubeShorts,
   fetchGoogleTrends,
   fetchTrendingNews,
   fetchUnsplashTrends,
@@ -219,6 +220,9 @@ async function fetchLiveExternalPosts({
       const bLimit = type === "bluesky" ? 35 : 25;
       promises.push(fetchBlueskyTrends({ category, query: q, limit: bLimit, page }));
     }
+    if (type === "all" || type === "shorts" || type === "videos") {
+      promises.push(fetchYouTubeShorts({ region, category, query: q, maxResults: 25, page }));
+    }
     if (type === "all" || type === "videos") {
       promises.push(fetchYouTubeTrends({ region, category, query: q, maxResults: 25, page }));
       promises.push(fetchPexelsTrends({ category, query: q, perPage: 25, page, region }));
@@ -243,6 +247,9 @@ async function fetchLiveExternalPosts({
     }
     if (type === "all" || type === "bluesky" || type === "social") {
       promises.push(fetchBlueskyTrends({ category, query: "", limit: bLimit, page }));
+    }
+    if (type === "all" || type === "shorts" || type === "videos") {
+      promises.push(fetchYouTubeShorts({ region, category, query: "", maxResults: 25, page }));
     }
     if (type === "all" || type === "videos") {
       promises.push(fetchYouTubeTrends({ region, category, maxResults: 25, page }));
@@ -303,6 +310,22 @@ async function fetchLiveExternalPosts({
                       interest_topic: activeTopic.id,
                       topic_emoji: activeTopic.emoji,
                     }))
+                : []
+            )
+            .catch(() => [])
+        );
+      }
+      if (type === "all" || type === "shorts" || type === "videos") {
+        promises.push(
+          fetchYouTubeShorts({ region, category: subCat, query: ytQ, maxResults: 20, page })
+            .then((shorts) =>
+              Array.isArray(shorts)
+                ? shorts.map((s) => ({
+                    ...s,
+                    matched_topic: activeTopic.label,
+                    interest_topic: activeTopic.id,
+                    topic_emoji: activeTopic.emoji,
+                  }))
                 : []
             )
             .catch(() => [])
@@ -373,6 +396,12 @@ async function fetchLiveExternalPosts({
             .catch(() => [])
         );
       }
+      if (page === 1 && (type === "all" || type === "shorts" || type === "videos")) {
+        promises.push(
+          fetchYouTubeShorts({ region, category: "all", query: "", maxResults: 15, page: 1 })
+            .catch(() => [])
+        );
+      }
       if (page === 1 && (type === "all" || type === "videos")) {
         promises.push(
           fetchYouTubeTrends({ region, category: "all", query: "", maxResults: 10, page: 1 })
@@ -429,6 +458,22 @@ async function fetchLiveExternalPosts({
               .catch(() => [])
           );
         }
+        if (type === "all" || type === "shorts" || type === "videos") {
+          promises.push(
+            fetchYouTubeShorts({ region, category: subCat, query: ytQ, maxResults: limitPerTopic, page })
+              .then((shorts) =>
+                Array.isArray(shorts)
+                  ? shorts.map((s) => ({
+                      ...s,
+                      matched_topic: tDef.label,
+                      interest_topic: tDef.id,
+                      topic_emoji: tDef.emoji,
+                    }))
+                  : []
+              )
+              .catch(() => [])
+          );
+        }
         if (type === "all" || type === "videos") {
           promises.push(
             fetchYouTubeTrends({ region, category: subCat, query: ytQ, maxResults: limitPerTopic, page })
@@ -476,6 +521,9 @@ async function fetchLiveExternalPosts({
     if (type === "all" || type === "bluesky" || type === "social") {
       const bLimit = type === "bluesky" ? 35 : 25;
       promises.push(fetchBlueskyTrends({ category, query: "", limit: bLimit, page }));
+    }
+    if (type === "all" || type === "shorts" || type === "videos") {
+      promises.push(fetchYouTubeShorts({ region, category, maxResults: 25, page }));
     }
     if (type === "all" || type === "videos") {
       promises.push(fetchYouTubeTrends({ region, category, maxResults: 25, page }));
@@ -667,7 +715,7 @@ export async function getTrendFeedPage(params = {}, options = {}) {
 
     if (type === "social") {
       query = query.in("source_platform", ["reddit", "bluesky", "socialpilot"]);
-    } else if (type === "videos") {
+    } else if (type === "videos" || type === "shorts") {
       query = query.in("source_platform", ["youtube", "socialpilot"]);
     } else if (type === "pinterest") {
       query = query.eq("source_platform", "pinterest");
@@ -737,7 +785,16 @@ export async function getTrendFeedPage(params = {}, options = {}) {
   }
 
   // Apply type filter if not 'all'
-  if (type === "videos") {
+  if (type === "shorts") {
+    allCandidates = allCandidates.filter(
+      (item) =>
+        (item.source_platform === "youtube" || item.target_platform === "youtube") &&
+        (item.content_type === "short" ||
+          item.source_url?.includes("/shorts/") ||
+          item.is_short ||
+          Boolean(item.video_id))
+    );
+  } else if (type === "videos") {
     allCandidates = allCandidates.filter(
       (item) =>
         item.source_platform === "youtube" ||

@@ -164,6 +164,121 @@ export async function fetchYouTubeTrends({ region = "IN", category = "all", quer
 }
 
 // -----------------------------------------------------------------------------
+// 1B. YOUTUBE SHORTS (Dedicated Vertical Short-Form Video Feed)
+// -----------------------------------------------------------------------------
+export async function fetchYouTubeShorts({ region = "IN", category = "all", query = "", maxResults = 25, page = 1 } = {}) {
+  const cleanQuery = (query || "").trim();
+  const cacheKey = `trends:yt:shorts:${region}:${category}:${cleanQuery}:${maxResults}:${page}`;
+  const cached = getMemCache(cacheKey);
+  if (cached) return cached;
+
+  const serpApiKey = process.env.SERPAPI_KEY;
+  const ytApiKey = process.env.YOUTUBE_DATA_API_KEY;
+  let items = [];
+
+  const effectiveGl = region.toLowerCase() === "global" ? "us" : region.toLowerCase();
+
+  // 1. Primary: SerpApi YouTube Engine (Reliable, dedicated shorts_results with vertical covers & views)
+  if (serpApiKey) {
+    try {
+      const searchQuery = cleanQuery ? `${cleanQuery} shorts` : "trending #shorts viral";
+      const res = await axios.get("https://serpapi.com/search.json", {
+        params: {
+          engine: "youtube",
+          search_query: searchQuery,
+          gl: effectiveGl,
+          api_key: serpApiKey,
+        },
+        timeout: 9000,
+      });
+
+      const shortsGroups = res.data?.shorts_results || [];
+      const extractedShorts = [];
+
+      for (const group of shortsGroups) {
+        if (Array.isArray(group.shorts)) {
+          extractedShorts.push(...group.shorts);
+        }
+      }
+
+      // Also check video_results if they link to /shorts/ or have #shorts in title
+      const videoResults = res.data?.video_results || [];
+      for (const vr of videoResults) {
+        const isShortLink = vr.link?.includes("/shorts/");
+        const hasShortTag = (vr.title || "").toLowerCase().includes("#short");
+        if ((isShortLink || hasShortTag) && vr.link) {
+          const vIdMatch = vr.link.match(/(?:shorts\/|v=)([\w-]{11})/i);
+          if (vIdMatch?.[1]) {
+            extractedShorts.push({
+              video_id: vIdMatch[1],
+              title: vr.title,
+              link: `https://www.youtube.com/shorts/${vIdMatch[1]}`,
+              thumbnail: vr.thumbnail?.static || vr.thumbnail || `https://i.ytimg.com/vi/${vIdMatch[1]}/hqdefault.jpg`,
+              views_original: vr.views || vr.views_original || "100K+ views",
+              views: vr.views ? Number.parseInt(String(vr.views).replace(/[^0-9]/g, ""), 10) : 100000,
+              channel: vr.channel,
+            });
+          }
+        }
+      }
+
+      if (extractedShorts.length > 0) {
+        const seenIds = new Set();
+        items = extractedShorts
+          .filter((s) => {
+            if (!s.video_id || seenIds.has(s.video_id)) return false;
+            seenIds.add(s.video_id);
+            return true;
+          })
+          .map((s, index) => {
+            const views = s.views || 50000 + (30 - index) * 5000;
+            const channelName = s.channel?.name || "YouTube Creator";
+            const cleanTitle = s.title || "Trending YouTube Short";
+            return {
+              id: `yt_short_${s.video_id}`,
+              source_platform: "youtube",
+              source_url: `https://www.youtube.com/shorts/${s.video_id}`,
+              video_id: s.video_id,
+              embed_html: `<iframe src="https://www.youtube-nocookie.com/embed/${s.video_id}?autoplay=1&loop=1" title="${cleanTitle.replace(/"/g, "&quot;")}" allowfullscreen></iframe>`,
+              thumbnail_url: s.thumbnail || `https://i.ytimg.com/vi/${s.video_id}/hqdefault.jpg`,
+              full_image_url: `https://i.ytimg.com/vi/${s.video_id}/maxresdefault.jpg`,
+              title: cleanTitle,
+              caption: `⚡ YouTube Short by ${channelName} (${s.views_original || "Trending"})\n\n${cleanTitle}\n\nWatch on YouTube Shorts: https://www.youtube.com/shorts/${s.video_id}`,
+              creator: channelName,
+              content_type: "short",
+              media_type: "video",
+              is_short: true,
+              engagement_score: 9500 + (30 - index) * 150 + Math.min(views, 500000) * 0.05,
+              metrics: {
+                views: s.views_original || `${Math.floor(views / 1000)}K`,
+                platform: "YouTube Shorts",
+              },
+              niche_tags: ["shorts", "reel", "youtube_shorts", category].filter(Boolean),
+              published_at: new Date(Date.now() - index * 3600000).toISOString(),
+              ingested_at: new Date().toISOString(),
+            };
+          });
+      }
+    } catch (err) {
+      console.warn("[TREND-SOURCES] SerpApi YouTube Shorts notice:", err?.message);
+    }
+  }
+
+  // 2. Fallback: YouTube Data API mostPopular videos filtered to shorts (< 60s)
+  if (items.length === 0 && ytApiKey) {
+    try {
+      const regularYt = await fetchYouTubeTrends({ region, category, query: cleanQuery, maxResults: 50, page });
+      items = regularYt.filter((v) => v.content_type === "short" || (v.title || "").toLowerCase().includes("#short"));
+    } catch (err) {
+      console.warn("[TREND-SOURCES] YouTube Data API Shorts fallback notice:", err?.message);
+    }
+  }
+
+  setMemCache(cacheKey, items, CACHE_SHORT);
+  return items;
+}
+
+// -----------------------------------------------------------------------------
 // 2. SERPAPI (Google Trends & Real-Time Rising Searches)
 // -----------------------------------------------------------------------------
 export async function fetchGoogleTrends({ geo = "IN", page = 1 } = {}) {
