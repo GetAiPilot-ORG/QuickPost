@@ -1,3 +1,8 @@
+## 2026-11-20 — Dynamic creator handle resolution for SocialPilot uploads & feed column alignment
+- Posts uploaded to connected social accounts (e.g. Instagram) now extract and display the target platform username (e.g. `@hapfsunion`) with the platform icon; uploads only to SocialPilot display "GAP Social-pilot".
+- Unlocked posting solely to SocialPilot in `broadcast.js` and `ComposerModal`, enabling direct community publishing without requiring external channels.
+- Prevented empty column ghosting in `TrendFeedPage` by constraining columns to available items count when item count is small, and updated existing DB records.
+
 ## 2026-11-20 — Guaranteed equal round-robin card distribution across all feed columns
 - Implemented pure sequential round-robin distribution (`items[i % colCount]`): as items load, they are immediately spread 1-by-1 across all columns equally.
 - Guarantees no column can ever be more than 1 card ahead of any other column (eliminating the 4-in-one, 0-in-another bug).
