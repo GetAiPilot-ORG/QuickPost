@@ -1,3 +1,7 @@
+## 2026-11-20 — Compact card body layout & tight vertical spacing in TrendCard
+- Eliminated artificial flex stretching (`justify-between`), tightly grouping title, creator, and actions with natural compact spacing (`gap-1.5`).
+- Scaled down padding (`px-2.5 py-2`), font sizes (`text-xs sm:text-[13px]`), icons (`w-4 h-4`), and button heights (`h-7`), reducing card body height by ~40% to match authentic Pinterest pin proportions.
+
 ## 2026-11-20 — Removed "Community Spark" badge from community and user post cards
 - Removed the hardcoded "Community Spark" fallback label and emoji from `server/src/services/trendFeed.js`.
 - Filtered out "Community Spark" from `TrendFeedPage.jsx` card body header, keeping cards clean with direct title and creator info.
