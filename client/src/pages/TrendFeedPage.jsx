@@ -2130,21 +2130,23 @@ export default function TrendFeedPage() {
   }, [debouncedSearch, registerSearchTopic]);
 
   // Load Hot Topics Radar
-  useEffect(() => {
-    async function loadHotTopics() {
-      try {
-        const { data } = await apiClient.get("/api/trends/hot-topics", {
-          params: { geo: selectedRegion },
-        });
-        if (data.success && Array.isArray(data.hotTopics)) {
-          setHotTopics(data.hotTopics);
-        }
-      } catch (err) {
-        console.warn("Hot topics radar error:", err);
+  const loadHotTopics = useCallback(async (geoParam = null) => {
+    try {
+      const geo = geoParam || selectedRegionRef.current || "IN";
+      const { data } = await apiClient.get("/api/trends/hot-topics", {
+        params: { geo },
+      });
+      if (data.success && Array.isArray(data.hotTopics)) {
+        setHotTopics(data.hotTopics);
       }
+    } catch (err) {
+      console.warn("Hot topics radar error:", err);
     }
-    loadHotTopics();
-  }, [selectedRegion]);
+  }, []);
+
+  useEffect(() => {
+    loadHotTopics(selectedRegion);
+  }, [selectedRegion, loadHotTopics]);
 
   const rememberSeen = useCallback(
     (posts) => {
@@ -2166,6 +2168,7 @@ export default function TrendFeedPage() {
       overrideProfile = null,
       overrideTopic = undefined,
       overrideMode = null,
+      overrideRegion = null,
     } = {}) => {
       if (loadingRef.current || (!reset && exhaustedRef.current)) return;
       if (reset) {
@@ -2184,7 +2187,7 @@ export default function TrendFeedPage() {
       const activeMode = overrideMode || feedModeRef.current;
       const activeFormat = selectedFormatRef.current;
       const activeNiche = selectedNicheRef.current;
-      const activeRegion = selectedRegionRef.current;
+      const activeRegion = overrideRegion || selectedRegionRef.current || "IN";
       const activeSearch = debouncedSearchRef.current;
 
       try {
@@ -2208,19 +2211,21 @@ export default function TrendFeedPage() {
           seen: Array.from(seenRef.current).slice(-20).join(",") || undefined,
         };
 
-        if (isPersonalized && !activeSearch) {
-          if (activeTopic) {
-            params.topic = activeTopic;
-          } else {
-            if (topicIds.length > 0) {
-              params.topics = topicIds.join(",");
+        if (!activeSearch) {
+          if (isPersonalized) {
+            if (activeTopic) {
+              params.topic = activeTopic;
+            } else {
+              if (topicIds.length > 0) {
+                params.topics = topicIds.join(",");
+              }
+              if (searches.length > 0) {
+                params.searches = searches.join(",");
+              }
             }
-            if (searches.length > 0) {
-              params.searches = searches.join(",");
-            }
-            if (interestQuery) {
-              params.interests = interestQuery;
-            }
+          }
+          if (interestQuery) {
+            params.interests = interestQuery;
           }
         }
 
@@ -2382,6 +2387,10 @@ export default function TrendFeedPage() {
           ? `Saved ${nextSelectedTopicIds.length} topic${nextSelectedTopicIds.length === 1 ? "" : "s"} & personalized feed!`
           : "Preferences saved to database!")
     );
+    if (interestModalMode === "tune") {
+      seenRef.current = new Set();
+      setItems([]);
+    }
     pageRef.current = 1;
     cursorRef.current = null;
     loadPage({
@@ -2507,10 +2516,18 @@ export default function TrendFeedPage() {
                       type="button"
                       onClick={() => {
                         setSelectedRegion(r.code);
+                        selectedRegionRef.current = r.code;
                         try {
                           localStorage.setItem("qp_trend_region", r.code);
                         } catch { }
                         setRegionOpen(false);
+                        seenRef.current = new Set();
+                        pageRef.current = 1;
+                        cursorRef.current = null;
+                        setItems([]);
+                        loadHotTopics(r.code);
+                        loadPage({ reset: true, overrideRegion: r.code });
+                        toast.success(`Country switched to ${r.label}`);
                       }}
                       className={`w-full text-left px-3.5 py-2 text-xs font-medium flex items-center gap-2 transition-colors ${selectedRegion === r.code
                         ? "bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-white font-bold"

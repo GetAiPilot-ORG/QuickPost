@@ -545,6 +545,8 @@ export async function fetchPinterestTrendingPins({ category = "all", limit = 30,
       ? " Canada"
       : regionUpper === "AU"
       ? " Australia"
+      : regionUpper === "US" || regionUpper === "GLOBAL"
+      ? " USA"
       : "";
 
   const baseQuery = categoryQueryMap[category] || categoryQueryMap.all;

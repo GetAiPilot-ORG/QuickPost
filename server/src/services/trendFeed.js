@@ -100,7 +100,7 @@ function cacheKey(params) {
     )
     .digest("hex")
     .slice(0, 12);
-  return `trend:feed:v2:${params.limit || DEFAULT_LIMIT}:${params.cursor || "first"}:${seenHash}`;
+  return `trend:feed:v3:${params.limit || DEFAULT_LIMIT}:${params.cursor || "first"}:${seenHash}`;
 }
 
 async function readCache(cache, key) {
@@ -198,6 +198,7 @@ async function fetchLiveExternalPosts({
   region = "IN",
   search = "",
   targetTopics = [],
+  tunedTopics = [],
   searchQueries = [],
   searchTopicObjects = [],
   isFilteredToSingleTopic = false,
@@ -333,7 +334,7 @@ async function fetchLiveExternalPosts({
         promises.push(fetchTrendingNews({ category: subCat, region, query: ytQ, page }));
       }
     } else {
-      // MIXED FEED: Interleave onboarding selected topics AND searched topics
+      // MIXED FEED: Interleave tuned topics, onboarding selected topics AND searched topics
       const mixedPool = [];
       const maxLen = Math.max(targetTopics.length, searchTopicObjects.length);
       for (let i = 0; i < maxLen; i++) {
@@ -341,8 +342,14 @@ async function fetchLiveExternalPosts({
         if (i < searchTopicObjects.length) mixedPool.push(searchTopicObjects[i]);
       }
 
+      // Prioritize explicit tuned topics from "Tune Feed" modal at the very front
+      const poolWithoutTuned = (mixedPool.length > 0 ? mixedPool : targetTopics).filter(
+        (t) => !tunedTopics.some((tune) => tune.id === t.id || tune.label.toLowerCase() === t.label.toLowerCase())
+      );
       const topicsPool =
-        mixedPool.length > 0
+        tunedTopics.length > 0
+          ? [...tunedTopics, ...poolWithoutTuned]
+          : mixedPool.length > 0
           ? mixedPool
           : targetTopics.length > 0
           ? targetTopics
@@ -357,6 +364,21 @@ async function fetchLiveExternalPosts({
               keywords: [q.toLowerCase()],
               isSearchedTopic: true,
             }));
+
+      // On Page 1, ALWAYS mix in authentic country-specific signals (Google Trends & YouTube top trending for the country)
+      if (page === 1 && (type === "all" || type === "searches")) {
+        promises.push(
+          fetchGoogleTrends({ geo: region, page: 1 })
+            .then((items) => (Array.isArray(items) ? items.slice(0, 3) : []))
+            .catch(() => [])
+        );
+      }
+      if (page === 1 && (type === "all" || type === "videos")) {
+        promises.push(
+          fetchYouTubeTrends({ region, category: "all", query: "", maxResults: 10, page: 1 })
+            .catch(() => [])
+        );
+      }
 
       const startIndex = ((page - 1) * 3) % topicsPool.length;
       let topicsForPage = topicsPool.slice(startIndex, startIndex + 3);
@@ -542,8 +564,11 @@ export async function getTrendFeedPage(params = {}, options = {}) {
         if (!topicsParam && !topicParam && Array.isArray(dbPrefs.selectedTopicIds) && dbPrefs.selectedTopicIds.length > 0) {
           topicsParam = dbPrefs.selectedTopicIds.join(",");
         }
-        if (dbPrefs.interests) {
-          rawInterests = rawInterests ? `${rawInterests}, ${dbPrefs.interests}` : dbPrefs.interests;
+        const combinedDbInterests = [dbPrefs.work, dbPrefs.interests, dbPrefs.goal]
+          .filter(Boolean)
+          .join(", ");
+        if (combinedDbInterests) {
+          rawInterests = rawInterests ? `${rawInterests}, ${combinedDbInterests}` : combinedDbInterests;
         }
         if (Array.isArray(dbPrefs.recentSearches) && dbPrefs.recentSearches.length > 0) {
           recentSearches = Array.from(new Set([...recentSearches, ...dbPrefs.recentSearches]));
@@ -556,6 +581,7 @@ export async function getTrendFeedPage(params = {}, options = {}) {
 
   const {
     targetTopics,
+    tunedTopics = [],
     searchQueries,
     keywords,
     isFilteredToSingleTopic,
@@ -671,6 +697,7 @@ export async function getTrendFeedPage(params = {}, options = {}) {
         region,
         search,
         targetTopics,
+        tunedTopics,
         searchQueries,
         searchTopicObjects,
         isFilteredToSingleTopic,
@@ -772,12 +799,23 @@ export async function getTrendFeedPage(params = {}, options = {}) {
             topicBoost = matches > 0 ? 500 + matches * 150 : 0.05;
           }
 
-          // Prioritize user's own uploads and SocialPilot community posts at top
+          // Check match with explicit keywords configured in "Tune Feed" modal (role, custom keywords, formats)
+          const isTunedMatch = (tunedTopics || []).some((tune) => {
+            if (post.matched_topic && post.matched_topic.toLowerCase() === tune.label.toLowerCase()) return true;
+            if (post.interest_topic && post.interest_topic === tune.id) return true;
+            const textHaystack = `${post.title || ""} ${post.caption || ""}`.toLowerCase();
+            return tune.keywords.some((kw) => kw.length > 2 && textHaystack.includes(kw));
+          });
+
+          // Prioritize user's own uploads and SocialPilot community posts at top,
+          // followed immediately by items matching user's custom tuned keywords!
           let rankScore;
           if (isUserOwn) {
             rankScore = 200000000 + score;
           } else if (isSocialpilot) {
             rankScore = 100000000 + score;
+          } else if (isTunedMatch) {
+            rankScore = 50000000 + (score * 500) + matches * 10000;
           } else {
             rankScore = Number((score * topicBoost).toFixed(6));
           }
@@ -817,6 +855,28 @@ export async function getTrendFeedPage(params = {}, options = {}) {
       if (result.length < targetLimit && !seenIds.has(post.id)) {
         result.push(post);
         seenIds.add(post.id);
+      }
+    }
+
+    // Place explicit user-tuned keyword posts (e.g. Spiderman) immediately next
+    const tunedPosts = nonCommunityPosts.filter((p) => p.rank_score >= 50000000);
+    for (const post of tunedPosts) {
+      if (result.length < targetLimit && !seenIds.has(post.id)) {
+        result.push(post);
+        seenIds.add(post.id);
+      }
+    }
+
+    // On Page 1, prominently showcase country breaking trends (e.g. Google Trends / trending pulses)
+    if (pageNumber === 1) {
+      const countryPulsePosts = nonCommunityPosts.filter(
+        (p) => p.source_platform === "google_trends" || p.content_type === "trend_query"
+      );
+      for (const post of countryPulsePosts.slice(0, 2)) {
+        if (result.length < targetLimit && !seenIds.has(post.id)) {
+          result.push(post);
+          seenIds.add(post.id);
+        }
       }
     }
 

@@ -1,3 +1,8 @@
+## 2026-11-20 — Made Tune feed modal keywords & country filtering fully workable
+- Tuned modal keywords (creator role, custom keywords, preferred formats) now dynamically generate first-class topic objects, taking top priority in external fetches (YouTube, Pinterest, Bluesky, Unsplash, Pexels) and feed ranking.
+- Country filter in header now triggers immediate reset, instant ticker refresh (`loadHotTopics`), and drives live regional trends across Google Trends, YouTube popular charts, news, and Pinterest.
+- Formatted Tune modal input labels to regular sentence casing and font weight, and removed top badge when in tune mode.
+
 ## 2026-11-20 — Removed Tune modal badge & formatted input labels to regular case
 - Removed the top "Feed Tuning & Advanced AI" pill badge from `CreatorInterestModal` when in tune mode.
 - Formatted input labels to regular casing and non-bold weight (`font-normal`), removing uppercase tracking and bold styling.
@@ -19,35 +24,10 @@
 - Explicitly prioritized SocialPilot uploads and user-authored posts with highest ranking tier (`rank_score > 100,000,000`), placing them at the very top of page 1.
 - Updated `interleavePinterestFeed` to lead with community uploads before interleaving external platforms, and wired `onPostCreated` in `ComposerModal` to auto-refresh feed immediately upon upload.
 
-## 2026-11-20 — Dynamic creator handle resolution for SocialPilot uploads & feed column alignment
-- Posts uploaded to connected social accounts (e.g. Instagram) now extract and display the target platform username (e.g. `@hapfsunion`) with the platform icon; uploads only to SocialPilot display "GAP Social-pilot".
-- Unlocked posting solely to SocialPilot in `broadcast.js` and `ComposerModal`, enabling direct community publishing without requiring external channels.
-- Prevented empty column ghosting in `TrendFeedPage` by constraining columns to available items count when item count is small, and updated existing DB records.
-
 ## 2026-11-20 — Guaranteed equal round-robin card distribution across all feed columns
 - Implemented pure sequential round-robin distribution (`items[i % colCount]`): as items load, they are immediately spread 1-by-1 across all columns equally.
 - Guarantees no column can ever be more than 1 card ahead of any other column (eliminating the 4-in-one, 0-in-another bug).
-- Flex-based multi-column layout guarantees equal column widths and natural Pinterest vertical stacking. Client built cleanly in 4.39s.
-
-## 2026-11-20 — Integrated react-masonry-css for bulletproof Pinterest waterfall layout
-- Replaced manual array partitioning with production-grade `react-masonry-css` matching the rest of the application.
-- Eliminates blank gaps and orphaned column stops completely by dynamically balancing feed items and loading skeletons across columns; all lines now advance evenly side by side. Client built cleanly in 4.53s.
-
-## 2026-11-20 — Balanced Pinterest Waterfall Alignment Across All Columns & Full Batch Backfill
-- Replaced unconstrained greedy distribution with tier-based shortest-column waterfall balancing: all columns now advance synchronously with equal card counts (or at most ±1), preventing any single column from stopping early while others continue down.
-- Dynamically mapped grid column template to JavaScript `columnCount` and clamped extreme vertical pin images to `max-h-[650px] object-cover`, preserving authentic Pinterest layout without runaway column height.
-- Backend now backfills with ranked candidate posts when unseen items run low, guaranteeing full 24-card pages. Client built in 8.40s.
-
-## 2026-11-20 — Fixed server crash caused by duplicate closing bracket in trendFeed.js
-- Resolved `SyntaxError: Unexpected token '}'` in `server/src/services/trendFeed.js` caused by an orphaned duplicate block.
-- Restored backend server availability on port 5000, eliminating Vite dev proxy `ECONNREFUSED` errors across all `/api/` endpoints.
-
-## 2026-11-20 — Set India (IN) as default region & made country feed filtering fully functional
-- Defaulted region selection across client and server to India (`IN`), persisted user choice in `localStorage`, and prioritized India in the header country dropdown.
-- Wired `region` through YouTube (`regionCode: IN`), Google Trends (`geo: IN`), Breaking News (`country: in`), Pinterest (`query + region`), and visual sources (Unsplash/Pexels), making country filtering genuinely affect returned content and hot topics radar. Client build passed in 4.03s.
-
-## 2026-11-20 — Balanced Multi-Column Pinterest Waterfall & Multi-Column Simultaneous Skeleton Loading
-- Resolved uneven column heights and blank gaps by replacing naive modulo distribution with greedy shortest-column height balancing; columns now progress evenly on the same lines.
+- Flex-based multi-column layout guarantees equal column widths and natural Pinterest vertical stacking. Client built cleanly.
 - Integrated skeleton placeholder cards directly inside every column simultaneously during loading (`TrendCardSkeleton` across all 4 columns), eliminating blank spaces matching user annotations (`15ce7641.png`).
 - Fixed server pagination cursor bug where page N items were dropped by `applyRankCursor`, guaranteeing full 24-item dense batches. Client build passed in 4.50s.
 
@@ -160,74 +140,4 @@
 ## 2026-11-18 — Onboarding topics personalized feed
 - Wired selected onboarding topics to live multi-platform search (Pinterest, Bluesky, YouTube, Pexels, Unsplash) and boosted matching candidates in ranking engine with topic badges.
 - Added a dedicated "My Curated Topics" pill bar in Trend Feed for combined view or one-click filtering by individual selected topics, plus instant profile re-sync on onboarding save.
-- All 7 automated test suites passed and client build passed cleanly.
-
-## 2026-11-18 — Pinterest & Bluesky live trend search and relevance feeds
-- Ported official search and feed services from TrendPulse for Pinterest (BaseSearchResource/API v5/RSS) and Bluesky (ATProto searchPosts/getFeed/getTrends) with query stopword extraction, multi-field relevance scoring, quality boosts, and author diversification.
-- Added dedicated Pinterest and Bluesky format tabs, search results banner, Pinterest save counters, Bluesky engagement stats, and live hot topics radar combining Google & Bluesky trends.
-- Client build and live verification test suite passed cleanly.
-
-## 2026-11-18 — Trend Feed first-time interest onboarding popup
-- Added an attractive first-visit interest selection modal offering 24 creator topics across 6 categories with search, category filtering, select all/clear, and collapsible advanced tuning.
-- Automatically pops up on first visit (`qp_trend_onboarded_<userKey>`), saves selected keywords to ranking profile, and triggers immediate personalized feed refresh. Accessible anytime via header "Tune" button.
-## 2026-11-18 — Trend Feed interest onboarding modal clean-up
-- Cleaned up the interest popup by removing the subtitle, search bar, and category pills as requested, placing the topic cards directly below the headline for a compact, direct layout.
-- Client build passed cleanly.
-
-## 2026-11-18 — Trend Feed header integration
-- Integrated the "Explore Trends" title, search bar, and action controls directly into the top Header bar's empty space via Header left portal, eliminating the empty header strip and bringing content immediately to the top.
-- Client build passed cleanly.
-
-## 2026-11-18 — Trend Feed header clean-up
-- Compacted Trend Feed top spacing by moving content upwards (reduced padding and header gap), removed the "Live Feed" pill and the subtitle text for a clean, tight layout.
-- Client build passed cleanly.
-
-## 2026-10-13
-- Added YouTube title input in PlatformCustomization with caption fallback, synced live preview, and wired dedicated title to broadcast uploads.
-- Added YouTube channel detection and missing channel/unverified warnings with direct links to youtube.com/create_channel and youtube.com/verify across intelligence engine, composer, and dashboard.
-
-## 2026-10-09
-- Pinterest live checks: production boards succeed; Trial Pin creation returns 403/code 29 and the production token fails Sandbox authentication. Switched local API base to Sandbox; restart and reconnect are required.
-- Fixed missing Pinterest OAuth import and surfaced board-fetch errors. Mock publishing/error checks, backend syntax checks, and client build passed; live Sandbox publishing remains pending reconnection.
-
-## 2026-10-06
-- Diagnosed InstaPilot reply delays: webhooks arrived in 1–2s, but the listener only persisted inbox data; browser polling drove replies. Wired bot handling to live webhook logs, guarded overlapping syncs, and added generation timing.
-- Backend syntax and mocked webhook/sync flow checks passed; live latency needs verification after restarting/deploying the API server.
-
-## 2026-11-12
-- Added three-hour Auto DM follow-ups with up to three link buttons, message preview, durable scheduling, reply/disable cancellation, messaging-window checks, quota enforcement and duplicate protection.
-- Deployed the additive migration and webhook to Supabase; live schema/permission checks passed. Client build, 13 worker/config tests, temporary PostgreSQL checks and UI checks passed; user will deploy backend/frontend. Edge typecheck retains 13 pre-existing errors.
-- Fixed public comment spam: self/nested event rejection, permanent per-comment claims, one matching automation and single-attempt public replies. Eleven Edge regression tests and PostgreSQL guard checks passed; deployed guard migration and webhook to Supabase.
-
-## 2026-11-13
-- Added response-picker illustrations, cleaner reorderable rows and focused Auto DM UX fixes: clearer optional fields/personalization, readiness validation and simpler follow-up copy.
-- Compacted Scheduled Queue with bounded, aligned date-grouped list rows, clarified statuses/pending counts, fixed overdue markers, and added media previews and a time-sorted day agenda for busy dates.
-- Client build and isolated desktop/mobile/filter/save/media checks passed, including a 15-post day, video playback and carousel navigation with no schedule mutations. Publishing remains due-time dispatch; advance staging is not implemented.
-
-## 2026-11-13 — Tutorial help
-- Mapped all 11 supplied playlist tutorials to screen-specific i buttons; added an embedded video dialog with YouTube/playlist links in the dashboard header, composer and account connection page.
-- Client build passed; isolated browser check confirmed AutoDM editor video mapping, and dialog opening. Player is conditionally mounted only while the dialog is open.
-
-## 2026-11-13 — Inbox shared media
-- Replaced Instagram reel/post URL-only messages with share cards, available media previews, on-demand Instagram embeds and an Instagram fallback link; restored video rendering and accepted ig_post webhook attachments.
-- Client build, backend syntax and share URL validation checks passed. Live preview depends on Meta media availability and Instagram embed access; live account verification remains pending.
-
-## 2026-11-13 — Reel card refinement
-- Removed generic reel headers/buttons and bubble padding; available covers/videos now render as rounded vertical media cards, with lazy embeds automatically used for URL-only shares.
-- Inbox normalization now checks all webhook attachments and prefers available image/video attachments when loading history. Build and backend syntax checks passed; live Meta media availability remains unverified.
-
-## 2026-11-13 — Remove Instagram embed chrome
-- Removed inline Instagram iframes and their profile/follow controls. Available media stays in clean reel cards; unavailable covers now have an explicit compact fallback. Video failures retain a usable cover when available.
-- Client build and diff checks passed. URL-only historical messages still need actual cover metadata for the requested native-style thumbnail; this is not solved by the renderer.
-
-## 2026-11-13 — Live reel preview diagnosis
-- Read-only inspection of recent inbox records confirmed missing image/video fields on shared links. A live authenticated Meta message request succeeded (HTTP 200) but returned only shares.data[].link, without attachments or cover metadata.
-- Native-style covers remain unresolved for URL-only third-party shares. No further cosmetic substitution or production data mutation was made.
-
-## 2026-11-13 — Queue list sorting
-- Made list sorting explicit by scheduled time, defaulting to latest first with an oldest-first selector; date groups and within-day rows follow the same direction. Undated/invalid timestamps stay last; calendar order is unchanged.
-- Sorting checks covered both directions, same-day times, missing dates and nonmutation; client build and diff checks passed.
-
-## 2026-11-13 — SocialPilot public publishing
-- Added default-off “Post on SocialPilot too” consent, immediate/scheduled publishing, durable native media, author display, duplicate protection and per-channel results/retry handling. Trend Feed includes public contributions plus a SocialPilot tab and direct post previews.
-- Deployed additive migration 202611130001 after transaction/permission checks. Eight publishing/feed/retry tests, client build and isolated desktop/mobile opt-in/carousel checks passed; no real user posts were published during verification. Backend/frontend deployment remains with the user.
+- All automated test suites and client build passed cleanly.

@@ -84,7 +84,7 @@ export async function fetchYouTubeTrends({ region = "IN", category = "all", quer
           type: "video",
           order: "viewCount",
           videoCategoryId: videoCategoryId || undefined,
-          regionCode: region.toUpperCase() === "GLOBAL" ? "IN" : region.toUpperCase(),
+          regionCode: region.toUpperCase() === "GLOBAL" ? "US" : region.toUpperCase(),
           maxResults: Math.min(maxResults, 50),
           key: apiKey,
         },
@@ -107,7 +107,7 @@ export async function fetchYouTubeTrends({ region = "IN", category = "all", quer
       const params = {
         part: "snippet,statistics,contentDetails",
         chart: "mostPopular",
-        regionCode: region.toUpperCase() === "GLOBAL" ? "IN" : region.toUpperCase(),
+        regionCode: region.toUpperCase() === "GLOBAL" ? "US" : region.toUpperCase(),
         maxResults: Math.min(maxResults, 50),
         key: apiKey,
       };
@@ -178,7 +178,7 @@ export async function fetchGoogleTrends({ geo = "IN", page = 1 } = {}) {
     const response = await axios.get("https://serpapi.com/search.json", {
       params: {
         engine: "google_trends_trending_now",
-        geo: geo.toUpperCase() === "GLOBAL" ? "IN" : geo.toUpperCase(),
+        geo: geo.toUpperCase() === "GLOBAL" ? "US" : geo.toUpperCase(),
         api_key: apiKey,
       },
       timeout: 9000,
@@ -257,7 +257,7 @@ export async function fetchTrendingNews({ category = "all", region = "IN", query
       const q = query || (category === "tech_ai" ? "AI OR technology" : "");
       const params = {
         lang: "en",
-        country: region.toLowerCase() === "global" ? undefined : region.toLowerCase(),
+        country: region.toLowerCase() === "global" ? "us" : region.toLowerCase(),
         max: 25,
         page,
         apikey: gnewsKey,
@@ -312,7 +312,7 @@ export async function fetchTrendingNews({ category = "all", region = "IN", query
         params: {
           category: q ? undefined : nCategory,
           q: q || undefined,
-          country: q ? undefined : (region.toLowerCase() === "global" ? undefined : region.toLowerCase()),
+          country: q ? undefined : (region.toLowerCase() === "global" ? "us" : region.toLowerCase()),
           language: "en",
           pageSize: 25,
           page,
@@ -386,6 +386,8 @@ export async function fetchUnsplashTrends({ category = "all", query = "", perPag
         ? " Canada"
         : regionUpper === "AU"
         ? " Australia"
+        : regionUpper === "US" || regionUpper === "GLOBAL"
+        ? " USA"
         : "";
 
     const q = query
@@ -394,7 +396,7 @@ export async function fetchUnsplashTrends({ category = "all", query = "", perPag
       ? `${searchTerms[category]}${regionTerm}`
       : regionUpper === "IN"
       ? "India aesthetic architecture culture design"
-      : "";
+      : "aesthetic architecture design";
     const url = q ? "https://api.unsplash.com/search/photos" : "https://api.unsplash.com/photos";
     const params = {
       page,
@@ -481,6 +483,8 @@ export async function fetchPexelsTrends({ category = "all", query = "", perPage 
         ? " Canada"
         : regionUpper === "AU"
         ? " Australia"
+        : regionUpper === "US" || regionUpper === "GLOBAL"
+        ? " USA"
         : "";
 
     const q = query
@@ -489,7 +493,7 @@ export async function fetchPexelsTrends({ category = "all", query = "", perPage 
       ? `${searchTerms[category]}${regionTerm}`
       : regionUpper === "IN"
       ? "India travel culture aesthetic"
-      : "";
+      : "viral reel shorts aesthetic";
     const url = q ? "https://api.pexels.com/videos/search" : "https://api.pexels.com/videos/popular";
     const params = {
       page,
