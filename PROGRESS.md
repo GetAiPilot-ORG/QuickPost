@@ -1,3 +1,8 @@
+## 2026-11-20 — Balanced Pinterest Waterfall Alignment Across All Columns & Full Batch Backfill
+- Replaced unconstrained greedy distribution with tier-based shortest-column waterfall balancing: all columns now advance synchronously with equal card counts (or at most ±1), preventing any single column from stopping early while others continue down.
+- Dynamically mapped grid column template to JavaScript `columnCount` and clamped extreme vertical pin images to `max-h-[650px] object-cover`, preserving authentic Pinterest layout without runaway column height.
+- Backend now backfills with ranked candidate posts when unseen items run low, guaranteeing full 24-card pages. Client built in 8.40s.
+
 ## 2026-11-20 — Fixed server crash caused by duplicate closing bracket in trendFeed.js
 - Resolved `SyntaxError: Unexpected token '}'` in `server/src/services/trendFeed.js` caused by an orphaned duplicate block.
 - Restored backend server availability on port 5000, eliminating Vite dev proxy `ECONNREFUSED` errors across all `/api/` endpoints.

@@ -914,8 +914,17 @@ export async function getTrendFeedPage(params = {}, options = {}) {
   }
 
   const unseenRows = allCandidates.filter((post) => !seen.has(post.id));
-  const candidatePool = unseenRows.length ? unseenRows : allCandidates;
-  const ranked = rankPosts(candidatePool);
+  let ranked;
+  if (unseenRows.length >= limit) {
+    ranked = rankPosts(unseenRows);
+  } else {
+    // Put unseen items first, then backfill with previously seen items so the feed page is always dense and complete
+    const seenRows = allCandidates.filter((post) => seen.has(post.id));
+    const rankedUnseen = rankPosts(unseenRows);
+    const rankedSeen = rankPosts(seenRows);
+    const seenSet = new Set(rankedUnseen.map((p) => p.id));
+    ranked = [...rankedUnseen, ...rankedSeen.filter((p) => !seenSet.has(p.id))];
+  }
 
   // Take current page slice (Interleaved for 'all', ranked slice for filtered tabs)
   const items = type === "all" ? interleavePinterestFeed(ranked, limit) : ranked.slice(0, limit);

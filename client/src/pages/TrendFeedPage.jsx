@@ -453,7 +453,7 @@ function TrendCard({ post, onUseIdea, onRemix, onCompose, onSave, isSaved, onOpe
               alt={post.title || ""}
               loading="lazy"
               onError={handleImageError}
-              className="w-full h-auto block transition-transform duration-300 group-hover:scale-[1.01]"
+              className="w-full h-auto max-h-[650px] object-cover block transition-transform duration-300 group-hover:scale-[1.01]"
             />
           ) : (
             /* Elegant Pinterest-style media placeholder if image URL is unreachable */
@@ -1821,20 +1821,30 @@ export default function TrendFeedPage() {
 
   const columnCount = useFeedColumnCount();
 
-  // Balanced Multi-Column Distribution (Pinterest Waterfall: Greedy Shortest-Column Balancing)
+  // Balanced Multi-Column Distribution (Pinterest Waterfall: Tier-based Shortest-Column Balancing)
   const columns = useMemo(() => {
     const cols = Array.from({ length: columnCount }, () => []);
     const heights = Array.from({ length: columnCount }, () => 0);
 
     items.forEach((item) => {
-      let minIdx = 0;
-      let minH = heights[0];
-      for (let i = 1; i < columnCount; i++) {
-        if (heights[i] < minH) {
-          minH = heights[i];
-          minIdx = i;
+      // Find the minimum number of items in any column
+      const minItemCount = Math.min(...cols.map((c) => c.length));
+
+      // Candidate columns are strictly those in the current lowest tier
+      let minIdx = -1;
+      let minH = Infinity;
+
+      for (let i = 0; i < columnCount; i++) {
+        if (cols[i].length === minItemCount) {
+          if (heights[i] < minH) {
+            minH = heights[i];
+            minIdx = i;
+          }
         }
       }
+
+      if (minIdx === -1) minIdx = 0;
+
       cols[minIdx].push(item);
       heights[minIdx] += estimateCardHeight(item);
     });
@@ -2749,7 +2759,12 @@ export default function TrendFeedPage() {
           </div>
         ) : (
           /* Balanced Pinterest Multi-Column Grid (Image-First, Natural Height, Skeletons in all columns) */
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5 items-start w-full">
+          <div
+            className="grid gap-4 sm:gap-5 items-start w-full"
+            style={{
+              gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
+            }}
+          >
             {columns.map((colItems, colIdx) => (
               <div key={colIdx} className="flex flex-col gap-4 sm:gap-5 min-w-0 w-full">
                 {colItems.map((post) => (
