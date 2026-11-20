@@ -1,3 +1,7 @@
+## 2026-11-20 — Integrated react-masonry-css for bulletproof Pinterest waterfall layout
+- Replaced manual array partitioning with production-grade `react-masonry-css` matching the rest of the application.
+- Eliminates blank gaps and orphaned column stops completely by dynamically balancing feed items and loading skeletons across columns; all lines now advance evenly side by side. Client built cleanly in 4.53s.
+
 ## 2026-11-20 — Balanced Pinterest Waterfall Alignment Across All Columns & Full Batch Backfill
 - Replaced unconstrained greedy distribution with tier-based shortest-column waterfall balancing: all columns now advance synchronously with equal card counts (or at most ±1), preventing any single column from stopping early while others continue down.
 - Dynamically mapped grid column template to JavaScript `columnCount` and clamped extreme vertical pin images to `max-h-[650px] object-cover`, preserving authentic Pinterest layout without runaway column height.

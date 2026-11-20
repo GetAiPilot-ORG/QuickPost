@@ -1,4 +1,5 @@
 import { useSearchParams } from "react-router-dom";
+import Masonry from "react-masonry-css";
 import { ScheduledMediaGallery } from "../components/ScheduledMedia";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -57,47 +58,14 @@ const SKELETON_HEIGHTS = [
   "h-60 sm:h-68",
 ];
 
-function useFeedColumnCount() {
-  const getCols = useCallback(() => {
-    if (typeof window === "undefined") return 4;
-    const w = window.innerWidth;
-    if (w < 640) return 1;
-    if (w < 1024) return 2;
-    if (w < 1280) return 3;
-    return 4;
-  }, []);
-
-  const [cols, setCols] = useState(getCols);
-
-  useEffect(() => {
-    const handleResize = () => setCols(getCols());
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, [getCols]);
-
-  return cols;
-}
-
-function estimateCardHeight(post) {
-  if (!post) return 320;
-  const hasImage = Boolean(post.thumbnail_url || post.full_image_url || post.video_url || getYouTubeVideoId(post));
-  if (!hasImage) {
-    return 200; // Text card
-  }
-  let ar = Number(post.aspect_ratio);
-  if (!Number.isFinite(ar) || ar <= 0.2 || ar >= 4) {
-    if (post.content_type === "short" || post.source_url?.includes("/shorts/")) {
-      ar = 0.56;
-    } else if (post.source_platform === "youtube") {
-      ar = 1.77;
-    } else {
-      ar = 0.75;
-    }
-  }
-  const estimatedImgHeight = Math.min(Math.max(Math.round(300 / ar), 160), 650);
-  const cardBodyHeight = 115;
-  return estimatedImgHeight + cardBodyHeight + 20;
-}
+const TREND_MASONRY_BREAKPOINTS = {
+  default: 4,
+  1600: 4,
+  1280: 4,
+  1024: 3,
+  768: 2,
+  500: 1,
+};
 
 const FORMAT_TABS = [
   { id: "all", label: "All Trends" },
@@ -1819,39 +1787,6 @@ export default function TrendFeedPage() {
   const [initialLoaded, setInitialLoaded] = useState(false);
   const [error, setError] = useState("");
 
-  const columnCount = useFeedColumnCount();
-
-  // Balanced Multi-Column Distribution (Pinterest Waterfall: Tier-based Shortest-Column Balancing)
-  const columns = useMemo(() => {
-    const cols = Array.from({ length: columnCount }, () => []);
-    const heights = Array.from({ length: columnCount }, () => 0);
-
-    items.forEach((item) => {
-      // Find the minimum number of items in any column
-      const minItemCount = Math.min(...cols.map((c) => c.length));
-
-      // Candidate columns are strictly those in the current lowest tier
-      let minIdx = -1;
-      let minH = Infinity;
-
-      for (let i = 0; i < columnCount; i++) {
-        if (cols[i].length === minItemCount) {
-          if (heights[i] < minH) {
-            minH = heights[i];
-            minIdx = i;
-          }
-        }
-      }
-
-      if (minIdx === -1) minIdx = 0;
-
-      cols[minIdx].push(item);
-      heights[minIdx] += estimateCardHeight(item);
-    });
-
-    return cols;
-  }, [items, columnCount]);
-
   // Filters State
   const [selectedFormat, setSelectedFormat] = useState("all");
   const [selectedNiche, setSelectedNiche] = useState("all");
@@ -2758,42 +2693,36 @@ export default function TrendFeedPage() {
             </button>
           </div>
         ) : (
-          /* Balanced Pinterest Multi-Column Grid (Image-First, Natural Height, Skeletons in all columns) */
-          <div
-            className="grid gap-4 sm:gap-5 items-start w-full"
-            style={{
-              gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
-            }}
+          /* Authentic Pinterest Multi-Column Masonry (Natural Proportions, Perfectly Balanced Lines) */
+          <Masonry
+            breakpointCols={TREND_MASONRY_BREAKPOINTS}
+            className="flex w-auto -ml-4 sm:-ml-5 items-start"
+            columnClassName="pl-4 sm:pl-5 space-y-4 sm:space-y-5 flex-1 min-w-0"
           >
-            {columns.map((colItems, colIdx) => (
-              <div key={colIdx} className="flex flex-col gap-4 sm:gap-5 min-w-0 w-full">
-                {colItems.map((post) => (
-                  <TrendCard
-                    key={post.id}
-                    post={post}
-                    onUseIdea={handleUseIdea}
-                    onRemix={handleOpenRemix}
-                    onCompose={handleOpenComposer}
-                    onSave={toggleSaveIdea}
-                    isSaved={savedIdeas.some((item) => item.id === post.id)}
-                    onOpenDetails={(p) => setDetailsPost(p)}
-                  />
-                ))}
-
-                {/* SKELETON PLACEHOLDERS IN ALL COLUMNS SIMULTANEOUSLY WHILE LOADING */}
-                {loading && (
-                  <>
-                    <TrendCardSkeleton
-                      heightClass={SKELETON_HEIGHTS[(colIdx * 2) % SKELETON_HEIGHTS.length]}
-                    />
-                    <TrendCardSkeleton
-                      heightClass={SKELETON_HEIGHTS[(colIdx * 2 + 1) % SKELETON_HEIGHTS.length]}
-                    />
-                  </>
-                )}
+            {items.map((post) => (
+              <div key={post.id} className="w-full">
+                <TrendCard
+                  post={post}
+                  onUseIdea={handleUseIdea}
+                  onRemix={handleOpenRemix}
+                  onCompose={handleOpenComposer}
+                  onSave={toggleSaveIdea}
+                  isSaved={savedIdeas.some((item) => item.id === post.id)}
+                  onOpenDetails={(p) => setDetailsPost(p)}
+                />
               </div>
             ))}
-          </div>
+
+            {/* SKELETON PLACEHOLDERS DISTRIBUTED IN ALL COLUMNS SIMULTANEOUSLY WHILE LOADING */}
+            {loading &&
+              Array.from({ length: 8 }).map((_, i) => (
+                <div key={`skel-${i}`} className="w-full">
+                  <TrendCardSkeleton
+                    heightClass={SKELETON_HEIGHTS[i % SKELETON_HEIGHTS.length]}
+                  />
+                </div>
+              ))}
+          </Masonry>
         )}
 
         {/* 4. INFINITE SCROLL SENTINEL WITH SUBTLE STATUS */}
