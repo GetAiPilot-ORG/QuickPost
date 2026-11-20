@@ -16,7 +16,11 @@ import {
   resolveTargetTopics,
   calculateItemTopicMatch,
   getTopicDefinition,
+  getPinterestTopicQuery,
+  getBlueskyTopicQuery,
+  isItemRelevantToTopic,
 } from "./trends/trendTopics.js";
+import { getUserTrendPreferences } from "./trends/userTrendPreferencesService.js";
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 60;
@@ -82,6 +86,7 @@ function cacheKey(params) {
     .createHash("sha1")
     .update(
       [
+        params.userId || "anon",
         (params.seenIds || []).join(","),
         (params.interests || []).join(","),
         (params.topics || []).join(","),
@@ -154,6 +159,12 @@ function compareRankedPosts(a, b) {
 function applyRankCursor(posts, cursor) {
   const decoded = decodeTrendCursor(cursor);
   if (!decoded) return posts;
+  // If cursor has a page number and we are paginating external feeds by page,
+  // do not drop items with higher scores than the previous page boundary.
+  // Deduplication across pages is handled via seen IDs.
+  if (decoded.page !== undefined && Number(decoded.page) > 1) {
+    return posts;
+  }
   return posts.filter(
     (post) =>
       post.rank_score < decoded.rank_score ||
@@ -177,6 +188,7 @@ async function fetchLiveExternalPosts({
   search = "",
   targetTopics = [],
   searchQueries = [],
+  searchTopicObjects = [],
   isFilteredToSingleTopic = false,
   activeTopic = null,
   page = 1,
@@ -188,10 +200,12 @@ async function fetchLiveExternalPosts({
   if (search && String(search).trim()) {
     const q = String(search).trim();
     if (type === "all" || type === "pinterest" || type === "visuals") {
-      promises.push(fetchPinterestTrends({ category, query: q, limit: 25, page, token }));
+      const pLimit = type === "pinterest" ? 40 : 25;
+      promises.push(fetchPinterestTrends({ category, query: q, limit: pLimit, page, token }));
     }
     if (type === "all" || type === "bluesky" || type === "social") {
-      promises.push(fetchBlueskyTrends({ category, query: q, limit: 25, page }));
+      const bLimit = type === "bluesky" ? 35 : 25;
+      promises.push(fetchBlueskyTrends({ category, query: q, limit: bLimit, page }));
     }
     if (type === "all" || type === "videos") {
       promises.push(fetchYouTubeTrends({ region, category, query: q, maxResults: 25, page }));
@@ -203,24 +217,62 @@ async function fetchLiveExternalPosts({
     if (type === "all" || type === "news") {
       promises.push(fetchTrendingNews({ category, region, query: q, page }));
     }
+    if (type === "searches") {
+      promises.push(fetchGoogleTrends({ geo: region, page }));
+    }
   }
-  // Case 2: Personalized feed based on selected onboarding topics
+  // Case 2: Specific category selected by user from category pills (e.g. Gaming, Tech & AI, Design & Art)
+  else if (category && category !== "all") {
+    const pLimit = type === "pinterest" ? 40 : 25;
+    const bLimit = type === "bluesky" ? 35 : 25;
+
+    if (type === "all" || type === "pinterest" || type === "visuals") {
+      promises.push(fetchPinterestTrends({ category, query: "", limit: pLimit, page, token }));
+    }
+    if (type === "all" || type === "bluesky" || type === "social") {
+      promises.push(fetchBlueskyTrends({ category, query: "", limit: bLimit, page }));
+    }
+    if (type === "all" || type === "videos") {
+      promises.push(fetchYouTubeTrends({ region, category, maxResults: 25, page }));
+      promises.push(fetchPexelsTrends({ category, query: "", perPage: 25, page }));
+    }
+    if (type === "all" || type === "visuals") {
+      promises.push(fetchUnsplashTrends({ category, query: "", perPage: 25, page }));
+    }
+    if (type === "all" || type === "news") {
+      promises.push(fetchTrendingNews({ category, region, query: "", page }));
+    }
+    if (type === "searches") {
+      promises.push(fetchGoogleTrends({ geo: region, page }));
+    } else if (type === "all" && page === 1) {
+      promises.push(
+        fetchGoogleTrends({ geo: region, page: 1 })
+          .then((items) => (Array.isArray(items) ? items.slice(0, 2) : []))
+          .catch(() => [])
+      );
+    }
+  }
+  // Case 3: Personalized feed based on selected onboarding topics (when category is 'all')
   else if (targetTopics.length > 0 || searchQueries.length > 0) {
     if (isFilteredToSingleTopic && activeTopic) {
-      const q = activeTopic.searchQuery || activeTopic.label;
+      const pinQ = getPinterestTopicQuery(activeTopic);
+      const bskyQ = getBlueskyTopicQuery(activeTopic);
+      const ytQ = activeTopic.searchQuery || activeTopic.label;
       const subCat = activeTopic.subCategory || "all";
 
       if (type === "all" || type === "pinterest" || type === "visuals") {
         promises.push(
-          fetchPinterestTrends({ category: subCat, query: q, limit: 25, page, token })
+          fetchPinterestTrends({ category: subCat, query: pinQ, limit: 25, page, token })
             .then((pins) =>
               Array.isArray(pins)
-                ? pins.map((p) => ({
-                    ...p,
-                    matched_topic: activeTopic.label,
-                    interest_topic: activeTopic.id,
-                    topic_emoji: activeTopic.emoji,
-                  }))
+                ? pins
+                    .filter((p) => isItemRelevantToTopic(p, activeTopic))
+                    .map((p) => ({
+                      ...p,
+                      matched_topic: activeTopic.label,
+                      interest_topic: activeTopic.id,
+                      topic_emoji: activeTopic.emoji,
+                    }))
                 : []
             )
             .catch(() => [])
@@ -228,15 +280,17 @@ async function fetchLiveExternalPosts({
       }
       if (type === "all" || type === "bluesky" || type === "social") {
         promises.push(
-          fetchBlueskyTrends({ category: subCat, query: q, limit: 25, page })
+          fetchBlueskyTrends({ category: subCat, query: bskyQ, limit: 25, page })
             .then((posts) =>
               Array.isArray(posts)
-                ? posts.map((p) => ({
-                    ...p,
-                    matched_topic: activeTopic.label,
-                    interest_topic: activeTopic.id,
-                    topic_emoji: activeTopic.emoji,
-                  }))
+                ? posts
+                    .filter((p) => isItemRelevantToTopic(p, activeTopic))
+                    .map((p) => ({
+                      ...p,
+                      matched_topic: activeTopic.label,
+                      interest_topic: activeTopic.id,
+                      topic_emoji: activeTopic.emoji,
+                    }))
                 : []
             )
             .catch(() => [])
@@ -244,38 +298,53 @@ async function fetchLiveExternalPosts({
       }
       if (type === "all" || type === "videos") {
         promises.push(
-          fetchYouTubeTrends({ region, category: subCat, query: q, maxResults: 25, page })
+          fetchYouTubeTrends({ region, category: subCat, query: ytQ, maxResults: 25, page })
             .then((videos) =>
               Array.isArray(videos)
-                ? videos.map((v) => ({
-                    ...v,
-                    matched_topic: activeTopic.label,
-                    interest_topic: activeTopic.id,
-                    topic_emoji: activeTopic.emoji,
-                  }))
+                ? videos
+                    .filter((v) => isItemRelevantToTopic(v, activeTopic))
+                    .map((v) => ({
+                      ...v,
+                      matched_topic: activeTopic.label,
+                      interest_topic: activeTopic.id,
+                      topic_emoji: activeTopic.emoji,
+                    }))
                 : []
             )
             .catch(() => [])
         );
-        promises.push(fetchPexelsTrends({ category: subCat, query: q, perPage: 20, page }));
+        promises.push(fetchPexelsTrends({ category: subCat, query: pinQ, perPage: 20, page }));
       }
       if (type === "all" || type === "visuals") {
-        promises.push(fetchUnsplashTrends({ category: subCat, query: q, perPage: 20, page }));
+        promises.push(fetchUnsplashTrends({ category: subCat, query: pinQ, perPage: 20, page }));
       }
       if (type === "all" || type === "news") {
-        promises.push(fetchTrendingNews({ category: subCat, region, query: q, page }));
+        promises.push(fetchTrendingNews({ category: subCat, region, query: ytQ, page }));
       }
     } else {
-      // Multiple topics selected: slice / interleave topics
+      // MIXED FEED: Interleave onboarding selected topics AND searched topics
+      const mixedPool = [];
+      const maxLen = Math.max(targetTopics.length, searchTopicObjects.length);
+      for (let i = 0; i < maxLen; i++) {
+        if (i < targetTopics.length) mixedPool.push(targetTopics[i]);
+        if (i < searchTopicObjects.length) mixedPool.push(searchTopicObjects[i]);
+      }
+
       const topicsPool =
-        targetTopics.length > 0
+        mixedPool.length > 0
+          ? mixedPool
+          : targetTopics.length > 0
           ? targetTopics
+          : searchTopicObjects.length > 0
+          ? searchTopicObjects
           : searchQueries.map((q) => ({
               label: q,
               searchQuery: q,
               subCategory: "all",
-              emoji: "✨",
+              emoji: "🔍",
               id: q,
+              keywords: [q.toLowerCase()],
+              isSearchedTopic: true,
             }));
 
       const startIndex = ((page - 1) * 3) % topicsPool.length;
@@ -283,23 +352,27 @@ async function fetchLiveExternalPosts({
       if (topicsForPage.length < 3 && topicsPool.length >= 3) {
         topicsForPage = [...topicsForPage, ...topicsPool.slice(0, 3 - topicsForPage.length)];
       }
-      const limitPerTopic = Math.max(Math.floor(25 / topicsForPage.length), 8);
+      const limitPerTopic = Math.max(Math.floor(36 / topicsForPage.length), 12);
 
       for (const tDef of topicsForPage) {
-        const q = tDef.searchQuery || tDef.label;
+        const pinQ = getPinterestTopicQuery(tDef);
+        const bskyQ = getBlueskyTopicQuery(tDef);
+        const ytQ = tDef.searchQuery || tDef.label;
         const subCat = tDef.subCategory || "all";
 
         if (type === "all" || type === "pinterest" || type === "visuals") {
           promises.push(
-            fetchPinterestTrends({ category: subCat, query: q, limit: limitPerTopic, page, token })
+            fetchPinterestTrends({ category: subCat, query: pinQ, limit: limitPerTopic, page, token })
               .then((pins) =>
                 Array.isArray(pins)
-                  ? pins.map((p) => ({
-                      ...p,
-                      matched_topic: tDef.label,
-                      interest_topic: tDef.id,
-                      topic_emoji: tDef.emoji,
-                    }))
+                  ? pins
+                      .filter((p) => isItemRelevantToTopic(p, tDef))
+                      .map((p) => ({
+                        ...p,
+                        matched_topic: tDef.label,
+                        interest_topic: tDef.id,
+                        topic_emoji: tDef.emoji,
+                      }))
                   : []
               )
               .catch(() => [])
@@ -307,15 +380,17 @@ async function fetchLiveExternalPosts({
         }
         if (type === "all" || type === "bluesky" || type === "social") {
           promises.push(
-            fetchBlueskyTrends({ category: subCat, query: q, limit: limitPerTopic, page })
+            fetchBlueskyTrends({ category: subCat, query: bskyQ, limit: limitPerTopic, page })
               .then((posts) =>
                 Array.isArray(posts)
-                  ? posts.map((p) => ({
-                      ...p,
-                      matched_topic: tDef.label,
-                      interest_topic: tDef.id,
-                      topic_emoji: tDef.emoji,
-                    }))
+                  ? posts
+                      .filter((p) => isItemRelevantToTopic(p, tDef))
+                      .map((p) => ({
+                        ...p,
+                        matched_topic: tDef.label,
+                        interest_topic: tDef.id,
+                        topic_emoji: tDef.emoji,
+                      }))
                   : []
               )
               .catch(() => [])
@@ -323,15 +398,17 @@ async function fetchLiveExternalPosts({
         }
         if (type === "all" || type === "videos") {
           promises.push(
-            fetchYouTubeTrends({ region, category: subCat, query: q, maxResults: limitPerTopic, page })
+            fetchYouTubeTrends({ region, category: subCat, query: ytQ, maxResults: limitPerTopic, page })
               .then((videos) =>
                 Array.isArray(videos)
-                  ? videos.map((v) => ({
-                      ...v,
-                      matched_topic: tDef.label,
-                      interest_topic: tDef.id,
-                      topic_emoji: tDef.emoji,
-                    }))
+                  ? videos
+                      .filter((v) => isItemRelevantToTopic(v, tDef))
+                      .map((v) => ({
+                        ...v,
+                        matched_topic: tDef.label,
+                        interest_topic: tDef.id,
+                        topic_emoji: tDef.emoji,
+                      }))
                   : []
               )
               .catch(() => [])
@@ -342,7 +419,8 @@ async function fetchLiveExternalPosts({
       // Visuals & News for primary topic of this page
       const primary = topicsForPage[0];
       if (primary) {
-        const pQuery = primary.searchQuery || primary.label;
+        const pQuery = getPinterestTopicQuery(primary);
+        const pYt = primary.searchQuery || primary.label;
         const pCat = primary.subCategory || "all";
         if (type === "all" || type === "videos") {
           promises.push(fetchPexelsTrends({ category: pCat, query: pQuery, perPage: 15, page }));
@@ -351,7 +429,7 @@ async function fetchLiveExternalPosts({
           promises.push(fetchUnsplashTrends({ category: pCat, query: pQuery, perPage: 15, page }));
         }
         if (type === "all" || type === "news") {
-          promises.push(fetchTrendingNews({ category: pCat, region, query: pQuery, page }));
+          promises.push(fetchTrendingNews({ category: pCat, region, query: pYt, page }));
         }
       }
     }
@@ -359,10 +437,12 @@ async function fetchLiveExternalPosts({
   // Case 3: Global unpersonalized fallback
   else {
     if (type === "all" || type === "pinterest" || type === "visuals") {
-      promises.push(fetchPinterestTrends({ category, query: "", limit: 25, page, token }));
+      const pLimit = type === "pinterest" ? 40 : 25;
+      promises.push(fetchPinterestTrends({ category, query: "", limit: pLimit, page, token }));
     }
     if (type === "all" || type === "bluesky" || type === "social") {
-      promises.push(fetchBlueskyTrends({ category, query: "", limit: 25, page }));
+      const bLimit = type === "bluesky" ? 35 : 25;
+      promises.push(fetchBlueskyTrends({ category, query: "", limit: bLimit, page }));
     }
     if (type === "all" || type === "videos") {
       promises.push(fetchYouTubeTrends({ region, category, maxResults: 25, page }));
@@ -430,8 +510,38 @@ export async function getTrendFeedPage(params = {}, options = {}) {
   const search = (params.search || params.q || "").trim().toLowerCase();
 
   const topicParam = params.topic || "";
-  const topicsParam = params.topics || "";
-  const rawInterests = params.interests || "";
+  let topicsParam = params.topics || "";
+  let rawInterests = params.interests || "";
+
+  // Auto-load preferences & recent search history from database for authenticated user
+  const userId = options.userId || params.userId || null;
+  let recentSearches = [];
+  const searchesParam = params.searches || null;
+  if (searchesParam) {
+    recentSearches = String(searchesParam)
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  if (userId) {
+    try {
+      const dbPrefs = await getUserTrendPreferences(userId);
+      if (dbPrefs) {
+        if (!topicsParam && !topicParam && Array.isArray(dbPrefs.selectedTopicIds) && dbPrefs.selectedTopicIds.length > 0) {
+          topicsParam = dbPrefs.selectedTopicIds.join(",");
+        }
+        if (dbPrefs.interests) {
+          rawInterests = rawInterests ? `${rawInterests}, ${dbPrefs.interests}` : dbPrefs.interests;
+        }
+        if (Array.isArray(dbPrefs.recentSearches) && dbPrefs.recentSearches.length > 0) {
+          recentSearches = Array.from(new Set([...recentSearches, ...dbPrefs.recentSearches]));
+        }
+      }
+    } catch (e) {
+      console.warn("[TREND-FEED] Could not load DB preferences:", e.message);
+    }
+  }
 
   const {
     targetTopics,
@@ -443,7 +553,41 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     topics: topicsParam,
     topic: topicParam,
     interests: rawInterests,
+    recentSearches,
   });
+
+  // Build searchTopicObjects for searched topics not covered in targetTopics
+  const searchTopicObjects = (recentSearches || [])
+    .map((q) => String(q || "").trim())
+    .filter((q) => {
+      const cleanQ = q.toLowerCase().replace(/^#/, "");
+      return (
+        cleanQ.length > 1 &&
+        !targetTopics.some(
+          (t) =>
+            t.label.toLowerCase() === cleanQ ||
+            t.id.toLowerCase() === cleanQ ||
+            (Array.isArray(t.keywords) && t.keywords.some((k) => k.toLowerCase() === cleanQ))
+        )
+      );
+    })
+    .map((q) => {
+      const cleanQ = q.replace(/^#/, "").trim();
+      return {
+        id: `search_${cleanQ.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`,
+        label: cleanQ,
+        searchQuery: cleanQ,
+        pinterestQuery: cleanQ,
+        blueskyQuery: cleanQ,
+        keywords: cleanQ.toLowerCase().split(/\s+/).filter((w) => w.length > 1),
+        subCategory: "all",
+        emoji: "🔍",
+        isSearchedTopic: true,
+      };
+    });
+
+  const allTopicDefs = [...targetTopics, ...searchTopicObjects];
+  const allKeywords = Array.from(new Set([...keywords, ...searchTopicObjects.flatMap((s) => s.keywords)]));
 
   const decodedCursor = decodeTrendCursor(params.cursor);
   const pageNumber = Number(params.page || decodedCursor?.page || 1);
@@ -451,6 +595,7 @@ export async function getTrendFeedPage(params = {}, options = {}) {
   const seen = new Set(seenIds);
   const cache = options.cache === undefined ? getTrendFeedCache() : options.cache;
   const key = cacheKey({
+    userId,
     limit,
     cursor: params.cursor,
     seenIds,
@@ -505,6 +650,7 @@ export async function getTrendFeedPage(params = {}, options = {}) {
         search,
         targetTopics,
         searchQueries,
+        searchTopicObjects,
         isFilteredToSingleTopic,
         activeTopic,
         page: pageNumber,
@@ -520,7 +666,15 @@ export async function getTrendFeedPage(params = {}, options = {}) {
 
   // Apply precision relevance scoring & spam filter when search keyword is provided
   if (search) {
-    allCandidates = filterAndRankPosts(allCandidates, search);
+    if (type === "pinterest") {
+      // Retain direct live pins matching Pinterest's search results without artificial keyword dropping
+      allCandidates = allCandidates.filter((item) => item.source_platform === "pinterest");
+    } else if (type === "bluesky") {
+      // Retain direct live Bluesky posts matching Bluesky search results
+      allCandidates = allCandidates.filter((item) => item.source_platform === "bluesky");
+    } else {
+      allCandidates = filterAndRankPosts(allCandidates, search);
+    }
   } else if (isFilteredToSingleTopic && activeTopic) {
     // When filtered to a single topic, prioritize/keep matching items
     const topicFiltered = allCandidates.filter((item) => {
@@ -540,7 +694,8 @@ export async function getTrendFeedPage(params = {}, options = {}) {
         item.source_platform === "youtube" ||
         item.source_platform === "pexels" ||
         item.content_type === "video" ||
-        item.content_type === "reel_video"
+        item.content_type === "reel_video" ||
+        item.content_type === "short"
     );
   } else if (type === "news") {
     allCandidates = allCandidates.filter(
@@ -577,12 +732,13 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     applyRankCursor(
       posts
         .map((post) => {
-          const matchResult = calculateItemTopicMatch(post, targetTopics, keywords);
-          const matches = matchResult.matchCount;
+          const matchResult = calculateItemTopicMatch(post, allTopicDefs, allKeywords);
+          const hasDirectTopic = Boolean(post.matched_topic || post.interest_topic);
+          const matches = hasDirectTopic ? Math.max(matchResult.matchCount, 3) : matchResult.matchCount;
           const score = scoreTrendPost(post, now);
 
           let topicBoost = 1;
-          if (targetTopics.length > 0 || keywords.length > 0) {
+          if (allTopicDefs.length > 0 || allKeywords.length > 0) {
             topicBoost = matches > 0 ? 500 + matches * 150 : 0.05;
           }
 
@@ -599,8 +755,90 @@ export async function getTrendFeedPage(params = {}, options = {}) {
       params.cursor
     );
 
-  // Interleave different media formats in authentic Pinterest waterfall fashion
+  // Interleave different media formats and topics in authentic Pinterest waterfall fashion
   function interleavePinterestFeed(posts, targetLimit) {
+    if (!posts || posts.length === 0) return [];
+
+    const isPersonalized = targetTopics.length > 0 || searchTopicObjects.length > 0;
+
+    // When personalized with multiple topics, interleave across topics for balanced representation
+    if (isPersonalized && allTopicDefs.length > 1) {
+      const topicBuckets = new Map();
+      const otherPosts = [];
+
+      allTopicDefs.forEach((t) => {
+        topicBuckets.set(t.label.toLowerCase(), {
+          def: t,
+          items: [],
+        });
+      });
+
+      posts.forEach((p) => {
+        const topicName = (p.matched_topic || "").toLowerCase();
+        let bucket = topicBuckets.get(topicName);
+        if (!bucket && p.interest_topic) {
+          const matchedDef = allTopicDefs.find(
+            (t) => t.id === p.interest_topic || t.label.toLowerCase() === topicName
+          );
+          if (matchedDef) {
+            bucket = topicBuckets.get(matchedDef.label.toLowerCase());
+          }
+        }
+        if (bucket) {
+          bucket.items.push(p);
+        } else {
+          otherPosts.push(p);
+        }
+      });
+
+      const activeBuckets = Array.from(topicBuckets.values()).filter((b) => b.items.length > 0);
+
+      if (activeBuckets.length > 0) {
+        const result = [];
+        const seenIds = new Set();
+        let hasMore = true;
+
+        while (result.length < targetLimit && hasMore) {
+          hasMore = false;
+          for (const b of activeBuckets) {
+            if (b.items.length > 0 && result.length < targetLimit) {
+              const item = b.items.shift();
+              if (item && !seenIds.has(item.id)) {
+                seenIds.add(item.id);
+                result.push(item);
+                hasMore = true;
+              }
+            }
+          }
+        }
+
+        const leftover = [
+          ...activeBuckets.flatMap((b) => b.items),
+          ...otherPosts,
+        ];
+        for (const item of leftover) {
+          if (result.length >= targetLimit) break;
+          if (!seenIds.has(item.id)) {
+            seenIds.add(item.id);
+            result.push(item);
+          }
+        }
+
+        if (result.length < targetLimit) {
+          for (const item of posts) {
+            if (result.length >= targetLimit) break;
+            if (!seenIds.has(item.id)) {
+              seenIds.add(item.id);
+              result.push(item);
+            }
+          }
+        }
+
+        return result;
+      }
+    }
+
+    // Default: Interleave across platforms for single topic or global trend feed
     const reels = [];
     const visuals = [];
     const videos = [];
@@ -611,6 +849,13 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     const community = [];
 
     posts.forEach((p) => {
+      // If personalized feed, prevent zero-match items from taking high-priority rotation slots
+      const isRelevant = !isPersonalized || (p.interest_match_count && p.interest_match_count > 0);
+      if (!isRelevant) {
+        others.push(p);
+        return;
+      }
+
       if (p.source_platform === "socialpilot") {
         community.push(p);
       } else if (p.source_platform === "pinterest") {
@@ -656,6 +901,15 @@ export async function getTrendFeedPage(params = {}, options = {}) {
       }
     }
 
+    if (result.length < targetLimit) {
+      for (const item of posts) {
+        if (result.length >= targetLimit) break;
+        if (!result.some((r) => r.id === item.id)) {
+          result.push(item);
+        }
+      }
+    }
+
     return result;
   }
 
@@ -683,6 +937,7 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     isPersonalized: Boolean(targetTopics.length > 0 || searchQueries.length > 0),
     activeTopic: activeTopic ? { id: activeTopic.id, label: activeTopic.label, emoji: activeTopic.emoji } : null,
     topics: targetTopics.map((t) => ({ id: t.id, label: t.label, emoji: t.emoji })),
+    recentSearches: recentSearches.slice(0, 5),
   };
 
   await writeCache(cache, key, page);
