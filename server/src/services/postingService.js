@@ -1,4 +1,4 @@
-import { publishToSocialpilot } from "./socialpilotPublishing.js";
+import { publishToSocialpilot, resolveSocialProfile } from "./socialpilotPublishing.js";
 import fs from 'fs';
 import { getTokensForUser } from './supabase.js';
 import { postToInstagram, postImageToInstagram, postCarouselToInstagram, postStoryToInstagram } from './instagram.js';
@@ -60,7 +60,21 @@ export async function executeBroadcast(broadcastId, userId, caption, mediaUrls, 
     const results = { mediaUrl: primaryMediaUrl, mediaUrls: mediaUrls };
     let platformPromises = [];
     if (channels.includes('socialpilot')) {
-      platformPromises.push(publishToSocialpilot({ userId, publicationKey: platData?.sourceJobId || platData?.source_job_id || broadcastId, caption, mediaUrls, mediaType, thumbnailUrl: coverImageUrl }).then(result => ({ platform: 'socialpilot', result })));
+      const socialProfile = resolveSocialProfile(channels, tokens);
+      platformPromises.push(
+        publishToSocialpilot({
+          userId,
+          publicationKey: platData?.sourceJobId || platData?.source_job_id || broadcastId,
+          caption,
+          mediaUrls,
+          mediaType,
+          thumbnailUrl: coverImageUrl,
+          channels,
+          targetUsername: socialProfile.targetUsername,
+          targetPlatform: socialProfile.targetPlatform,
+          targetAvatarUrl: socialProfile.avatarUrl,
+        }).then(result => ({ platform: 'socialpilot', result }))
+      );
     }
 
 

@@ -59,18 +59,18 @@ const SKELETON_HEIGHTS = [
 
 function useFeedColumns() {
   const [colCount, setColCount] = useState(() => {
-    if (typeof window === "undefined") return 4;
+    if (typeof window === "undefined") return 3;
     const w = window.innerWidth;
     if (w < 640) return 1;
     if (w < 1024) return 2;
-    if (w < 1280) return 3;
+    if (w < 1440) return 3;
     return 4;
   });
 
   useEffect(() => {
     const onResize = () => {
       const w = window.innerWidth;
-      const next = w < 640 ? 1 : w < 1024 ? 2 : w < 1280 ? 3 : 4;
+      const next = w < 640 ? 1 : w < 1024 ? 2 : w < 1440 ? 3 : 4;
       setColCount(next);
     };
     window.addEventListener("resize", onResize);
@@ -314,6 +314,13 @@ function getPlatformMeta(platform) {
         fallbackIcon: Newspaper,
         color: "text-amber-600",
       };
+    case "socialpilot":
+      return {
+        name: "GAP Social-pilot",
+        iconSvg: "/logo.png",
+        fallbackIcon: Flame,
+        color: "text-amber-500",
+      };
     default:
       return {
         name: platform ? platform.charAt(0).toUpperCase() + platform.slice(1) : "Trend",
@@ -337,7 +344,10 @@ function TrendCard({ post, onUseIdea, onRemix, onCompose, onSave, isSaved, onOpe
   const isPexels = post.source_platform === "pexels" && Boolean(post.video_url);
   const isVideo = isPexels || Boolean(videoId);
   const isReel = post.content_type === "short" || post.source_url?.includes("/shorts/") || isPexels;
-  const platformMeta = getPlatformMeta(post.source_platform);
+  const effectivePlatform = post.source_platform === "socialpilot"
+    ? (post.target_platform || (post.creator?.startsWith("@") ? "instagram" : "socialpilot"))
+    : post.source_platform;
+  const platformMeta = getPlatformMeta(effectivePlatform);
 
   // Engagement stats
   const views = formatCompactNumber(post.metrics?.viewCount ?? post.metrics?.views);
@@ -717,7 +727,10 @@ function TrendDetailsBottomSheet({ isOpen, onClose, post, onRemix, onCompose, on
 
   const videoId = post.source_platform === "youtube" ? getYouTubeVideoId(post) : null;
   const mediaUrl = post.video_url || post.full_image_url || post.thumbnail_url;
-  const platformMeta = getPlatformMeta(post.source_platform);
+  const effectivePlatform = post.source_platform === "socialpilot"
+    ? (post.target_platform || (post.creator?.startsWith("@") ? "instagram" : "socialpilot"))
+    : post.source_platform;
+  const platformMeta = getPlatformMeta(effectivePlatform);
   const views = formatCompactNumber(post.metrics?.viewCount ?? post.metrics?.views);
   const likes = formatCompactNumber(post.metrics?.likeCount ?? post.metrics?.likes);
   const comments = formatCompactNumber(post.metrics?.commentCount ?? post.metrics?.comments ?? post.metrics?.replies);
@@ -1804,12 +1817,15 @@ export default function TrendFeedPage() {
 
   // Pure equal round-robin distribution across all columns (Pinterest Waterfall)
   const columns = useMemo(() => {
-    const cols = Array.from({ length: colCount }, () => []);
+    const effectiveCols = (loading || items.length === 0)
+      ? colCount
+      : Math.min(items.length, colCount);
+    const cols = Array.from({ length: effectiveCols }, () => []);
     items.forEach((item, index) => {
-      cols[index % colCount].push(item);
+      cols[index % effectiveCols].push(item);
     });
     return cols;
-  }, [items, colCount]);
+  }, [items, colCount, loading]);
 
   // Filters State
   const [selectedFormat, setSelectedFormat] = useState("all");

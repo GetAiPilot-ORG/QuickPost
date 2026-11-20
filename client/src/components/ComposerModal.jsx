@@ -41,6 +41,7 @@ import { useUploadJobs } from "../context/UploadJobContext";
 import { useDialog } from "../context/DialogContext";
 import ChannelSelector from "./ChannelSelector";
 import PlatformCustomization from "./PlatformCustomization";
+import TutorialHelp from "./TutorialHelp";
 
 // Modular imports
 import {
@@ -1778,7 +1779,7 @@ function ComposerModal({
 
   /* ── Validation ── */
   const validateForm = useCallback(() => {
-    if (selectedChannels.length === 0) {
+    if (selectedChannels.length === 0 && !postToSocialpilot) {
       setError("Please select at least one platform");
       return false;
     }
@@ -1955,7 +1956,8 @@ function ComposerModal({
         };
       }
 
-      formData.append("selectedChannels", JSON.stringify(publishChannels));
+      const finalChannels = publishChannels.length > 0 ? publishChannels : (postToSocialpilot ? ["socialpilot"] : []);
+      formData.append("selectedChannels", JSON.stringify(finalChannels));
       formData.append("postType", publishPostType);
       formData.append("platformData", JSON.stringify(publishPlatformData));
       formData.append("platformPresets", JSON.stringify(
