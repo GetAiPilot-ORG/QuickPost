@@ -390,14 +390,16 @@ function TrendCard({ post, onUseIdea, onRemix, onCompose, onSave, isSaved, onOpe
   };
 
   const ytThumb = videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : null;
-  const initialMedia = post.thumbnail_url || ytThumb || post.full_image_url;
+  const isVideoMedia = post.media_type === "video" || hasDirectVideo || (typeof post.media_urls?.[0] === "string" && (post.media_urls[0].includes("/video/upload/") || post.media_urls[0].endsWith(".mp4")));
+  const autoVideoThumb = isVideoMedia && typeof post.media_urls?.[0] === "string" ? post.media_urls[0].replace(/\.[^/.]+$/, ".jpg") : null;
+  const initialMedia = post.thumbnail_url || ytThumb || autoVideoThumb || post.full_image_url;
   const [imgSrc, setImgSrc] = useState(initialMedia);
   const [imageFailed, setImageFailed] = useState(false);
 
   useEffect(() => {
-    setImgSrc(post.thumbnail_url || ytThumb || post.full_image_url);
+    setImgSrc(post.thumbnail_url || ytThumb || autoVideoThumb || post.full_image_url);
     setImageFailed(false);
-  }, [post.thumbnail_url, ytThumb, post.full_image_url]);
+  }, [post.thumbnail_url, ytThumb, autoVideoThumb, post.full_image_url]);
 
   const handleImageError = () => {
     // If highRes 736x failed, try fallback to 564x or 236x or post.thumbnail_url
@@ -416,7 +418,7 @@ function TrendCard({ post, onUseIdea, onRemix, onCompose, onSave, isSaved, onOpe
     setImageFailed(true);
   };
 
-  const hasMedia = Boolean(imgSrc || isPexels || videoId);
+  const hasMedia = Boolean(imgSrc || isPexels || hasDirectVideo || videoId);
 
   return (
     <article

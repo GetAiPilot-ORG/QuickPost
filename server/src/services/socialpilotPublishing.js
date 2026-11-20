@@ -183,6 +183,9 @@ export function buildSocialpilotPost({
     tags.push(`author:${userId}`);
   }
 
+  const isVideo = mediaType === 'video' || (typeof mediaUrls?.[0] === 'string' && (mediaUrls[0].includes('/video/upload/') || mediaUrls[0].endsWith('.mp4')));
+  const computedThumb = thumbnailUrl || (isVideo && typeof mediaUrls?.[0] === 'string' ? mediaUrls[0].replace(/\.[^/.]+$/, '.jpg') : (mediaType === 'image' ? mediaUrls[0] : null));
+
   return {
     id,
     source_platform: sourcePlatform || 'socialpilot',
@@ -194,7 +197,7 @@ export function buildSocialpilotPost({
     caption: String(caption || ''),
     media_urls: mediaUrls,
     media_type: mediaType,
-    thumbnail_url: thumbnailUrl || (mediaType === 'image' ? mediaUrls[0] : null),
+    thumbnail_url: computedThumb,
     published_at: now.toISOString(),
     ingested_at: now.toISOString(),
     engagement_score: 1,
@@ -295,13 +298,15 @@ export function communityFeedPost(row) {
     : (row.source_platform === 'youtube' ? 'youtube' : (row.creator?.startsWith('@') ? 'instagram' : row.source_platform || 'socialpilot'));
 
   const isVideo = row.media_type === 'video' || (typeof row.media_urls?.[0] === 'string' && (row.media_urls[0].includes('/video/upload/') || row.media_urls[0].endsWith('.mp4')));
+  const autoThumb = row.thumbnail_url || (isVideo && typeof row.media_urls?.[0] === 'string' ? row.media_urls[0].replace(/\.[^/.]+$/, '.jpg') : (row.media_type === 'image' ? row.media_urls?.[0] : null));
 
   return {
     ...row,
+    thumbnail_url: autoThumb,
     title: row.title || row.caption,
     content_type: isVideo ? 'video' : (row.content_type || 'visual'),
     video_url: isVideo ? (row.video_url || row.media_urls?.[0]) : null,
-    full_image_url: row.media_type === 'image' ? (row.media_urls?.[0] || row.thumbnail_url) : null,
+    full_image_url: row.media_type === 'image' ? (row.media_urls?.[0] || autoThumb) : null,
     target_platform: targetPlatform,
   };
 }

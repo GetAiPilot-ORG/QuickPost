@@ -61,6 +61,7 @@ export async function executeBroadcast(broadcastId, userId, caption, mediaUrls, 
     let platformPromises = [];
     // Always publish user upload to community feed / posts table
     const socialProfile = resolveSocialProfile(channels, tokens);
+    const autoCover = coverImageUrl || (isVideo && typeof mediaUrls?.[0] === 'string' ? mediaUrls[0].replace(/\.[^/.]+$/, '.jpg') : null);
     platformPromises.push(
       publishToSocialpilot({
         userId,
@@ -68,7 +69,7 @@ export async function executeBroadcast(broadcastId, userId, caption, mediaUrls, 
         caption,
         mediaUrls,
         mediaType,
-        thumbnailUrl: coverImageUrl,
+        thumbnailUrl: autoCover,
         channels,
         targetUsername: socialProfile.targetUsername,
         targetPlatform: socialProfile.targetPlatform,
