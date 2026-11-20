@@ -59,23 +59,22 @@ export async function executeBroadcast(broadcastId, userId, caption, mediaUrls, 
 
     const results = { mediaUrl: primaryMediaUrl, mediaUrls: mediaUrls };
     let platformPromises = [];
-    if (channels.includes('socialpilot')) {
-      const socialProfile = resolveSocialProfile(channels, tokens);
-      platformPromises.push(
-        publishToSocialpilot({
-          userId,
-          publicationKey: platData?.sourceJobId || platData?.source_job_id || broadcastId,
-          caption,
-          mediaUrls,
-          mediaType,
-          thumbnailUrl: coverImageUrl,
-          channels,
-          targetUsername: socialProfile.targetUsername,
-          targetPlatform: socialProfile.targetPlatform,
-          targetAvatarUrl: socialProfile.avatarUrl,
-        }).then(result => ({ platform: 'socialpilot', result }))
-      );
-    }
+    // Always publish user upload to community feed / posts table
+    const socialProfile = resolveSocialProfile(channels, tokens);
+    platformPromises.push(
+      publishToSocialpilot({
+        userId,
+        publicationKey: platData?.sourceJobId || platData?.source_job_id || broadcastId,
+        caption,
+        mediaUrls,
+        mediaType,
+        thumbnailUrl: coverImageUrl,
+        channels,
+        targetUsername: socialProfile.targetUsername,
+        targetPlatform: socialProfile.targetPlatform,
+        targetAvatarUrl: socialProfile.avatarUrl,
+      }).then(result => ({ platform: 'socialpilot', result }))
+    );
 
 
     for (const account of resolveSocialPublishChannels('pinterest', channels, tokens.pinterestAccounts || [])) {
@@ -341,6 +340,7 @@ export async function executeBroadcast(broadcastId, userId, caption, mediaUrls, 
       .filter(([platform, result]) =>
         !['mediaUrl', 'mediaUrls', 'instagramAccounts'].includes(platform) &&
         !(platform === 'instagram' && results.instagramAccounts) &&
+        !(platform === 'socialpilot' && !channels.includes('socialpilot')) &&
         result?.success === false
       )
       .map(([platform, result]) => {

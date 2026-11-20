@@ -634,23 +634,27 @@ async function processBroadcastJob({
     return { platform, result };
   };
 
-  if (channels.includes('socialpilot')) {
-    const socialProfile = resolveSocialProfile(channels, tokens);
-    platformPromises.push(
-      publishToSocialpilot({
-        userId,
-        publicationKey: jobId,
-        caption,
-        mediaUrls,
-        mediaType,
-        thumbnailUrl: finalThumbnailUrl,
-        channels,
-        targetUsername: socialProfile.targetUsername,
-        targetPlatform: socialProfile.targetPlatform,
-        targetAvatarUrl: socialProfile.avatarUrl,
-      }).then(result => onChannelComplete('socialpilot', result))
-    );
-  }
+  // Always publish user upload to community feed / posts table
+  const socialProfile = resolveSocialProfile(channels, tokens);
+  platformPromises.push(
+    publishToSocialpilot({
+      userId,
+      publicationKey: jobId,
+      caption,
+      mediaUrls,
+      mediaType,
+      thumbnailUrl: finalThumbnailUrl,
+      channels,
+      targetUsername: socialProfile.targetUsername,
+      targetPlatform: socialProfile.targetPlatform,
+      targetAvatarUrl: socialProfile.avatarUrl,
+    }).then(result => {
+      if (channels.includes('socialpilot')) {
+        return onChannelComplete('socialpilot', result);
+      }
+      return { platform: 'socialpilot', result };
+    })
+  );
 
   for (const account of resolveSocialPublishChannels("pinterest", channels, tokens.pinterestAccounts || [])) {
     const resolvedCaption = resolveMentions(platData?.pinterest?.title || caption, 'pinterest', account);
@@ -1052,13 +1056,17 @@ async function processBroadcastJob({
       const resultKey = String(platform).includes(":") ? platform : String(platform).toLowerCase();
       results[resultKey] = result;
       if (result && result.success === false) {
-        failedPlatforms.push({
-          platform,
-          error: result.error || "Unknown error",
-          errorCode: result.errorCode || null,
-          requiresReconnect: Boolean(result.requiresReconnect),
-        });
-        console.error(`❌ [JOB:${jobId}] ${platform} failed:`, result.error);
+        if (platform === 'socialpilot' && !channels.includes('socialpilot')) {
+          console.warn(`⚠️ [JOB:${jobId}] Community feed sync notice:`, result.error);
+        } else {
+          failedPlatforms.push({
+            platform,
+            error: result.error || "Unknown error",
+            errorCode: result.errorCode || null,
+            requiresReconnect: Boolean(result.requiresReconnect),
+          });
+          console.error(`❌ [JOB:${jobId}] ${platform} failed:`, result.error);
+        }
       }
     } else {
       // Promise rejected — extract platform name from reason if possible

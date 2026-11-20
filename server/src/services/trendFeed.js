@@ -754,7 +754,12 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     applyRankCursor(
       posts
         .map((post) => {
-          const isUserOwn = Boolean(options.userId && post.author_id === options.userId);
+          const isUserOwn = Boolean(
+            options.userId && (
+              post.author_id === options.userId ||
+              (Array.isArray(post.niche_tags) && post.niche_tags.includes(`author:${options.userId}`))
+            )
+          );
           const isSocialpilot = post.source_platform === "socialpilot";
 
           const matchResult = calculateItemTopicMatch(post, allTopicDefs, allKeywords);
@@ -795,9 +800,14 @@ export async function getTrendFeedPage(params = {}, options = {}) {
   function interleavePinterestFeed(posts, targetLimit) {
     if (!posts || posts.length === 0) return [];
 
-    // Prioritize user's uploaded SocialPilot posts directly at the very top!
-    const communityPosts = posts.filter((p) => p.source_platform === "socialpilot");
-    const nonCommunityPosts = posts.filter((p) => p.source_platform !== "socialpilot");
+    // Prioritize user's own uploads and SocialPilot community posts directly at the very top!
+    const communityPosts = posts.filter((p) => p.source_platform === "socialpilot" || p.is_user_post);
+    communityPosts.sort((a, b) => {
+      if (a.is_user_post && !b.is_user_post) return -1;
+      if (!a.is_user_post && b.is_user_post) return 1;
+      return (b.rank_score || 0) - (a.rank_score || 0);
+    });
+    const nonCommunityPosts = posts.filter((p) => p.source_platform !== "socialpilot" && !p.is_user_post);
 
     const result = [];
     const seenIds = new Set();
@@ -965,7 +975,7 @@ export async function getTrendFeedPage(params = {}, options = {}) {
   }
 
   const unseenRows = allCandidates.filter((post) => {
-    if (pageNumber === 1 && post.source_platform === "socialpilot") return true;
+    if (pageNumber === 1 && (post.source_platform === "socialpilot" || post.is_user_post)) return true;
     return !seen.has(post.id);
   });
   let ranked;

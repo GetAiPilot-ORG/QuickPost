@@ -1,3 +1,8 @@
+## 2026-11-20 — Multi-platform creator username resolution, video playback & universal feed sync
+- Resolved foreign key failure on `posts.author_id` by checking `auth.users` existence, persisting `author:${userId}` in `niche_tags` and ranking user uploads at the top.
+- Auto-synced all broadcast uploads across every platform to Trend Feed community posts with video hover-playback support.
+- Enforced username precedence: Instagram handle default for multi-platform broadcasts, individual platform handle for single-platform uploads (e.g. YouTube shows channel name), and "GAP Social-pilot" for community-only posts.
+
 ## 2026-11-20 — Pinned user uploaded SocialPilot posts to top of Trend Feed
 - Explicitly prioritized SocialPilot uploads and user-authored posts with highest ranking tier (`rank_score > 100,000,000`), placing them at the very top of page 1.
 - Updated `interleavePinterestFeed` to lead with community uploads before interleaving external platforms, and wired `onPostCreated` in `ComposerModal` to auto-refresh feed immediately upon upload.

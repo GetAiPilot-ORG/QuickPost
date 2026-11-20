@@ -340,13 +340,15 @@ function TrendCard({ post, onUseIdea, onRemix, onCompose, onSave, isSaved, onOpe
   const [imageError, setImageError] = useState(false);
   const videoRef = useRef(null);
 
-  const videoId = post.source_platform === "youtube" ? getYouTubeVideoId(post) : null;
+  const videoId = (post.source_platform === "youtube" || post.target_platform === "youtube") ? getYouTubeVideoId(post) : null;
   const isPexels = post.source_platform === "pexels" && Boolean(post.video_url);
-  const isVideo = isPexels || Boolean(videoId);
-  const isReel = post.content_type === "short" || post.source_url?.includes("/shorts/") || isPexels;
-  const effectivePlatform = post.source_platform === "socialpilot"
-    ? (post.target_platform || (post.creator?.startsWith("@") ? "instagram" : "socialpilot"))
-    : post.source_platform;
+  const directVideoUrl = post.video_url || (post.media_type === "video" ? post.media_urls?.[0] : null);
+  const hasDirectVideo = Boolean(directVideoUrl);
+  const isVideo = isPexels || hasDirectVideo || Boolean(videoId);
+  const isReel = post.content_type === "short" || post.source_url?.includes("/shorts/") || post.media_type === "video" || isPexels;
+  const effectivePlatform = post.target_platform || (post.source_platform === "socialpilot"
+    ? (post.creator?.startsWith("@") ? "instagram" : "socialpilot")
+    : post.source_platform);
   const platformMeta = getPlatformMeta(effectivePlatform);
 
   // Engagement stats
@@ -358,16 +360,16 @@ function TrendCard({ post, onUseIdea, onRemix, onCompose, onSave, isSaved, onOpe
   const searchVolume = post.metrics?.searchVolume || post.metrics?.formattedTraffic;
   const rank = post.metrics?.rank;
 
-  // Auto-play / pause Pexels video on hover
+  // Auto-play / pause video on hover
   useEffect(() => {
-    if (!isPexels || !videoRef.current) return;
+    if ((!isPexels && !hasDirectVideo) || !videoRef.current) return;
     if (isHovered) {
       videoRef.current.currentTime = 0;
       videoRef.current.play().catch(() => { });
     } else {
       videoRef.current.pause();
     }
-  }, [isHovered, isPexels]);
+  }, [isHovered, isPexels, hasDirectVideo]);
 
   const handleShare = (e) => {
     e.stopPropagation();
@@ -428,10 +430,10 @@ function TrendCard({ post, onUseIdea, onRemix, onCompose, onSave, isSaved, onOpe
           className="relative w-full bg-neutral-100 dark:bg-neutral-900 cursor-pointer overflow-hidden"
           onClick={() => onOpenDetails(post)}
         >
-          {isPexels ? (
+          {isPexels || hasDirectVideo ? (
             <video
               ref={videoRef}
-              src={post.video_url}
+              src={isPexels ? post.video_url : directVideoUrl}
               poster={imgSrc}
               muted={isMuted}
               playsInline
@@ -523,8 +525,8 @@ function TrendCard({ post, onUseIdea, onRemix, onCompose, onSave, isSaved, onOpe
             </div>
           )}
 
-          {/* Pexels Sound Toggle */}
-          {isPexels && isHovered && (
+          {/* Video Sound Toggle */}
+          {(isPexels || hasDirectVideo) && isHovered && (
             <button
               type="button"
               onClick={(e) => {
