@@ -770,31 +770,34 @@ export function getBlueskyTopicQuery(topicDef) {
 export function isItemRelevantToTopic(item, topicDef) {
   if (!item || !topicDef) return false;
 
-  // Searched topics, user-tuned topics, and explicitly stamped topics are inherently relevant
-  if (topicDef.isSearchedTopic || topicDef.isTunedKeyword || item.matched_topic === topicDef.label) {
-    return true;
+  const targetLabel = (topicDef.label || "").toLowerCase().replace(/^#/, "").trim();
+  const targetId = (topicDef.id || "").toLowerCase().trim();
+
+  // If item is already explicitly tagged as this topic from a direct topic query
+  if (item.matched_topic) {
+    const itemLabel = item.matched_topic.toLowerCase().replace(/^#/, "").trim();
+    if (itemLabel === targetLabel) return true;
+  }
+  if (item.interest_topic) {
+    const itemId = String(item.interest_topic).toLowerCase().trim();
+    if (itemId === targetId) return true;
   }
 
   const title = (item.title || "").toLowerCase();
   const caption = (item.caption || item.text || "").toLowerCase();
   const tags = Array.isArray(item.niche_tags) ? item.niche_tags.join(" ").toLowerCase() : "";
-  const combined = `${title} ${caption} ${tags}`;
-
-  // If item came from a direct topic query and carries visual media or content, trust query
-  if (item.thumbnail_url || (Array.isArray(item.media_urls) && item.media_urls.length > 0)) {
-    if (combined.trim().length < 20) return true;
-  }
-
-  const cleanLabel = (topicDef.label || "").toLowerCase().replace(/^#/, "").trim();
+  const combined = `${title} ${caption} ${tags}`.trim();
+  if (!combined) return false;
 
   // 1. Direct label match
-  if (cleanLabel.length >= 2 && combined.includes(cleanLabel)) return true;
+  if (targetLabel.length >= 2 && combined.includes(targetLabel)) return true;
 
-  // 2. Meaningful words in label (length > 2, exclude 'and')
-  const labelWords = cleanLabel
+  // 2. Meaningful words in label (length > 2, exclude generic stop words)
+  const stopWords = new Set(["and", "the", "for", "with", "from", "video", "shorts", "trend", "trending", "viral"]);
+  const labelWords = targetLabel
     .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
-    .filter((w) => w.length > 2 && w !== "and");
+    .filter((w) => w.length > 2 && !stopWords.has(w));
   for (const w of labelWords) {
     if (combined.includes(w)) return true;
   }
@@ -802,13 +805,24 @@ export function isItemRelevantToTopic(item, topicDef) {
   // 3. Keywords in topic
   for (const kw of topicDef.keywords || []) {
     const k = kw.toLowerCase().trim();
-    if (k.length > 1 && combined.includes(k)) {
+    if (k.length > 2 && combined.includes(k)) {
       return true;
     }
   }
 
-  // Fallback: if queried directly for this topicDef, allow it
-  return true;
+  // 4. Query words in topic definition
+  if (topicDef.searchQuery) {
+    const qWords = topicDef.searchQuery
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !stopWords.has(w));
+    for (const qw of qWords) {
+      if (combined.includes(qw)) return true;
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -824,29 +838,17 @@ export function calculateItemTopicMatch(item, targetTopics = [], targetKeywords 
   const tags = Array.isArray(item.niche_tags) ? item.niche_tags.join(" ").toLowerCase() : "";
   const combined = `${title} ${text} ${tags}`;
 
-  // If item already carries matched_topic or interest_topic from source query, preserve and reward it!
+  // If item already carries matched_topic or interest_topic from source query, check if it belongs to targetTopics
   if (item.matched_topic || item.interest_topic) {
-    const topicName = item.matched_topic || item.interest_topic;
-    const found =
-      getTopicDefinition(topicName) ||
-      targetTopics.find(
-        (t) =>
-          t.id === topicName ||
-          t.label.toLowerCase() === topicName.toLowerCase() ||
-          t.label.toLowerCase().replace(/^#/, "") === topicName.toLowerCase().replace(/^#/, "")
-      );
+    const topicName = (item.matched_topic || item.interest_topic || "").toLowerCase().replace(/^#/, "");
+    const found = targetTopics.find(
+      (t) =>
+        (t.id && t.id.toLowerCase() === topicName) ||
+        (t.label && t.label.toLowerCase().replace(/^#/, "") === topicName)
+    );
 
     if (found) {
       return { matchedTopic: found, matchCount: 3, matchedKeywords: [found.label] };
-    } else if (item.matched_topic) {
-      const searchTopicDef = {
-        id: item.interest_topic || `search_${item.matched_topic.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`,
-        label: item.matched_topic,
-        emoji: item.topic_emoji || "🔍",
-        keywords: [item.matched_topic.toLowerCase()],
-        isSearchedTopic: true,
-      };
-      return { matchedTopic: searchTopicDef, matchCount: 3, matchedKeywords: [item.matched_topic] };
     }
   }
 

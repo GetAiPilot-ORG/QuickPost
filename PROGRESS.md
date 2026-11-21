@@ -1,3 +1,8 @@
+## 2026-11-21 — Strict topic isolation & balanced multi-topic round-robin interleaving
+- Root cause of clustering & leakage: `priorityPosts` Page 1 par top 6 items ek hi topic ke dump kar raha tha aur non-matching items fallback loop se feed me leak ho rahe the; saath hi `isItemRelevantToTopic` loose fallback se har post ko match maan leta tha.
+- Strict relevance ("uske alawa kuch nhi"): `trendTopics.js` me relevance check fix kiya aur `getTrendFeedPage` me personalized mode me candidate posts ko strictly user ke active topics se match filter kiya, generic DB aur irrelevant pulses completely discard kiye.
+- Balanced round-robin ("sabhi content mixed"): `interleavePinterestFeed` me priority dump hatakar topic buckets me sorted items ko shifting round-robin offset se distribute kiya taaki masonry columns me sabhi topics evenly alternate karein aur koi single topic dominate na kare.
+
 ## 2026-11-21 — "All Topics" feed strictly personalized to each user's search & interest topics
 - Root cause: Personalized feeds me Page 1 par generic country pulses (cricket, bhajans, popular videos) top 3 slots le rahe the aur community test posts slots 4-5 occupy kar rahe the, jisse alag-alag accounts me All Topics feed same lag rahi thi aur topic matches ka score 250k tha jo generic 95M pulses se dab jata tha.
 - User-specific topic leadership: Personalized feeds me generic country pulses aur unrelated community posts suppress kiye; user ke searched (90M), tuned (80M) aur onboarding (70M) topic matches ko top priority di.

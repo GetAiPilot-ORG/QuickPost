@@ -427,14 +427,14 @@ async function fetchLiveExternalPosts({
         );
       }
 
-      // In personalized feed, fetch across user's topics (up to 5 topics on Page 1 for rich diverse niche coverage)
-      const countForPage = page === 1 ? Math.min(topicsPool.length, 5) : 3;
+      // In personalized feed, fetch across user's topics (up to 6 topics on Page 1 for rich diverse niche coverage)
+      const countForPage = page === 1 ? Math.min(topicsPool.length, 6) : Math.min(topicsPool.length, 4);
       const startIndex = ((page - 1) * countForPage) % topicsPool.length;
       let topicsForPage = topicsPool.slice(startIndex, startIndex + countForPage);
       if (topicsForPage.length < countForPage && topicsPool.length >= countForPage) {
         topicsForPage = [...topicsForPage, ...topicsPool.slice(0, countForPage - topicsForPage.length)];
       }
-      const limitPerTopic = Math.max(Math.floor(40 / topicsForPage.length), 10);
+      const limitPerTopic = Math.max(Math.floor(36 / topicsForPage.length), 8);
 
       for (const tDef of topicsForPage) {
         const pinQ = getPinterestTopicQuery(tDef);
@@ -496,19 +496,58 @@ async function fetchLiveExternalPosts({
       }
 
       // Visuals & News for primary topic of this page
-      const primary = topicsForPage[0];
+      const primary = topicsForPage[(page - 1) % topicsForPage.length] || topicsForPage[0];
       if (primary) {
         const pQuery = getPinterestTopicQuery(primary);
         const pYt = primary.searchQuery || primary.label;
         const pCat = primary.subCategory || "all";
         if (type === "all" || type === "videos") {
-          promises.push(fetchPexelsTrends({ category: pCat, query: pQuery, perPage: 15, page, region }));
+          promises.push(
+            fetchPexelsTrends({ category: pCat, query: pQuery, perPage: 12, page, region })
+              .then((items) =>
+                Array.isArray(items)
+                  ? items.map((p) => ({
+                      ...p,
+                      matched_topic: primary.label,
+                      interest_topic: primary.id,
+                      topic_emoji: primary.emoji,
+                    }))
+                  : []
+              )
+              .catch(() => [])
+          );
         }
         if (type === "all" || type === "visuals") {
-          promises.push(fetchUnsplashTrends({ category: pCat, query: pQuery, perPage: 15, page, region }));
+          promises.push(
+            fetchUnsplashTrends({ category: pCat, query: pQuery, perPage: 12, page, region })
+              .then((items) =>
+                Array.isArray(items)
+                  ? items.map((p) => ({
+                      ...p,
+                      matched_topic: primary.label,
+                      interest_topic: primary.id,
+                      topic_emoji: primary.emoji,
+                    }))
+                  : []
+              )
+              .catch(() => [])
+          );
         }
         if (type === "all" || type === "news") {
-          promises.push(fetchTrendingNews({ category: pCat, region, query: pYt, page }));
+          promises.push(
+            fetchTrendingNews({ category: pCat, region, query: pYt, page })
+              .then((items) =>
+                Array.isArray(items)
+                  ? items.map((p) => ({
+                      ...p,
+                      matched_topic: primary.label,
+                      interest_topic: primary.id,
+                      topic_emoji: primary.emoji,
+                    }))
+                  : []
+              )
+              .catch(() => [])
+          );
         }
       }
     }
@@ -684,8 +723,20 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     }
   }
 
-  const allTopicDefs = [...searchTopicObjects, ...tunedTopics, ...targetTopics];
-  const allKeywords = Array.from(new Set([...keywords, ...searchTopicObjects.flatMap((s) => s.keywords)]));
+  const uniqueTopicDefs = [];
+  const seenTopicLabels = new Set();
+  const rawDefs = (isFilteredToSingleTopic && activeTopic)
+    ? [activeTopic]
+    : [...searchTopicObjects, ...tunedTopics, ...targetTopics];
+  for (const def of rawDefs) {
+    const key = (def.label || def.id || "").toLowerCase().trim();
+    if (key && !seenTopicLabels.has(key)) {
+      seenTopicLabels.add(key);
+      uniqueTopicDefs.push(def);
+    }
+  }
+  const allTopicDefs = uniqueTopicDefs;
+  const allKeywords = Array.from(new Set([...keywords, ...allTopicDefs.flatMap((s) => s.keywords || [])]));
 
   const decodedCursor = decodeTrendCursor(params.cursor);
   const pageNumber = Number(params.page || decodedCursor?.page || 1);
@@ -799,6 +850,36 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     });
     if (topicFiltered.length > 0) {
       allCandidates = topicFiltered;
+    }
+  } else if (allTopicDefs.length > 0) {
+    // PERSONALIZED "ALL TOPICS" FEED:
+    // Strictly retain ONLY items relevant to user's selected onboarding, searched, or tuned topics
+    // (plus user's own uploads). Filter out any unrelated generic DB or external posts!
+    const personalizedFiltered = allCandidates.filter((item) => {
+      const isUserOwn = Boolean(
+        options.userId && (
+          item.author_id === options.userId ||
+          (Array.isArray(item.niche_tags) && item.niche_tags.includes(`author:${options.userId}`))
+        )
+      );
+      if (isUserOwn) return true;
+
+      // Direct topic match
+      if (item.matched_topic) {
+        const found = allTopicDefs.some((t) => t.label.toLowerCase() === item.matched_topic.toLowerCase());
+        if (found) return true;
+      }
+      if (item.interest_topic) {
+        const found = allTopicDefs.some((t) => t.id && t.id.toLowerCase() === String(item.interest_topic).toLowerCase());
+        if (found) return true;
+      }
+
+      // Keyword / content match across active topics
+      return allTopicDefs.some((tDef) => isItemRelevantToTopic(item, tDef));
+    });
+
+    if (personalizedFiltered.length > 0) {
+      allCandidates = personalizedFiltered;
     }
   }
 
@@ -995,7 +1076,124 @@ export async function getTrendFeedPage(params = {}, options = {}) {
       }
     }
 
-    // 2. On Page 1, showcase country breaking trends ONLY if feed is NOT personalized to user's topics
+    // 2. Personalized Feed: Evenly mixed topic interleaving with ZERO unrelated leakage
+    if (isPersonalized) {
+      const topicBuckets = new Map();
+      allTopicDefs.forEach((t) => {
+        topicBuckets.set(t.label.toLowerCase(), {
+          def: t,
+          items: [],
+        });
+      });
+
+      const candidatePosts = posts.filter((p) => !p.is_user_post);
+
+      for (const p of candidatePosts) {
+        let matchedBucket = null;
+
+        // 1. Check direct matched_topic
+        if (p.matched_topic) {
+          matchedBucket = topicBuckets.get(p.matched_topic.toLowerCase());
+        }
+
+        // 2. Check interest_topic ID
+        if (!matchedBucket && p.interest_topic) {
+          const matchedDef = allTopicDefs.find(
+            (t) => t.id && t.id.toLowerCase() === String(p.interest_topic).toLowerCase()
+          );
+          if (matchedDef) {
+            matchedBucket = topicBuckets.get(matchedDef.label.toLowerCase());
+          }
+        }
+
+        // 3. Fallback: match via isItemRelevantToTopic against allTopicDefs
+        if (!matchedBucket) {
+          for (const tDef of allTopicDefs) {
+            if (isItemRelevantToTopic(p, tDef)) {
+              matchedBucket = topicBuckets.get(tDef.label.toLowerCase());
+              if (matchedBucket) {
+                p.matched_topic = tDef.label;
+                p.interest_topic = tDef.id;
+                p.topic_emoji = tDef.emoji;
+                break;
+              }
+            }
+          }
+        }
+
+        if (matchedBucket) {
+          matchedBucket.items.push(p);
+        }
+        // If not matched to any active user topic, it is DISCARDED! Strictly "uske alawa kuch nhi".
+      }
+
+      // Sort items within each bucket by rank_score descending
+      for (const bucket of topicBuckets.values()) {
+        bucket.items.sort((a, b) => (b.rank_score || 0) - (a.rank_score || 0));
+      }
+
+      const activeBuckets = Array.from(topicBuckets.values()).filter((b) => b.items.length > 0);
+
+      if (activeBuckets.length === 1) {
+        // Single topic: interleave across formats (shorts, pins, videos, visuals)
+        const singleItems = activeBuckets[0].items;
+        const shorts = [];
+        const pins = [];
+        const others = [];
+        for (const item of singleItems) {
+          if (item.source_platform === "pinterest") pins.push(item);
+          else if (item.content_type === "short" || item.source_url?.includes("/shorts/") || item.is_short) shorts.push(item);
+          else others.push(item);
+        }
+        const formatBuckets = [shorts, pins, others].filter((f) => f.length > 0);
+        let hasMoreFormats = true;
+        while (result.length < targetLimit && hasMoreFormats) {
+          hasMoreFormats = false;
+          for (const fb of formatBuckets) {
+            if (fb.length > 0 && result.length < targetLimit) {
+              const item = fb.shift();
+              if (item && !isSeen(item)) {
+                recordSeen(item);
+                result.push(item);
+                hasMoreFormats = true;
+              }
+            }
+          }
+        }
+        return dedupePostsByCanonicalKey(result);
+      }
+
+      if (activeBuckets.length > 1) {
+        // Balanced Round-Robin interleaving across all user topics
+        // Topic 1 -> Topic 2 -> Topic 3 -> Topic 1 -> Topic 2 -> Topic 3...
+        // Shifting round offset ensures columns never lock into a single topic on Pinterest masonry!
+        let round = 0;
+        let hasMore = true;
+        const n = activeBuckets.length;
+
+        while (result.length < targetLimit && hasMore) {
+          hasMore = false;
+          for (let step = 0; step < n; step++) {
+            const bIndex = (round + step) % n;
+            const b = activeBuckets[bIndex];
+            if (b && b.items.length > 0 && result.length < targetLimit) {
+              const item = b.items.shift();
+              if (item && !isSeen(item)) {
+                recordSeen(item);
+                result.push(item);
+                hasMore = true;
+              }
+            }
+          }
+          round++;
+        }
+        return dedupePostsByCanonicalKey(result);
+      }
+
+      return dedupePostsByCanonicalKey(result);
+    }
+
+    // 3. Unpersonalized feed: showcase country breaking trends on Page 1
     if (pageNumber === 1 && !isPersonalized) {
       const countryPulsePosts = posts.filter(
         (p) =>
@@ -1014,7 +1212,7 @@ export async function getTrendFeedPage(params = {}, options = {}) {
       }
     }
 
-    // 3. Place explicit user-searched, tuned keyword, and onboarding topic posts
+    // 4. Unpersonalized priority posts & community sparks
     const priorityPosts = posts.filter((p) => !p.is_user_post && p.rank_score >= 70000000 && !isSeen(p));
     priorityPosts.sort((a, b) => (b.rank_score || 0) - (a.rank_score || 0));
     const priorityCap = pageNumber === 1 && allTopicDefs.length > 1 ? 6 : targetLimit;
@@ -1027,7 +1225,6 @@ export async function getTrendFeedPage(params = {}, options = {}) {
       }
     }
 
-    // 4. Community sparks: only include if they match the user's topics or if feed is not personalized
     const communityPosts = posts.filter(
       (p) =>
         p.source_platform === "socialpilot" &&
@@ -1050,81 +1247,6 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     if (remainingLimit <= 0) return dedupePostsByCanonicalKey(result);
 
     const nonCommunityPosts = posts.filter((p) => p.source_platform !== "socialpilot" && !p.is_user_post);
-
-    // When personalized with multiple topics, interleave across topics for balanced representation
-    if (isPersonalized && allTopicDefs.length > 0) {
-      const topicBuckets = new Map();
-      const otherPosts = [];
-
-      allTopicDefs.forEach((t) => {
-        topicBuckets.set(t.label.toLowerCase(), {
-          def: t,
-          items: [],
-        });
-      });
-
-      nonCommunityPosts.forEach((p) => {
-        const topicName = (p.matched_topic || "").toLowerCase();
-        let bucket = topicBuckets.get(topicName);
-        if (!bucket && p.interest_topic) {
-          const matchedDef = allTopicDefs.find(
-            (t) => t.id === p.interest_topic || t.label.toLowerCase() === topicName
-          );
-          if (matchedDef) {
-            bucket = topicBuckets.get(matchedDef.label.toLowerCase());
-          }
-        }
-        if (bucket) {
-          bucket.items.push(p);
-        } else {
-          otherPosts.push(p);
-        }
-      });
-
-      const activeBuckets = Array.from(topicBuckets.values()).filter((b) => b.items.length > 0);
-
-      if (activeBuckets.length > 0) {
-        let hasMore = true;
-
-        while (result.length < targetLimit && hasMore) {
-          hasMore = false;
-          for (const b of activeBuckets) {
-            if (b.items.length > 0 && result.length < targetLimit) {
-              const item = b.items.shift();
-              if (item && !isSeen(item)) {
-                recordSeen(item);
-                result.push(item);
-                hasMore = true;
-              }
-            }
-          }
-        }
-
-        const leftover = [
-          ...activeBuckets.flatMap((b) => b.items),
-          ...otherPosts,
-        ];
-        for (const item of leftover) {
-          if (result.length >= targetLimit) break;
-          if (!isSeen(item)) {
-            recordSeen(item);
-            result.push(item);
-          }
-        }
-
-        if (result.length < targetLimit) {
-          for (const item of nonCommunityPosts) {
-            if (result.length >= targetLimit) break;
-            if (!isSeen(item)) {
-              recordSeen(item);
-              result.push(item);
-            }
-          }
-        }
-
-        return dedupePostsByCanonicalKey(result);
-      }
-    }
 
     // Default: Interleave across platforms for single topic or global trend feed
     const reels = [];
