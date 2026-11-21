@@ -958,6 +958,7 @@ export async function getTrendFeedPage(params = {}, options = {}) {
   function interleavePinterestFeed(posts, targetLimit) {
     if (!posts || posts.length === 0) return [];
 
+    const targetRegionUpper = String(region || "IN").toUpperCase();
     const result = [];
     const seenIds = new Set();
     const seenKeys = new Set();
