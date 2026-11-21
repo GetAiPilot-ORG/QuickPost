@@ -141,9 +141,25 @@ export async function saveUserTrendPreferences(
         nextRecentSearches = existingTrend.recentSearches;
       }
 
+      // Automatically add tuned role (work) and custom keywords (interests) into recentSearches / interest topics!
+      const tunedItemsToAdd = [];
+      if (cleanWork && cleanWork.length > 1) {
+        tunedItemsToAdd.push(cleanWork);
+      }
+      if (cleanInterests) {
+        cleanInterests.split(",").forEach((item) => {
+          const t = item.trim();
+          if (t.length > 1) tunedItemsToAdd.push(t);
+        });
+      }
+
+      if (tunedItemsToAdd.length > 0) {
+        nextRecentSearches = Array.from(new Set([...tunedItemsToAdd, ...nextRecentSearches]));
+      }
+
       nextRecentSearches = sanitizeRecentSearchesList(nextRecentSearches);
 
-      const hasSavedInterests = cleanTopicIds.length > 0 || Boolean(cleanInterests);
+      const hasSavedInterests = cleanTopicIds.length > 0 || Boolean(cleanInterests) || Boolean(cleanWork);
       const isActuallyOnboarded = hasSavedInterests ? Boolean(onboarded) : false;
 
       const updatedTrend = {
@@ -183,7 +199,7 @@ export async function saveUserTrendPreferences(
       // Ignore if table does not exist
     }
 
-    const hasSavedInterests = cleanTopicIds.length > 0 || Boolean(cleanInterests);
+    const hasSavedInterests = cleanTopicIds.length > 0 || Boolean(cleanInterests) || Boolean(cleanWork);
     const isActuallyOnboarded = hasSavedInterests ? Boolean(onboarded) : false;
 
     const savedPreferences = {

@@ -640,9 +640,18 @@ export function resolveTargetTopics({ topics = "", topic = "", interests = "", r
     for (const item of rawInterests) {
       const cleanItem = item.trim();
       const lower = cleanItem.toLowerCase();
-      // If it's a pure format word, record it for format boosts
-      if (formatWords.has(lower)) {
-        keywordSet.add(lower);
+      // If it's a pure format word or format phrase, record it for format boosts
+      if (
+        formatWords.has(lower) ||
+        lower === "short video" ||
+        lower === "short videos" ||
+        lower === "viral reels" ||
+        lower === "viral short" ||
+        lower === "viral shorts"
+      ) {
+        keywordSet.add("short");
+        keywordSet.add("shorts");
+        keywordSet.add("video");
         continue;
       }
 
@@ -651,17 +660,17 @@ export function resolveTargetTopics({ topics = "", topic = "", interests = "", r
         tunedTopics.push(def);
         def.keywords.forEach((k) => keywordSet.add(k));
       } else if (!def && cleanItem.length > 1) {
-        // Build first-class custom topic definition for user's explicit tuned keyword (e.g. "spiderman")
+        // Build first-class custom topic definition for user's explicit tuned keyword (e.g. "AS gaming", "free fire rank push")
         const slug = lower.replace(/[^a-z0-9]+/g, "_").slice(0, 36);
         const tokens = lower
           .split(/\s+/)
-          .filter((w) => w.length > 2 && !["the", "for", "and", "with", "all"].includes(w));
+          .filter((w) => w.length > 1 && !["the", "for", "and", "with", "all"].includes(w));
 
         const customDef = {
           id: `tuned_${slug}`,
           label: cleanItem,
           searchQuery: cleanItem,
-          keywords: Array.from(new Set([lower, ...tokens])),
+          keywords: Array.from(new Set([lower, cleanItem, ...tokens])),
           emoji: "🎯",
           subCategory: "all",
           isTunedKeyword: true,

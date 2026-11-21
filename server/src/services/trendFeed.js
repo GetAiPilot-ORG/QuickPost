@@ -396,11 +396,11 @@ async function fetchLiveExternalPosts({
         }
       };
 
-      // 1. Searched topics lead the feed (user's most active and recent intent)
-      (searchTopicObjects || []).forEach(pushTopic);
-
-      // 2. Explicit tuned topics from "Tune Feed" modal
+      // 1. Explicit tuned topics from "Tune Feed" modal (creator role, custom keywords) LEAD the feed!
       (tunedTopics || []).forEach(pushTopic);
+
+      // 2. Searched topics lead next
+      (searchTopicObjects || []).forEach(pushTopic);
 
       // 3. User onboarding selected topics
       (targetTopics || []).forEach(pushTopic);
@@ -727,7 +727,7 @@ export async function getTrendFeedPage(params = {}, options = {}) {
   const seenTopicLabels = new Set();
   const rawDefs = (isFilteredToSingleTopic && activeTopic)
     ? [activeTopic]
-    : [...searchTopicObjects, ...tunedTopics, ...targetTopics];
+    : [...tunedTopics, ...searchTopicObjects, ...targetTopics];
   for (const def of rawDefs) {
     const key = (def.label || def.id || "").toLowerCase().trim();
     if (key && !seenTopicLabels.has(key)) {
@@ -993,12 +993,12 @@ export async function getTrendFeedPage(params = {}, options = {}) {
           } else if (search) {
             const relScore = calculateRelevance(post, search);
             rankScore = (relScore * 1000000) + score;
+          } else if (isTunedMatch) {
+            const regMultiplier = isMatchingRegion ? 1.4 : 1.0;
+            rankScore = (95000000 * regMultiplier) + (score * 800) + matches * 30000;
           } else if (isSearchedMatch) {
             const regMultiplier = isMatchingRegion ? 1.4 : 1.0;
             rankScore = (90000000 * regMultiplier) + (score * 800) + matches * 25000;
-          } else if (isTunedMatch) {
-            const regMultiplier = isMatchingRegion ? 1.4 : 1.0;
-            rankScore = (80000000 * regMultiplier) + (score * 500) + matches * 10000;
           } else if (hasDirectTopic || matches > 0) {
             const regMultiplier = isMatchingRegion ? 1.4 : 1.0;
             rankScore = (70000000 * regMultiplier) + (score * 500) + matches * 10000;

@@ -2642,9 +2642,11 @@ export default function TrendFeedPage() {
     handleOpenComposer(post);
   };
 
-  const handleSaveInterests = (nextSelectedTopicIds = selectedTopicIds, updatedProfile = draftProfile) => {
+  const handleSaveInterests = async (nextSelectedTopicIds = selectedTopicIds, updatedProfile = draftProfile) => {
     const customInterests = updatedProfile?.interests?.trim() || "";
-    const hasSavedInterests = (Array.isArray(nextSelectedTopicIds) && nextSelectedTopicIds.length > 0) || Boolean(customInterests);
+    const roleTerm = updatedProfile?.work?.trim() || "";
+    const goalTerm = updatedProfile?.goal?.trim() || "";
+    const hasSavedInterests = (Array.isArray(nextSelectedTopicIds) && nextSelectedTopicIds.length > 0) || Boolean(customInterests) || Boolean(roleTerm);
 
     if (hasSavedInterests) {
       try {
@@ -2659,28 +2661,43 @@ export default function TrendFeedPage() {
 
     setSelectedTopicIds(nextSelectedTopicIds);
 
+    // Extract all tuned terms (creator role + custom keywords) to immediately show on the Topics Rail as interest topics!
+    const newTunedTerms = [];
+    if (roleTerm && roleTerm.length > 1) {
+      newTunedTerms.push(roleTerm);
+    }
+    if (customInterests) {
+      customInterests.split(",").forEach((item) => {
+        const t = item.trim();
+        if (t.length > 1) newTunedTerms.push(t);
+      });
+    }
+
+    const updatedSearches = sanitizeRecentSearches([...newTunedTerms, ...recentDbSearches]);
+    setRecentDbSearches(updatedSearches);
+    recentDbSearchesRef.current = updatedSearches;
+
     const nextProfile = {
-      work: updatedProfile?.work?.trim() || "",
+      work: roleTerm,
       interests: customInterests,
-      goal: updatedProfile?.goal?.trim() || "",
+      goal: goalTerm,
       selectedTopicIds: nextSelectedTopicIds,
+      recentSearches: updatedSearches,
       onboarded: hasSavedInterests,
     };
 
     setProfile(nextProfile);
     setDraftProfile(nextProfile);
+    profileRef.current = nextProfile;
     setSelectedTopicFilter(null);
+    selectedTopicFilterRef.current = null;
     setFeedMode("personalized");
+    feedModeRef.current = "personalized";
     try {
       localStorage.setItem(profileStorageKey, JSON.stringify(nextProfile));
     } catch {
       // ignore
     }
-
-    // Persist strictly to Supabase for this user
-    apiClient
-      .post("/api/trends/preferences", nextProfile)
-      .catch((err) => console.warn("[TREND-FEED] Could not save preferences to database:", err?.message));
 
     setShowInterestModal(false);
     toast.success(
@@ -2690,10 +2707,16 @@ export default function TrendFeedPage() {
           ? `Saved ${nextSelectedTopicIds.length} topic${nextSelectedTopicIds.length === 1 ? "" : "s"} & personalized feed!`
           : "Preferences saved to database!")
     );
-    if (interestModalMode === "tune") {
-      seenRef.current = new Set();
-      setItems([]);
+
+    // Persist strictly to Supabase for this user AND await completion so DB is updated before feed fetch!
+    try {
+      await apiClient.post("/api/trends/preferences", nextProfile);
+    } catch (err) {
+      console.warn("[TREND-FEED] Could not save preferences to database:", err?.message);
     }
+
+    seenRef.current = new Set();
+    setItems([]);
     pageRef.current = 1;
     cursorRef.current = null;
     loadPage({

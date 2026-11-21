@@ -1,3 +1,8 @@
+## 2026-11-21 — Tune Modal inputs auto-added to DB interest topics, topics rail & instant feed update
+- Tune Modal integration: "Tune Your Inspiration Feed" inputs (creator role, custom keywords, preferred formats) ko user ke DB interest topics (`work`, `interests`, `recentSearches`) me directly auto-add kiya aur frontend topics rail par clickable pills ke roop me show kiya.
+- Race condition & priority fix: `handleSaveInterests` me `apiClient.post` ko await kiya taaki DB update hone ke baad hi feed request jaye, aur backend me `tunedTopics` ko feed pool ke sabse aage prioritize kiya taaki save & apply karte hi naye topics ka content immediately feed me aaye.
+- User-specific isolation: Har user ka creator role aur custom keywords Supabase auth metadata aur preferences table me strictly usi user ID ke under persist hote hain.
+
 ## 2026-11-21 — Strict topic isolation & balanced multi-topic round-robin interleaving
 - Root cause of clustering & leakage: `priorityPosts` Page 1 par top 6 items ek hi topic ke dump kar raha tha aur non-matching items fallback loop se feed me leak ho rahe the; saath hi `isItemRelevantToTopic` loose fallback se har post ko match maan leta tha.
 - Strict relevance ("uske alawa kuch nhi"): `trendTopics.js` me relevance check fix kiya aur `getTrendFeedPage` me personalized mode me candidate posts ko strictly user ke active topics se match filter kiya, generic DB aur irrelevant pulses completely discard kiye.

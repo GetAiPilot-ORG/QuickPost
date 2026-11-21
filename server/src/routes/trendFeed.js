@@ -242,8 +242,8 @@ router.post("/trends/preferences", authenticateUser, async (req, res) => {
     if (!userId) {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
-    const { selectedTopicIds, interests, work, goal, onboarded } = req.body || {};
-    const result = await saveUserTrendPreferences(userId, { selectedTopicIds, interests, work, goal, onboarded });
+    const { selectedTopicIds, interests, work, goal, onboarded, recentSearches } = req.body || {};
+    const result = await saveUserTrendPreferences(userId, { selectedTopicIds, interests, work, goal, onboarded, recentSearches });
     res.json(result);
   } catch (err) {
     console.error("[TREND-FEED] Save preferences error:", err);
