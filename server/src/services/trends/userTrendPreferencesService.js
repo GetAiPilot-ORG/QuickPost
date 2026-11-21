@@ -98,6 +98,8 @@ export async function getUserTrendPreferences(userId) {
       } catch { }
     }
 
+    preferences.recentSearches = sanitizeRecentSearchesList(preferences.recentSearches);
+
     preferencesCache.set(String(userId), { data: preferences, _cachedAt: now });
     return preferences;
   } catch (err) {
@@ -137,6 +139,8 @@ export async function saveUserTrendPreferences(
       if (!Array.isArray(recentSearches) && Array.isArray(existingTrend.recentSearches)) {
         nextRecentSearches = existingTrend.recentSearches;
       }
+
+      nextRecentSearches = sanitizeRecentSearchesList(nextRecentSearches);
 
       const hasSavedInterests = cleanTopicIds.length > 0 || Boolean(cleanInterests);
       const isActuallyOnboarded = hasSavedInterests ? Boolean(onboarded) : false;
@@ -270,6 +274,45 @@ export async function recordUserSearch(userId, query) {
   }
 }
 
+/**
+ * Prune partial word fragments, prefixes, and typos so only complete words remain
+ */
+export function sanitizeRecentSearchesList(searches) {
+  if (!Array.isArray(searches)) return [];
+  const cleaned = searches
+    .map((s) => String(s || "").trim().replace(/^#/, ""))
+    .filter((s) => s.length >= 2);
+
+  const result = [];
+  for (const term of cleaned) {
+    const lower = term.toLowerCase();
+    // Drop if another term in the list is a fuller version of this term
+    const isFragment = cleaned.some((other) => {
+      const otherLower = other.toLowerCase();
+      if (otherLower === lower) return false;
+      // 1. Strict prefix: e.g. 'sp', 'spider', 'spiderma' when 'spiderman' exists
+      if (otherLower.length > lower.length && otherLower.startsWith(lower)) return true;
+      // 2. Substring root for short queries: e.g. 'spid' in 'spiderman'
+      if (otherLower.length > lower.length && otherLower.includes(lower) && lower.length <= 4) return true;
+      // 3. Typo/fragment sharing initial 4 chars and length difference <= 3: e.g. 'spidrm', 'spidrman' when 'spiderman' exists
+      if (
+        otherLower.length > lower.length &&
+        lower.length >= 4 &&
+        otherLower.startsWith(lower.slice(0, 4)) &&
+        otherLower.length - lower.length <= 3
+      ) {
+        return true;
+      }
+      return false;
+    });
+
+    if (!isFragment && !result.some((x) => x.toLowerCase() === lower)) {
+      result.push(term);
+    }
+  }
+  return result.slice(0, 15);
+}
+
 function addTermToInterestsString(existingInterestsStr, newTerm) {
   const cleanTerm = String(newTerm || "").trim().replace(/^#/, "");
   if (!cleanTerm || cleanTerm.length < 2) return existingInterestsStr || "";
@@ -282,7 +325,17 @@ function addTermToInterestsString(existingInterestsStr, newTerm) {
   const filtered = list.filter((item) => {
     const itemLower = item.toLowerCase();
     if (itemLower === cleanLower) return false;
-    if (cleanLower.startsWith(itemLower) && cleanLower.length - itemLower.length <= 4) return false;
+    // Remove if this item is a prefix/fragment of cleanTerm (e.g. remove 'spiderma', 'sp', 'spidrm' when 'spiderman' is added)
+    if (cleanLower.startsWith(itemLower)) return false;
+    if (cleanLower.length > itemLower.length && cleanLower.includes(itemLower) && itemLower.length <= 4) return false;
+    if (
+      cleanLower.length > itemLower.length &&
+      itemLower.length >= 4 &&
+      cleanLower.startsWith(itemLower.slice(0, 4)) &&
+      cleanLower.length - itemLower.length <= 3
+    ) {
+      return false;
+    }
     return true;
   });
 
@@ -312,19 +365,12 @@ export async function addSearchQueryToUserInterests(userId, query) {
       }
     }
 
-    // 2. ALWAYS add searched topic to user's saved interests keywords string
+    // 2. Add searched topic to user's saved interests keywords string
     const nextInterests = addTermToInterestsString(currentPrefs?.interests, cleanQuery);
 
-    // 3. Update recent searches array
-    const cleanLower = cleanQuery.toLowerCase();
+    // 3. Update recent searches array with strict fragment pruning
     let recentSearches = Array.isArray(currentPrefs?.recentSearches) ? [...currentPrefs.recentSearches] : [];
-    const filteredSearches = recentSearches.filter((q) => {
-      const qLower = q.toLowerCase();
-      if (qLower === cleanLower) return false;
-      if (cleanLower.startsWith(qLower) && cleanLower.length - qLower.length <= 4) return false;
-      return true;
-    });
-    const updatedSearches = [cleanQuery, ...filteredSearches].slice(0, 15);
+    const updatedSearches = sanitizeRecentSearchesList([cleanQuery, ...recentSearches]);
 
     const saved = await saveUserTrendPreferences(cleanUserId, {
       selectedTopicIds,

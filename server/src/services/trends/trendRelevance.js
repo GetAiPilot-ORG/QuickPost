@@ -55,13 +55,6 @@ export function calculateRelevance(item, query) {
 
   const platform = (item.source_platform || item.platform || '').toLowerCase();
 
-  // Rule 0: Filter out junk / ultra-short spam links
-  if (platform === 'bluesky') {
-    if (!text || text.trim().length < 8) return 0;
-    // Pure link spam without text
-    if (/^https?:\/\/\S+$/.test(text.trim())) return 0;
-  }
-
   if (platform === 'pinterest') {
     // Spam filler titles
     const spamTitles = ['dm for edit', 'vroom vroom', 'explore', 'untitled', 'click here'];
@@ -109,24 +102,15 @@ export function calculateRelevance(item, query) {
     // Multi-word query: at least 45% of terms must match to be considered relevant
     if (keywords.length > 1) {
       const matchRatio = matchedCount / keywords.length;
-      const minRatio = (platform === 'pinterest' || platform === 'bluesky' || platform === 'youtube') ? 0.3 : 0.45;
+      const minRatio = (platform === 'pinterest' || platform === 'youtube') ? 0.3 : 0.45;
       if (matchRatio < minRatio) return 0;
       score *= matchRatio;
     }
   }
 
-  if (platform === 'pinterest' || platform === 'bluesky' || platform === 'youtube') {
+  if (platform === 'pinterest' || platform === 'youtube') {
     // Verified search results get a solid baseline relevance score
     score = Math.max(score, 35);
-  }
-
-  // 3. Media & Quality Boost
-  if (platform === 'bluesky') {
-    if (item.thumbnail_url || (item.media && item.media.type !== 'none')) {
-      score += 15;
-    }
-    const eng = (item.metrics?.likes || item.stats?.likes || 0) + (item.metrics?.reposts || item.stats?.reposts || 0);
-    score += Math.min(Math.log10(Number(eng) + 1) * 4, 15);
   }
 
   if (platform === 'pinterest') {

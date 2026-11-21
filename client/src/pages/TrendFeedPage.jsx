@@ -84,7 +84,6 @@ const FORMAT_TABS = [
   { id: "all", label: "All Trends" },
   { id: "shorts", label: "YouTube Shorts", iconSvg: "/icons/youtube-color-icon.svg" },
   { id: "pinterest", label: "Pinterest", iconSvg: "/icons/pinterest-round-color-icon.svg" },
-  { id: "bluesky", label: "Bluesky", iconSvg: "/icons/bluesky-circle-color-icon.svg" },
   { id: "videos", label: "Reels & Videos", icon: Video },
   { id: "visuals", label: "Visuals & Photos", icon: ImageIcon },
   { id: "news", label: "News & Stories", icon: Newspaper },
@@ -184,6 +183,39 @@ function emptyProfile() {
   return { work: "", interests: "", goal: "" };
 }
 
+function sanitizeRecentSearches(searches) {
+  if (!Array.isArray(searches)) return [];
+  const cleaned = searches
+    .map((s) => String(s || "").trim().replace(/^#/, ""))
+    .filter((s) => s.length >= 2);
+
+  const result = [];
+  for (const term of cleaned) {
+    const lower = term.toLowerCase();
+    // Drop if another term in the list is a fuller version of this term (e.g. sp, spid, spidrm, spiderma when spiderman exists)
+    const isFragment = cleaned.some((other) => {
+      const otherLower = other.toLowerCase();
+      if (otherLower === lower) return false;
+      if (otherLower.length > lower.length && otherLower.startsWith(lower)) return true;
+      if (otherLower.length > lower.length && otherLower.includes(lower) && lower.length <= 4) return true;
+      if (
+        otherLower.length > lower.length &&
+        lower.length >= 4 &&
+        otherLower.startsWith(lower.slice(0, 4)) &&
+        otherLower.length - lower.length <= 3
+      ) {
+        return true;
+      }
+      return false;
+    });
+
+    if (!isFragment && !result.some((x) => x.toLowerCase() === lower)) {
+      result.push(term);
+    }
+  }
+  return result.slice(0, 10);
+}
+
 function sanitizeSavedInterests(str) {
   if (!str || typeof str !== "string") return "";
   // If the string contains the legacy accumulated search queries from previous test sessions, clear it
@@ -200,11 +232,20 @@ function addTermToInterestsString(existingInterestsStr, newTerm) {
     ? existingInterestsStr.split(",").map((s) => s.trim()).filter(Boolean)
     : [];
 
-  // Remove duplicate or prefix fragments of the same term (e.g. "cri" when "cricket" is typed)
+  // Remove duplicate or prefix fragments of the same term (e.g. "spiderma", "sp", "spidrm" when "spiderman" is added)
   const filtered = list.filter((item) => {
     const itemLower = item.toLowerCase();
     if (itemLower === cleanLower) return false;
-    if (cleanLower.startsWith(itemLower) && cleanLower.length - itemLower.length <= 4) return false;
+    if (cleanLower.startsWith(itemLower)) return false;
+    if (cleanLower.length > itemLower.length && cleanLower.includes(itemLower) && itemLower.length <= 4) return false;
+    if (
+      cleanLower.length > itemLower.length &&
+      itemLower.length >= 4 &&
+      cleanLower.startsWith(itemLower.slice(0, 4)) &&
+      cleanLower.length - itemLower.length <= 3
+    ) {
+      return false;
+    }
     return true;
   });
 
@@ -284,12 +325,6 @@ function getPlatformMeta(platform) {
         iconSvg: "/icons/pinterest-round-color-icon.svg",
         color: "text-rose-600",
       };
-    case "bluesky":
-      return {
-        name: "Bluesky",
-        iconSvg: "/icons/bluesky-circle-color-icon.svg",
-        color: "text-sky-500",
-      };
     case "instagram":
       return {
         name: "Instagram",
@@ -301,12 +336,6 @@ function getPlatformMeta(platform) {
         name: "Reddit",
         iconSvg: "/icons/reddit-icon.svg",
         color: "text-orange-600",
-      };
-    case "bluesky":
-      return {
-        name: "Bluesky",
-        iconSvg: "/icons/bluesky-circle-color-icon.svg",
-        color: "text-sky-500",
       };
     case "google_trends":
       return {
@@ -568,27 +597,6 @@ function TrendCard({ post, onUseIdea, onRemix, onCompose, onSave, isSaved, onOpe
               {isMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
             </button>
           )}
-        </div>
-      ) : post.source_platform === "bluesky" ? (
-        /* Text-only Bluesky Post */
-        <div
-          onClick={() => onOpenDetails(post)}
-          className="w-full p-4 sm:p-5 bg-gradient-to-br from-sky-950 via-slate-900 to-sky-900 text-white flex flex-col justify-between min-h-[160px] cursor-pointer"
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-sky-400 truncate max-w-[160px]">
-              @{post.creator || "bluesky"}
-            </span>
-            <span className="text-[10px] text-sky-300/70 font-mono">
-              ATProto Post
-            </span>
-          </div>
-          <p className="my-auto py-2 text-xs sm:text-sm font-medium text-slate-100 line-clamp-4 leading-relaxed">
-            "{post.caption || post.title}"
-          </p>
-          <div className="text-[10px] text-sky-300/70 font-mono">
-            Official ATProto Post
-          </div>
         </div>
       ) : post.source_platform === "google_trends" ? (
         /* Google Trends Search Surge */
@@ -895,26 +903,7 @@ function TrendDetailsBottomSheet({ isOpen, onClose, post, onRemix, onCompose, on
                       <span>Pinterest Pin</span>
                     </div>
                   )}
-                  {post.source_platform === "bluesky" && (
-                    <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-sky-600/90 text-white text-[11px] font-bold tracking-wider backdrop-blur-md shadow-md pointer-events-none">
-                      <img src="/icons/bluesky-circle-color-icon.svg" alt="" className="w-3.5 h-3.5 object-contain" />
-                      <span>Bluesky Media</span>
-                    </div>
-                  )}
                 </div>
-              </div>
-            ) : post.source_platform === "bluesky" ? (
-              <div className="p-8 text-left w-full bg-gradient-to-br from-slate-900 via-slate-950 to-sky-950 text-white rounded-xl">
-                <div className="flex items-center gap-2 mb-4">
-                  <img src="/icons/bluesky-circle-color-icon.svg" alt="" className="w-6 h-6 object-contain" />
-                  <div>
-                    <h4 className="text-sm font-bold text-white">{post.creator}</h4>
-                    <p className="text-xs text-sky-400 font-mono">Official Bluesky Post</p>
-                  </div>
-                </div>
-                <p className="text-base text-slate-100 whitespace-pre-line leading-relaxed">
-                  {post.caption || post.title}
-                </p>
               </div>
             ) : (
               <div className="p-8 text-center text-white bg-neutral-900 rounded-2xl">
@@ -2192,7 +2181,7 @@ export default function TrendFeedPage() {
         }
 
         if (Array.isArray(dbPrefs?.recentSearches) && dbPrefs.recentSearches.length > 0) {
-          setRecentDbSearches(dbPrefs.recentSearches);
+          setRecentDbSearches(sanitizeRecentSearches(dbPrefs.recentSearches));
         }
       } catch (err) {
         // Fallback to per-user localStorage check if network / auth fails
@@ -2234,12 +2223,13 @@ export default function TrendFeedPage() {
     };
   }, [user?.userId, user?.email, authLoading, profileStorageKey, onboardingStorageKey]);
 
-  // Automatically add search topic to DB, to user's interests, and to active topics rail
+  // Explicitly add full search topic to DB, to user's interests, and to active topics rail (only on complete submission)
   const registerSearchTopic = useCallback((rawQuery) => {
-    const term = String(rawQuery || "").trim();
+    const term = String(rawQuery || "").trim().replace(/^#/, "");
+    // User pura search kare tabhi add kro - ignore empty or 1-char partial fragments
     if (term.length < 2) return;
 
-    const cleanLower = term.toLowerCase().replace(/^#/, "");
+    const cleanLower = term.toLowerCase();
 
     // 1. Check if it matches any predefined registered topic in TREND_INTEREST_TOPICS
     const matched = TREND_INTEREST_TOPICS.find(
@@ -2280,18 +2270,12 @@ export default function TrendFeedPage() {
       return { ...prev, interests: nextInterests };
     });
 
-    // 3. Add to recent searched topics (avoid prefix fragments)
+    // 3. Add to recent searched topics (with full fragment pruning)
     setRecentDbSearches((prev) => {
-      const filtered = prev.filter(
-        (q) =>
-          q.toLowerCase() !== term.toLowerCase() &&
-          !term.toLowerCase().startsWith(q.toLowerCase()) &&
-          !q.toLowerCase().startsWith(term.toLowerCase())
-      );
-      return [term, ...filtered].slice(0, 10);
+      return sanitizeRecentSearches([term, ...prev]);
     });
 
-    // 3. Save to database (/api/trends/search-history records query in DB and adds to user's interests)
+    // 4. Save to database (/api/trends/search-history records query in DB and adds to user's interests)
     apiClient
       .post("/api/trends/search-history", { query: term })
       .then((res) => {
@@ -2321,19 +2305,12 @@ export default function TrendFeedPage() {
             setDraftProfile((prev) => ({ ...prev, interests: prefs.interests }));
           }
           if (Array.isArray(prefs.recentSearches) && prefs.recentSearches.length > 0) {
-            setRecentDbSearches(prefs.recentSearches);
+            setRecentDbSearches(sanitizeRecentSearches(prefs.recentSearches));
           }
         }
       })
       .catch(() => { });
   }, [profileStorageKey]);
-
-  // Persist search queries to Supabase database whenever user searches
-  useEffect(() => {
-    if (debouncedSearch && debouncedSearch.trim().length >= 2) {
-      registerSearchTopic(debouncedSearch.trim());
-    }
-  }, [debouncedSearch, registerSearchTopic]);
 
   // Load Hot Topics Radar
   const loadHotTopics = useCallback(async (geoParam = null) => {
@@ -2441,11 +2418,12 @@ export default function TrendFeedPage() {
         rememberSeen(nextItems);
 
         if (Array.isArray(data.recentSearches) && data.recentSearches.length > 0) {
+          const sanitized = sanitizeRecentSearches(data.recentSearches);
           setRecentDbSearches((prev) => {
             const prevStr = prev.join("|");
-            const nextStr = data.recentSearches.join("|");
+            const nextStr = sanitized.join("|");
             if (prevStr === nextStr) return prev;
-            return Array.from(new Set([...prev, ...data.recentSearches])).slice(0, 10);
+            return sanitized;
           });
         }
 
@@ -2659,10 +2637,21 @@ export default function TrendFeedPage() {
       <div className="flex items-center gap-1.5 sm:gap-2 flex-1 justify-end max-w-xl">
         {/* Integrated Search Bar */}
         <div className="relative w-36 sm:w-52 md:w-64">
-          <Search
-            size={13}
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none"
-          />
+          <button
+            type="button"
+            onClick={() => {
+              const term = searchQuery.trim().replace(/^#/, "");
+              if (term && term.length >= 2) {
+                setDebouncedSearch(term);
+                setSelectedTopicFilter(null);
+                registerSearchTopic(term);
+              }
+            }}
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors cursor-pointer"
+            title="Search topic"
+          >
+            <Search size={13} />
+          </button>
           <input
             type="text"
             value={searchQuery}
@@ -2670,8 +2659,8 @@ export default function TrendFeedPage() {
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
-                const term = searchQuery.trim();
-                if (term) {
+                const term = searchQuery.trim().replace(/^#/, "");
+                if (term && term.length >= 2) {
                   setDebouncedSearch(term);
                   setSelectedTopicFilter(null);
                   registerSearchTopic(term);
@@ -2687,7 +2676,8 @@ export default function TrendFeedPage() {
                 setSearchQuery("");
                 setDebouncedSearch("");
               }}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 p-0.5"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 p-0.5 cursor-pointer"
+              title="Clear search"
             >
               <X size={12} />
             </button>

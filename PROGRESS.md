@@ -1,3 +1,8 @@
+## 2026-11-21 — Stop auto-adding partial search fragments, enforce explicit search submission & remove Bluesky
+- Stopped partial word auto-add: Removed debounce-triggered topic registration so typing never creates fragment badges ('sp', 'spidrm', 'spiderma'); topics only register when user presses Enter or clicks Search on a full word.
+- Fragment pruning & DB sanitization: Added `sanitizeRecentSearchesList` to prune all substring and typo fragments, keeping only complete words in DB, metadata, and topic rails.
+- Removed Bluesky: Removed Bluesky tab, card renders, queries, and hot topic radar ingestion from both client and server.
+
 ## 2026-11-21 — Feed optimization for searched & tuned topics over generic sparks
 - Searched topic prioritization: User ke searched topics aur tuned keywords ko feed pool ke sabse aage rakha, Page 1 par unhi topics ke YouTube Shorts & Trends fetch kiye instead of empty-query random videos.
 - Precision relevance & community cap: Search mode me strict relevance ranking enforce ki aur irrelevant community posts exclude kiye; normal feed me searched/tuned matches ko top rank (80M/60M) diya aur generic community sparks ko Page 1 par 2 tak cap kiya taaki user ke searched topics hi dominate karein.
