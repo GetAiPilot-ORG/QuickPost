@@ -779,55 +779,88 @@ export function getBlueskyTopicQuery(topicDef) {
 export function isItemRelevantToTopic(item, topicDef) {
   if (!item || !topicDef) return false;
 
+  const title = (item.title || "").toLowerCase();
+  const caption = (item.caption || item.text || "").toLowerCase();
+  const creator = (item.creator || item.channel || "").toLowerCase();
+  const tags = Array.isArray(item.niche_tags) ? item.niche_tags.join(" ").toLowerCase() : "";
+  const combined = `${title} ${caption} ${creator} ${tags}`.trim();
+
+  // Reject generic stock video placeholder titles unless user explicitly requested stock footage
+  if (
+    title.includes("reel & b-roll") ||
+    title.includes("vertical video") ||
+    title.includes("free stock video") ||
+    (item.source_platform === "pexels" && !topicDef.label.toLowerCase().includes("stock"))
+  ) {
+    return false;
+  }
+
   const targetLabel = (topicDef.label || "").toLowerCase().replace(/^#/, "").trim();
   const targetId = (topicDef.id || "").toLowerCase().trim();
 
-  // If item is already explicitly tagged as this topic from a direct topic query
-  if (item.matched_topic) {
-    const itemLabel = item.matched_topic.toLowerCase().replace(/^#/, "").trim();
-    if (itemLabel === targetLabel) return true;
-  }
-  if (item.interest_topic) {
-    const itemId = String(item.interest_topic).toLowerCase().trim();
-    if (itemId === targetId) return true;
+  // 1. Direct label match (whole phrase in title/caption/creator/tags)
+  if (targetLabel.length >= 2) {
+    if (combined.includes(targetLabel)) return true;
+    const collapsedLabel = targetLabel.replace(/\s+/g, "");
+    const collapsedCombined = combined.replace(/[\s_#-]+/g, "");
+    if (collapsedLabel.length >= 3 && collapsedCombined.includes(collapsedLabel)) return true;
   }
 
-  const title = (item.title || "").toLowerCase();
-  const caption = (item.caption || item.text || "").toLowerCase();
-  const tags = Array.isArray(item.niche_tags) ? item.niche_tags.join(" ").toLowerCase() : "";
-  const combined = `${title} ${caption} ${tags}`.trim();
-  if (!combined) return false;
-
-  // 1. Direct label match
-  if (targetLabel.length >= 2 && combined.includes(targetLabel)) return true;
-
-  // 2. Meaningful words in label (length > 2, exclude generic stop words)
-  const stopWords = new Set(["and", "the", "for", "with", "from", "video", "shorts", "trend", "trending", "viral"]);
-  const labelWords = targetLabel
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter((w) => w.length > 2 && !stopWords.has(w));
-  for (const w of labelWords) {
-    if (combined.includes(w)) return true;
-  }
-
-  // 3. Keywords in topic
-  for (const kw of topicDef.keywords || []) {
-    const k = kw.toLowerCase().trim();
-    if (k.length > 2 && combined.includes(k)) {
+  // 2. Creator / channel name match
+  if (creator) {
+    if (creator.includes(targetLabel) || targetLabel.includes(creator)) return true;
+    const cleanCreator = creator.replace(/[^a-z0-9]/g, "");
+    const cleanLabel = targetLabel.replace(/[^a-z0-9]/g, "");
+    if (cleanLabel.length >= 3 && (cleanCreator.includes(cleanLabel) || cleanLabel.includes(cleanCreator))) {
       return true;
     }
   }
 
-  // 4. Query words in topic definition
-  if (topicDef.searchQuery) {
-    const qWords = topicDef.searchQuery
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, " ")
-      .split(/\s+/)
-      .filter((w) => w.length > 2 && !stopWords.has(w));
-    for (const qw of qWords) {
-      if (combined.includes(qw)) return true;
+  // 3. Meaningful words: For multi-word labels, do not match on isolated single generic dictionary words
+  const genericWords = new Set([
+    "gaming", "game", "games", "gamer", "video", "videos", "short", "shorts",
+    "rank", "push", "free", "fire", "live", "play", "player", "channel",
+    "official", "update", "part", "and", "the", "for", "with", "from",
+    "trend", "trending", "viral", "challenge", "funny", "best", "new", "top"
+  ]);
+
+  const labelTokens = targetLabel
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 1);
+
+  if (labelTokens.length > 1) {
+    // Check meaningful phrases of 2+ words (e.g. "free fire", "rank push", "as gaming")
+    for (let i = 0; i < labelTokens.length - 1; i++) {
+      const phrase = `${labelTokens[i]} ${labelTokens[i + 1]}`;
+      if (phrase.length >= 4 && !phrase.startsWith("and ") && !phrase.endsWith(" the")) {
+        if (combined.includes(phrase)) return true;
+        const collapsedPhrase = phrase.replace(/\s+/g, "");
+        const collapsedCombined = combined.replace(/[\s_#-]+/g, "");
+        if (collapsedCombined.includes(collapsedPhrase)) return true;
+      }
+    }
+
+    // Non-generic distinctive tokens (e.g. "techno", "gamerz", "gta")
+    const distinctiveTokens = labelTokens.filter((w) => !genericWords.has(w));
+    if (distinctiveTokens.length > 0) {
+      for (const dt of distinctiveTokens) {
+        if (dt.length >= 3 && combined.includes(dt)) return true;
+      }
+    }
+  } else {
+    // Single-word label (e.g. "minecraft", "football", "spiderman")
+    const single = labelTokens[0];
+    if (single && single.length >= 2) {
+      if (combined.includes(single)) return true;
+    }
+  }
+
+  // 4. Topic keywords match (must not be just a generic word)
+  for (const kw of topicDef.keywords || []) {
+    const k = kw.toLowerCase().trim();
+    if (k.length >= 3 && !genericWords.has(k) && combined.includes(k)) {
+      return true;
     }
   }
 

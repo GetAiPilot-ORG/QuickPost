@@ -346,12 +346,14 @@ async function fetchLiveExternalPosts({
           fetchYouTubeShorts({ region, category: subCat, query: ytQ, maxResults: 20, page })
             .then((shorts) =>
               Array.isArray(shorts)
-                ? shorts.map((s) => ({
-                    ...s,
-                    matched_topic: activeTopic.label,
-                    interest_topic: activeTopic.id,
-                    topic_emoji: activeTopic.emoji,
-                  }))
+                ? shorts
+                    .filter((s) => isItemRelevantToTopic(s, activeTopic))
+                    .map((s) => ({
+                      ...s,
+                      matched_topic: activeTopic.label,
+                      interest_topic: activeTopic.id,
+                      topic_emoji: activeTopic.emoji,
+                    }))
                 : []
             )
             .catch(() => [])
@@ -374,9 +376,9 @@ async function fetchLiveExternalPosts({
             )
             .catch(() => [])
         );
-        promises.push(fetchPexelsTrends({ category: subCat, query: pinQ, perPage: 20, page, region }));
       }
-      if (type === "all" || type === "visuals") {
+      if (type === "visuals" || activeTopic.label.toLowerCase().includes("stock")) {
+        promises.push(fetchPexelsTrends({ category: subCat, query: pinQ, perPage: 20, page, region }));
         promises.push(fetchUnsplashTrends({ category: subCat, query: pinQ, perPage: 20, page, region }));
       }
       if (type === "all" || type === "news") {
@@ -464,12 +466,14 @@ async function fetchLiveExternalPosts({
             fetchYouTubeShorts({ region, category: subCat, query: ytQ, maxResults: limitPerTopic, page })
               .then((shorts) =>
                 Array.isArray(shorts)
-                  ? shorts.map((s) => ({
-                      ...s,
-                      matched_topic: tDef.label,
-                      interest_topic: tDef.id,
-                      topic_emoji: tDef.emoji,
-                    }))
+                  ? shorts
+                      .filter((s) => isItemRelevantToTopic(s, tDef))
+                      .map((s) => ({
+                        ...s,
+                        matched_topic: tDef.label,
+                        interest_topic: tDef.id,
+                        topic_emoji: tDef.emoji,
+                      }))
                   : []
               )
               .catch(() => [])
@@ -495,39 +499,41 @@ async function fetchLiveExternalPosts({
         }
       }
 
-      // Visuals & News for primary topic of this page
+      // Visuals & News for primary topic of this page (strictly verified against topic)
       const primary = topicsForPage[(page - 1) % topicsForPage.length] || topicsForPage[0];
       if (primary) {
         const pQuery = getPinterestTopicQuery(primary);
         const pYt = primary.searchQuery || primary.label;
         const pCat = primary.subCategory || "all";
-        if (type === "all" || type === "videos") {
+        if (type === "visuals" || primary.label.toLowerCase().includes("stock")) {
           promises.push(
             fetchPexelsTrends({ category: pCat, query: pQuery, perPage: 12, page, region })
               .then((items) =>
                 Array.isArray(items)
-                  ? items.map((p) => ({
-                      ...p,
-                      matched_topic: primary.label,
-                      interest_topic: primary.id,
-                      topic_emoji: primary.emoji,
-                    }))
+                  ? items
+                      .filter((p) => isItemRelevantToTopic(p, primary))
+                      .map((p) => ({
+                        ...p,
+                        matched_topic: primary.label,
+                        interest_topic: primary.id,
+                        topic_emoji: primary.emoji,
+                      }))
                   : []
               )
               .catch(() => [])
           );
-        }
-        if (type === "all" || type === "visuals") {
           promises.push(
             fetchUnsplashTrends({ category: pCat, query: pQuery, perPage: 12, page, region })
               .then((items) =>
                 Array.isArray(items)
-                  ? items.map((p) => ({
-                      ...p,
-                      matched_topic: primary.label,
-                      interest_topic: primary.id,
-                      topic_emoji: primary.emoji,
-                    }))
+                  ? items
+                      .filter((p) => isItemRelevantToTopic(p, primary))
+                      .map((p) => ({
+                        ...p,
+                        matched_topic: primary.label,
+                        interest_topic: primary.id,
+                        topic_emoji: primary.emoji,
+                      }))
                   : []
               )
               .catch(() => [])
@@ -538,12 +544,14 @@ async function fetchLiveExternalPosts({
             fetchTrendingNews({ category: pCat, region, query: pYt, page })
               .then((items) =>
                 Array.isArray(items)
-                  ? items.map((p) => ({
-                      ...p,
-                      matched_topic: primary.label,
-                      interest_topic: primary.id,
-                      topic_emoji: primary.emoji,
-                    }))
+                  ? items
+                      .filter((p) => isItemRelevantToTopic(p, primary))
+                      .map((p) => ({
+                        ...p,
+                        matched_topic: primary.label,
+                        interest_topic: primary.id,
+                        topic_emoji: primary.emoji,
+                      }))
                   : []
               )
               .catch(() => [])
@@ -864,17 +872,7 @@ export async function getTrendFeedPage(params = {}, options = {}) {
       );
       if (isUserOwn) return true;
 
-      // Direct topic match
-      if (item.matched_topic) {
-        const found = allTopicDefs.some((t) => t.label.toLowerCase() === item.matched_topic.toLowerCase());
-        if (found) return true;
-      }
-      if (item.interest_topic) {
-        const found = allTopicDefs.some((t) => t.id && t.id.toLowerCase() === String(item.interest_topic).toLowerCase());
-        if (found) return true;
-      }
-
-      // Keyword / content match across active topics
+      // Strictly verify relevance across active user topic definitions
       return allTopicDefs.some((tDef) => isItemRelevantToTopic(item, tDef));
     });
 
@@ -1091,18 +1089,24 @@ export async function getTrendFeedPage(params = {}, options = {}) {
       for (const p of candidatePosts) {
         let matchedBucket = null;
 
-        // 1. Check direct matched_topic
+        // 1. Check direct matched_topic (verified against topic definition)
         if (p.matched_topic) {
-          matchedBucket = topicBuckets.get(p.matched_topic.toLowerCase());
+          const b = topicBuckets.get(p.matched_topic.toLowerCase());
+          if (b && isItemRelevantToTopic(p, b.def)) {
+            matchedBucket = b;
+          }
         }
 
-        // 2. Check interest_topic ID
+        // 2. Check interest_topic ID (verified against topic definition)
         if (!matchedBucket && p.interest_topic) {
           const matchedDef = allTopicDefs.find(
             (t) => t.id && t.id.toLowerCase() === String(p.interest_topic).toLowerCase()
           );
           if (matchedDef) {
-            matchedBucket = topicBuckets.get(matchedDef.label.toLowerCase());
+            const b = topicBuckets.get(matchedDef.label.toLowerCase());
+            if (b && isItemRelevantToTopic(p, b.def)) {
+              matchedBucket = b;
+            }
           }
         }
 
@@ -1165,24 +1169,53 @@ export async function getTrendFeedPage(params = {}, options = {}) {
 
       if (activeBuckets.length > 1) {
         // Balanced Round-Robin interleaving across all user topics
-        // Topic 1 -> Topic 2 -> Topic 3 -> Topic 1 -> Topic 2 -> Topic 3...
-        // Shifting round offset ensures columns never lock into a single topic on Pinterest masonry!
+        // Within each topic, balance formats (shorts, videos, pins) so user sees both shorts and full videos!
+        const prefersShorts = allKeywords.some((k) => k === "short" || k === "shorts" || k === "video");
+        const bucketQueues = activeBuckets.map((b) => {
+          const shorts = [];
+          const others = [];
+          for (const it of b.items) {
+            const isShort = it.content_type === "short" || it.source_url?.includes("/shorts/") || it.is_short;
+            if (isShort) shorts.push(it);
+            else others.push(it);
+          }
+          return {
+            def: b.def,
+            shorts,
+            others,
+            all: b.items,
+            nextIsShort: prefersShorts,
+          };
+        });
+
         let round = 0;
         let hasMore = true;
-        const n = activeBuckets.length;
+        const n = bucketQueues.length;
 
         while (result.length < targetLimit && hasMore) {
           hasMore = false;
           for (let step = 0; step < n; step++) {
             const bIndex = (round + step) % n;
-            const b = activeBuckets[bIndex];
-            if (b && b.items.length > 0 && result.length < targetLimit) {
-              const item = b.items.shift();
-              if (item && !isSeen(item)) {
-                recordSeen(item);
-                result.push(item);
-                hasMore = true;
-              }
+            const bq = bucketQueues[bIndex];
+            if (!bq) continue;
+
+            let item = null;
+            if (bq.nextIsShort && bq.shorts.length > 0) {
+              item = bq.shorts.shift();
+              bq.nextIsShort = false;
+            } else if (!bq.nextIsShort && bq.others.length > 0) {
+              item = bq.others.shift();
+              bq.nextIsShort = true;
+            } else if (bq.shorts.length > 0) {
+              item = bq.shorts.shift();
+            } else if (bq.others.length > 0) {
+              item = bq.others.shift();
+            }
+
+            if (item && !isSeen(item)) {
+              recordSeen(item);
+              result.push(item);
+              hasMore = true;
             }
           }
           round++;

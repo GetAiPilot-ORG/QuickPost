@@ -186,7 +186,55 @@ export async function fetchYouTubeTrends({ region = "IN", category = "all", quer
     setMemCache(cacheKey, normalized, CACHE_MEDIUM);
     return normalized;
   } catch (error) {
-    console.error("[TREND-SOURCES] YouTube fetch error:", error?.message);
+    console.warn("[TREND-SOURCES] YouTube fetch notice:", error?.message, "- checking SerpApi fallback");
+    const serpApiKey = process.env.SERPAPI_KEY;
+    if (serpApiKey) {
+      try {
+        const fallbackQuery = cleanQuery || (countryName ? `trending viral ${countryName}` : "trending viral");
+        const sRes = await axios.get("https://serpapi.com/search.json", {
+          params: {
+            engine: "youtube",
+            search_query: fallbackQuery,
+            gl: effectiveRegion === "GLOBAL" ? "us" : effectiveRegion.toLowerCase(),
+            hl: "en",
+            api_key: serpApiKey,
+          },
+          timeout: 9000,
+        });
+        const vResults = sRes.data?.video_results || [];
+        if (vResults.length > 0) {
+          const serpNormalized = vResults.slice(0, maxResults).map((vr, index) => {
+            const vIdMatch = vr.link?.match(/(?:shorts\/|v=)([\w-]{11})/i);
+            const videoId = vIdMatch?.[1] || vr.id || `serp_v_${index}`;
+            const channelName = vr.channel?.name || "YouTube Creator";
+            const cleanTitle = vr.title || "Trending Video";
+            const views = vr.views ? Number.parseInt(String(vr.views).replace(/[^0-9]/g, ""), 10) : 50000;
+            return {
+              id: `yt_${videoId}`,
+              source_platform: "youtube",
+              source_url: vr.link || `https://www.youtube.com/watch?v=${videoId}`,
+              embed_html: `<iframe src="https://www.youtube.com/embed/${videoId}" title="${cleanTitle.replace(/"/g, "&quot;")}" allowfullscreen></iframe>`,
+              thumbnail_url: vr.thumbnail?.static || vr.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+              caption: `${cleanTitle}\n\nBy ${channelName} • ${vr.description || ""}`,
+              title: cleanTitle,
+              creator: channelName,
+              content_type: "video",
+              region: regionCode,
+              country: regionCode,
+              engagement_score: views + 10000,
+              metrics: { views, likes: Math.floor(views * 0.05), comments: Math.floor(views * 0.01) },
+              niche_tags: [category, `region:${regionCode}`],
+              published_at: new Date().toISOString(),
+              ingested_at: new Date().toISOString(),
+            };
+          });
+          setMemCache(cacheKey, serpNormalized, CACHE_MEDIUM);
+          return serpNormalized;
+        }
+      } catch (sErr) {
+        console.warn("[TREND-SOURCES] SerpApi YouTube video fallback notice:", sErr?.message);
+      }
+    }
     return [];
   }
 }
@@ -213,7 +261,7 @@ export async function fetchYouTubeShorts({ region = "IN", category = "all", quer
     try {
       let searchQuery;
       if (cleanQuery) {
-        searchQuery = countryName ? `${cleanQuery} shorts ${countryName}` : `${cleanQuery} shorts`;
+        searchQuery = `${cleanQuery} shorts`;
       } else {
         searchQuery = countryName ? `trending #shorts viral ${countryName}` : "trending #shorts viral";
       }
