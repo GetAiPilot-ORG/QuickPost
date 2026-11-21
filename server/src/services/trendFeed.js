@@ -606,36 +606,38 @@ export async function getTrendFeedPage(params = {}, options = {}) {
   let topicsParam = params.topics || "";
   let rawInterests = params.interests || "";
 
-  // Auto-load preferences & recent search history from database for authenticated user
+  // Auto-load preferences & recent search history strictly from database for authenticated user
   const userId = options.userId || params.userId || null;
   let recentSearches = [];
-  const searchesParam = params.searches || null;
-  if (searchesParam) {
-    recentSearches = String(searchesParam)
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }
 
   if (userId) {
     try {
       const dbPrefs = await getUserTrendPreferences(userId);
       if (dbPrefs) {
-        if (!topicsParam && !topicParam && Array.isArray(dbPrefs.selectedTopicIds) && dbPrefs.selectedTopicIds.length > 0) {
-          topicsParam = dbPrefs.selectedTopicIds.join(",");
-        }
-        const combinedDbInterests = [dbPrefs.work, dbPrefs.interests, dbPrefs.goal]
+        // STRICT USER ISOLATION: When a user is authenticated, their topics, interests,
+        // and searches come EXCLUSIVELY from their own DB preferences!
+        // Client-passed topics/interests/searches from any other/previous session are IGNORED.
+        topicsParam = Array.isArray(dbPrefs.selectedTopicIds) ? dbPrefs.selectedTopicIds.join(",") : "";
+        rawInterests = [dbPrefs.work, dbPrefs.interests, dbPrefs.goal]
           .filter(Boolean)
           .join(", ");
-        if (combinedDbInterests) {
-          rawInterests = rawInterests ? `${rawInterests}, ${combinedDbInterests}` : combinedDbInterests;
-        }
-        if (Array.isArray(dbPrefs.recentSearches) && dbPrefs.recentSearches.length > 0) {
-          recentSearches = Array.from(new Set([...recentSearches, ...dbPrefs.recentSearches]));
-        }
+        recentSearches = Array.isArray(dbPrefs.recentSearches) ? [...dbPrefs.recentSearches] : [];
+      } else {
+        topicsParam = "";
+        rawInterests = "";
+        recentSearches = [];
       }
     } catch (e) {
       console.warn("[TREND-FEED] Could not load DB preferences:", e.message);
+    }
+  } else {
+    // Only unauthenticated/anonymous visitors use query parameters
+    const searchesParam = params.searches || null;
+    if (searchesParam) {
+      recentSearches = String(searchesParam)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
     }
   }
 

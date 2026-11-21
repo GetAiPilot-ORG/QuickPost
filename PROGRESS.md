@@ -1,3 +1,8 @@
+## 2026-11-21 — Enforced 100% strict per-user isolation for interest topics and trend feeds
+- Root cause of mixing: Frontend state was transmitting client-side `params.topics`, `params.interests`, and `params.searches` during feed requests, causing stale/previous session localStorage to overwrite other users' preferences on the server; additionally `GET /trends/feed` was auto-mutating DB interests on search query.
+- Server isolation: For authenticated requests, `trendFeed.js` now reads topics, interests, and recent searches strictly and exclusively from that specific user's DB record (`getUserTrendPreferences`), completely rejecting client-injected query params; removed auto-recording from GET feed route.
+- Client state reset: In `TrendFeedPage.jsx`, bound complete state reset to `userKey` change, blocked premature fetching while `authLoading` is true, and added automatic `qp_trend_` key purging on logout in `AuthContext.jsx`.
+
 ## 2026-11-21 — Eliminated duplicate content across feed columns with canonical key deduplication
 - Root cause: Page 1 was fetching leadSearchedTopic and the topicsForPage loop with overlapping queries, creating YouTube shorts and regular video entries with differing ID prefixes (`yt_short_` vs `yt_`) for identical videos, and round-robin placed adjacent duplicates in adjacent columns.
 - Canonical deduplication: Added `getCanonicalPostKey` and `dedupePostsByCanonicalKey` extracting video IDs, pin IDs, and normalized titles across backend (candidate merge, ranking, and Pinterest interleaving) and frontend (`setItems`, `rememberSeen`, and `columns` round-robin memoization).

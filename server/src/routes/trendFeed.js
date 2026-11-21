@@ -24,12 +24,7 @@ const router = express.Router();
 // 1. Unified paginated trend feed with rich multi-source filtering
 router.get("/trends/feed", authenticateUser, async (req, res) => {
   try {
-    const userId = req.user?.userId || req.user?.id || null;
-    const search = req.query.search || req.query.q || null;
-    if (userId && search && String(search).trim()) {
-      recordUserSearch(userId, search).catch(() => {});
-      addSearchQueryToUserInterests(userId, search).catch(() => {});
-    }
+    const userId = req.user?.authUserId || req.user?.userId || req.user?.id || null;
     const page = await getTrendFeedPage(req.query, { userId });
     res.json(page);
   } catch (error) {

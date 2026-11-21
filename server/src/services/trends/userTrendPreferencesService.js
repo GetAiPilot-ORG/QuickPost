@@ -38,6 +38,7 @@ export async function getUserTrendPreferences(userId) {
     recentSearches: [],
     onboarded: false,
     isCustomized: false,
+    hasInterests: false,
   };
 
   try {

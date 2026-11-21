@@ -2039,34 +2039,14 @@ export default function TrendFeedPage() {
   const savedIdeasStorageKey = `qp_trend_saved_ideas_${userKey}`;
   const onboardingStorageKey = `qp_trend_onboarded_${userKey}`;
   const onboardingTriggeredRef = useRef(false);
+  const activeUserKeyRef = useRef(userKey);
 
-  // Creator Personalization & Interest Onboarding
-  const [profile, setProfile] = useState(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(profileStorageKey) || "null");
-      if (saved && (saved.interests || saved.work || saved.goal || saved.selectedTopicIds)) {
-        return {
-          work: saved.work || "",
-          interests: sanitizeSavedInterests(saved.interests),
-          goal: saved.goal || "",
-          selectedTopicIds: Array.isArray(saved.selectedTopicIds) ? saved.selectedTopicIds : [],
-        };
-      }
-    } catch { }
-    return emptyProfile();
-  });
-  const [draftProfile, setDraftProfile] = useState(() => profile);
+  // Creator Personalization & Interest Onboarding (Always isolated per-user)
+  const [profile, setProfile] = useState(() => emptyProfile());
+  const [draftProfile, setDraftProfile] = useState(() => emptyProfile());
   const [interestModalMode, setInterestModalMode] = useState("onboarding"); // "onboarding" | "tune"
   const [showInterestModal, setShowInterestModal] = useState(false);
-  const [selectedTopicIds, setSelectedTopicIds] = useState(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(profileStorageKey) || "null");
-      if (saved && Array.isArray(saved.selectedTopicIds) && saved.selectedTopicIds.length > 0) {
-        return saved.selectedTopicIds;
-      }
-    } catch { }
-    return [];
-  });
+  const [selectedTopicIds, setSelectedTopicIds] = useState(() => []);
   const [selectedTopicFilter, setSelectedTopicFilter] = useState(null);
   const [feedMode, setFeedMode] = useState("personalized");
 
@@ -2141,6 +2121,22 @@ export default function TrendFeedPage() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  // Reset all state when active user identity changes (Guarantees 100% user isolation)
+  useEffect(() => {
+    if (activeUserKeyRef.current !== userKey) {
+      activeUserKeyRef.current = userKey;
+      setSelectedTopicIds([]);
+      setProfile(emptyProfile());
+      setDraftProfile(emptyProfile());
+      setRecentDbSearches([]);
+      setItems([]);
+      seenRef.current = new Set();
+      pageRef.current = 1;
+      cursorRef.current = null;
+      onboardingTriggeredRef.current = false;
+    }
+  }, [userKey]);
+
   // Load localStorage state & First-time visit onboarding
   useEffect(() => {
     try {
@@ -2210,11 +2206,16 @@ export default function TrendFeedPage() {
             onboardingTriggeredRef.current = true;
           } catch { }
           setShowInterestModal(false);
+          const searches = Array.isArray(dbPrefs?.recentSearches) ? sanitizeRecentSearches(dbPrefs.recentSearches) : [];
+          setRecentDbSearches(searches);
+          loadPage({ reset: true, overrideProfile: dbProfile });
         } else {
-          // DB ME USKA INTEREST KHALI H: Show onboarding modal on page refresh as long as DB interest is empty
+          // DB ME USKA INTEREST KHALI H: Clean slate strictly for this user
           setSelectedTopicIds([]);
           setProfile(emptyProfile());
           setDraftProfile(emptyProfile());
+          const searches = Array.isArray(dbPrefs?.recentSearches) ? sanitizeRecentSearches(dbPrefs.recentSearches) : [];
+          setRecentDbSearches(searches);
           try {
             localStorage.removeItem(onboardingStorageKey);
             localStorage.removeItem(profileStorageKey);
@@ -2230,10 +2231,7 @@ export default function TrendFeedPage() {
             }, 300);
             return () => clearTimeout(timer);
           }
-        }
-
-        if (Array.isArray(dbPrefs?.recentSearches) && dbPrefs.recentSearches.length > 0) {
-          setRecentDbSearches(sanitizeRecentSearches(dbPrefs.recentSearches));
+          loadPage({ reset: true, overrideProfile: emptyProfile() });
         }
       } catch (err) {
         // Fallback to per-user localStorage check if network / auth fails
@@ -2407,6 +2405,7 @@ export default function TrendFeedPage() {
       overrideMode = null,
       overrideRegion = null,
     } = {}) => {
+      if (authLoading) return;
       const currentRequestId = ++loadRequestIdRef.current;
       if (!reset && loadingRef.current) return;
       if (!reset && exhaustedRef.current) return;
@@ -2451,20 +2450,19 @@ export default function TrendFeedPage() {
         };
 
         if (!activeSearch) {
-          if (isPersonalized) {
-            if (activeTopic) {
-              params.topic = activeTopic;
-            } else {
-              if (topicIds.length > 0) {
-                params.topics = topicIds.join(",");
-              }
-              if (searches.length > 0) {
-                params.searches = searches.join(",");
-              }
+          if (activeTopic) {
+            params.topic = activeTopic;
+          } else if (!user?.userId && !user?.id) {
+            // Only unauthenticated visitors pass client-side topics/interests
+            if (topicIds.length > 0) {
+              params.topics = topicIds.join(",");
             }
-          }
-          if (interestQuery) {
-            params.interests = interestQuery;
+            if (searches.length > 0) {
+              params.searches = searches.join(",");
+            }
+            if (interestQuery) {
+              params.interests = interestQuery;
+            }
           }
         }
 
@@ -2478,7 +2476,7 @@ export default function TrendFeedPage() {
         const nextItems = data.items || [];
         rememberSeen(nextItems);
 
-        if (Array.isArray(data.recentSearches) && data.recentSearches.length > 0) {
+        if (Array.isArray(data.recentSearches)) {
           const sanitized = sanitizeRecentSearches(data.recentSearches);
           setRecentDbSearches((prev) => {
             const prevStr = prev.join("|");
@@ -2506,16 +2504,18 @@ export default function TrendFeedPage() {
         }
       }
     },
-    [rememberSeen]
+    [rememberSeen, authLoading, user?.userId, user?.id]
   );
   loadPageRef.current = loadPage;
 
   // Trigger reload on filter changes
   useEffect(() => {
+    if (authLoading) return;
     pageRef.current = 1;
     cursorRef.current = null;
     loadPage({ reset: true });
   }, [
+    authLoading,
     selectedFormat,
     selectedNiche,
     selectedRegion,
