@@ -256,6 +256,27 @@ router.post("/trends/preferences", authenticateUser, async (req, res) => {
   }
 });
 
+router.delete("/trends/preferences", authenticateUser, async (req, res) => {
+  try {
+    const userId = req.user?.userId || req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Unauthorized" });
+    }
+    const result = await saveUserTrendPreferences(userId, {
+      selectedTopicIds: [],
+      interests: "",
+      work: "",
+      goal: "",
+      recentSearches: [],
+      onboarded: false,
+    });
+    res.json({ success: true, preferences: result?.preferences || null });
+  } catch (err) {
+    console.error("[TREND-FEED] Reset preferences error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // 11. User Search History & Auto-Add to Interests
 router.post("/trends/search-history", authenticateUser, async (req, res) => {
   try {
