@@ -185,6 +185,35 @@ const DashboardLayout = () => {
     if (success?.endsWith("_connected")) refreshAccounts();
   }, [isAuthenticated, location.search, refreshAccounts]);
 
+  // Always scroll to top when navigating between dashboard pages/tabs
+  useEffect(() => {
+    const scrollToTop = () => {
+      const mainEl = document.getElementById("main-content");
+      if (mainEl) {
+        mainEl.scrollTop = 0;
+        if (typeof mainEl.scrollTo === "function") {
+          try {
+            mainEl.scrollTo({ top: 0, left: 0, behavior: "instant" });
+          } catch (e) {
+            mainEl.scrollTop = 0;
+          }
+        }
+      }
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+      if (document.documentElement) document.documentElement.scrollTop = 0;
+      if (document.body) document.body.scrollTop = 0;
+    };
+
+    scrollToTop();
+    const rafId = requestAnimationFrame(scrollToTop);
+    const timer = setTimeout(scrollToTop, 50);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      clearTimeout(timer);
+    };
+  }, [location.pathname]);
+
   // ── Wait for Supabase to restore session before deciding ──
   if (loading) {
     return <DashboardShellSkeleton isDesktop={isDesktop} />;

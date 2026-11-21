@@ -1,3 +1,7 @@
+## 2026-11-21 — Enforced #main-content container scroll reset on route navigation and feed mount
+- Scroll container root cause: Dashboard layout me scroll `window` par nahi balki `<main id="main-content">` par hota hai (`overflowY: auto`), jisse `window.scrollTo` se scroll reset nahi ho raha tha aur dusre page se aane par page purani scroll position par rehta tha.
+- Multi-layer reset: `DashboardLayout` me route switch listener (`location.pathname`), `TrendFeedPage` ke mount/reset helper `scrollTrendFeedToTop`, aur `Sidebar` link click handlers me `#main-content`, `document.documentElement`, aur `window` sabhi ko 0 par reset kiya (with `requestAnimationFrame` + timeout) taaki Trend page hamesha upar se khule.
+
 ## 2026-11-21 — Purged stale deleted search pills & enforced scroll to top on mount
 - Search deletion bugfix: `DELETE /api/trends/search-history` me `req.user?.authUserId` missing tha jisse user_metadata se cut kiye hue terms delete nahi ho rahe the; ab `deleteUserSearch` auth UUID use karke `recentSearches`, `interests`, aur `work` (role) sabhi jagah se delete karta hai.
 - Stopped partial typing topic registration: 600ms debounce typing live feed update karti hai par `registerTopic=false` bhejti hai taaki `totalga` jaise adhoore words DB me permanent pill na banein (sirf Enter ya Search click karne par hi register hote hain).

@@ -1990,6 +1990,26 @@ function CreatorInterestModal({
 }
 
 // -----------------------------------------------------------------------------
+// HELPER: SCROLL FEED CONTAINER TO TOP
+// -----------------------------------------------------------------------------
+function scrollTrendFeedToTop() {
+  const mainEl = document.getElementById("main-content");
+  if (mainEl) {
+    mainEl.scrollTop = 0;
+    if (typeof mainEl.scrollTo === "function") {
+      try {
+        mainEl.scrollTo({ top: 0, left: 0, behavior: "instant" });
+      } catch (e) {
+        mainEl.scrollTop = 0;
+      }
+    }
+  }
+  window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  if (document.documentElement) document.documentElement.scrollTop = 0;
+  if (document.body) document.body.scrollTop = 0;
+}
+
+// -----------------------------------------------------------------------------
 // MAIN REDESIGNED TREND FEED COMPONENT
 // -----------------------------------------------------------------------------
 export default function TrendFeedPage() {
@@ -2427,7 +2447,7 @@ export default function TrendFeedPage() {
       if (!reset && loadingRef.current) return;
       if (!reset && exhaustedRef.current) return;
       if (reset) {
-        window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+        scrollTrendFeedToTop();
         exhaustedRef.current = false;
         setItems([]);
       }
@@ -2533,7 +2553,13 @@ export default function TrendFeedPage() {
 
   // Always scroll to top when Trend Feed page is opened / mounted
   useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    scrollTrendFeedToTop();
+    const rafId = requestAnimationFrame(scrollTrendFeedToTop);
+    const timer = setTimeout(scrollTrendFeedToTop, 100);
+    return () => {
+      cancelAnimationFrame(rafId);
+      clearTimeout(timer);
+    };
   }, []);
 
   // Immediate search execution (real-time live feed update without requiring manual page refresh)
