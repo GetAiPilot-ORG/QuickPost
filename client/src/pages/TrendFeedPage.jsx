@@ -2001,16 +2001,39 @@ export default function TrendFeedPage() {
 
   const colCount = useFeedColumns();
 
-  // Pure equal round-robin distribution across all columns (Pinterest Waterfall)
+  // Height-balanced Pinterest Waterfall distribution (Greedy shortest-column bin packing)
   const columns = useMemo(() => {
     const uniqueItems = dedupeClientPosts(items);
     const effectiveCols = (loading || uniqueItems.length === 0)
       ? colCount
       : Math.min(uniqueItems.length, colCount);
     const cols = Array.from({ length: effectiveCols }, () => []);
-    uniqueItems.forEach((item, index) => {
-      cols[index % effectiveCols].push(item);
+    const colHeights = new Array(effectiveCols).fill(0);
+
+    const getEstimatedHeight = (post) => {
+      if (!post) return 300;
+      const isShort = (post.source_platform === "youtube" || post.target_platform === "youtube") &&
+        (post.content_type === "short" || post.source_url?.includes("/shorts/") || post.is_short);
+      if (isShort) return 460;
+      if (post.source_platform === "pinterest" || post.content_type === "visual") return 400;
+      if (post.source_platform === "youtube" || post.content_type === "video") return 260;
+      return 320;
+    };
+
+    uniqueItems.forEach((item) => {
+      // Find the column that currently has the minimum cumulative height
+      let minCol = 0;
+      let minH = colHeights[0];
+      for (let c = 1; c < effectiveCols; c++) {
+        if (colHeights[c] < minH) {
+          minH = colHeights[c];
+          minCol = c;
+        }
+      }
+      cols[minCol].push(item);
+      colHeights[minCol] += getEstimatedHeight(item);
     });
+
     return cols;
   }, [items, colCount, loading]);
 
@@ -3187,9 +3210,9 @@ export default function TrendFeedPage() {
           <div className="flex w-full gap-4 sm:gap-5 items-start">
             {columns.map((colItems, colIdx) => (
               <div key={colIdx} className="flex-1 min-w-0 flex flex-col gap-4 sm:gap-5">
-                {colItems.map((post) => (
+                {colItems.map((post, postIdx) => (
                   <TrendCard
-                    key={post.id}
+                    key={post.id || getClientPostKey(post) || `post-${colIdx}-${postIdx}`}
                     post={post}
                     onUseIdea={handleUseIdea}
                     onRemix={handleOpenRemix}

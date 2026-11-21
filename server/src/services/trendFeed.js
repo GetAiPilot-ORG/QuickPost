@@ -1189,37 +1189,64 @@ export async function getTrendFeedPage(params = {}, options = {}) {
         });
 
         let round = 0;
-        let hasMore = true;
         const n = bucketQueues.length;
 
-        while (result.length < targetLimit && hasMore) {
-          hasMore = false;
-          for (let step = 0; step < n; step++) {
+        // Loop as long as targetLimit is not reached AND at least one queue has items
+        while (
+          result.length < targetLimit &&
+          bucketQueues.some((bq) => bq.shorts.length > 0 || bq.others.length > 0)
+        ) {
+          let progressInRound = false;
+
+          for (let step = 0; step < n && result.length < targetLimit; step++) {
             const bIndex = (round + step) % n;
             const bq = bucketQueues[bIndex];
             if (!bq) continue;
 
+            // Find next unseen item in this bucket's format queues
             let item = null;
-            if (bq.nextIsShort && bq.shorts.length > 0) {
-              item = bq.shorts.shift();
-              bq.nextIsShort = false;
-            } else if (!bq.nextIsShort && bq.others.length > 0) {
-              item = bq.others.shift();
-              bq.nextIsShort = true;
-            } else if (bq.shorts.length > 0) {
-              item = bq.shorts.shift();
-            } else if (bq.others.length > 0) {
-              item = bq.others.shift();
+            while (bq.shorts.length > 0 || bq.others.length > 0) {
+              let candidate = null;
+              if (bq.nextIsShort && bq.shorts.length > 0) {
+                candidate = bq.shorts.shift();
+                bq.nextIsShort = false;
+              } else if (!bq.nextIsShort && bq.others.length > 0) {
+                candidate = bq.others.shift();
+                bq.nextIsShort = true;
+              } else if (bq.shorts.length > 0) {
+                candidate = bq.shorts.shift();
+              } else if (bq.others.length > 0) {
+                candidate = bq.others.shift();
+              }
+
+              if (candidate && !isSeen(candidate)) {
+                item = candidate;
+                break;
+              }
             }
 
-            if (item && !isSeen(item)) {
+            if (item) {
               recordSeen(item);
               result.push(item);
-              hasMore = true;
+              progressInRound = true;
             }
           }
+
           round++;
+          if (!progressInRound) break;
         }
+
+        // Backfill from any remaining unseen candidate posts matching active topics if targetLimit not reached
+        if (result.length < targetLimit) {
+          for (const cand of candidatePosts) {
+            if (result.length >= targetLimit) break;
+            if (!isSeen(cand) && allTopicDefs.some((t) => isItemRelevantToTopic(cand, t))) {
+              recordSeen(cand);
+              result.push(cand);
+            }
+          }
+        }
+
         return dedupePostsByCanonicalKey(result);
       }
 

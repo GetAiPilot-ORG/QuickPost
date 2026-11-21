@@ -1,3 +1,7 @@
+## 2026-11-21 — Fixed empty column gap with full data fetching & height-balanced waterfall
+- Full data fetching (no premature loop exit): `interleavePinterestFeed` me while loop seen items encounter hone par prematurely break ho raha tha jisse sirf 11-12 items return ho rahe the; ab queue me jab tak items bache hain unseen items shift hote hain aur remaining relevant posts se backfill hota hai taaki hamesha full 24 items deliver hon.
+- Height-balanced Waterfall bin packing: Frontend me `columns` ko index modulo ke bajaye greedy shortest-column height estimation bin packing algorithm se distribute kiya, jisse tall 9:16 portrait pins ke hone par bhi koi bhi column/line khali nahi rehti aur sabhi columns perfectly even rehte hain.
+
 ## 2026-11-21 — Strict exact topic matching, stock footage elimination & format-balanced interleaving
 - Exact relevance enforcement: `isItemRelevantToTopic` me generic stock footage ("Reel & B-Roll", "Vertical Video", Pexels) aur single generic words (`#gaming`, `push`, `free`) ko false positive match hone se roka; creator channel match aur multi-word phrases ("as gaming", "free fire", "rank push") enforce kiye.
 - Filtered shorts & SerpApi fallback: `fetchYouTubeShorts` me `isItemRelevantToTopic` filtering add ki taaki search query se aaye hue unrelated videos filter out ho sakein; YouTube Data API 429 par SerpApi `video_results` fallback joda.
