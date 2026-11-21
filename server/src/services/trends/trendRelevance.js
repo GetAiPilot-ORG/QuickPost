@@ -109,9 +109,15 @@ export function calculateRelevance(item, query) {
     // Multi-word query: at least 45% of terms must match to be considered relevant
     if (keywords.length > 1) {
       const matchRatio = matchedCount / keywords.length;
-      if (matchRatio < 0.45) return 0;
+      const minRatio = (platform === 'pinterest' || platform === 'bluesky' || platform === 'youtube') ? 0.3 : 0.45;
+      if (matchRatio < minRatio) return 0;
       score *= matchRatio;
     }
+  }
+
+  if (platform === 'pinterest' || platform === 'bluesky' || platform === 'youtube') {
+    // Verified search results get a solid baseline relevance score
+    score = Math.max(score, 35);
   }
 
   // 3. Media & Quality Boost
@@ -154,7 +160,7 @@ export function filterAndRankPosts(items, query) {
   // Sort by relevance score descending
   scored.sort((a, b) => b.score - a.score);
 
-  // Author diversification: maximum 3 posts per author in the feed
+  // Author diversification: generous limit for visual platforms like Pinterest
   const diversified = [];
   const authorCounts = new Map();
 
@@ -163,7 +169,8 @@ export function filterAndRankPosts(items, query) {
     const author = item.creator || item.author?.handle || item.author?.name || 'unknown';
     const authorKey = `${platform}:${author}`;
     const count = authorCounts.get(authorKey) || 0;
-    if (count < 3) {
+    const maxPerAuthor = platform === 'pinterest' || platform === 'bluesky' ? 12 : 3;
+    if (count < maxPerAuthor) {
       diversified.push(item);
       authorCounts.set(authorKey, count + 1);
     }

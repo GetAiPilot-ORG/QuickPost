@@ -1,3 +1,7 @@
+## 2026-11-21 — Feed optimization for searched & tuned topics over generic sparks
+- Searched topic prioritization: User ke searched topics aur tuned keywords ko feed pool ke sabse aage rakha, Page 1 par unhi topics ke YouTube Shorts & Trends fetch kiye instead of empty-query random videos.
+- Precision relevance & community cap: Search mode me strict relevance ranking enforce ki aur irrelevant community posts exclude kiye; normal feed me searched/tuned matches ko top rank (80M/60M) diya aur generic community sparks ko Page 1 par 2 tak cap kiya taaki user ke searched topics hi dominate karein.
+
 ## 2026-11-21 — Auto-add searched topics to user interests across DB & UI
 - Searched topic auto-add to interests: koi bhi user jab search kare (search bar, Enter, ya trending tags), topic automatically user ke `interests` keywords list aur Supabase DB me add hota hai, prefix fragments deduplicate hote hain, aur predefined topics se match hone par `selectedTopicIds` me bhi include hota hai.
 - Onboarding & Tune modal sync: Onboarding modal me searched/custom interests tags display kiye aur quick add input joda; rail se remove karne par interests aur DB se bhi clean sync rakha.

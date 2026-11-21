@@ -11,6 +11,7 @@ import {
   fetchPinterestTrends,
   fetchBlueskyTrends,
   filterAndRankPosts,
+  calculateRelevance,
   getBlueskyTrendingTopics,
 } from "./trends/trendSources.js";
 import {
@@ -357,54 +358,81 @@ async function fetchLiveExternalPosts({
         promises.push(fetchTrendingNews({ category: subCat, region, query: ytQ, page }));
       }
     } else {
-      // MIXED FEED: Interleave tuned topics, onboarding selected topics AND searched topics
-      const mixedPool = [];
-      const maxLen = Math.max(targetTopics.length, searchTopicObjects.length);
-      for (let i = 0; i < maxLen; i++) {
-        if (i < targetTopics.length) mixedPool.push(targetTopics[i]);
-        if (i < searchTopicObjects.length) mixedPool.push(searchTopicObjects[i]);
-      }
+      // MIXED FEED: Prioritize user's searched topics and tuned topics at the very front of the pool!
+      const topicsPool = [];
+      const seenTopicKeys = new Set();
 
-      // Prioritize explicit tuned topics from "Tune Feed" modal at the very front
-      const poolWithoutTuned = (mixedPool.length > 0 ? mixedPool : targetTopics).filter(
-        (t) => !tunedTopics.some((tune) => tune.id === t.id || tune.label.toLowerCase() === t.label.toLowerCase())
-      );
-      const topicsPool =
-        tunedTopics.length > 0
-          ? [...tunedTopics, ...poolWithoutTuned]
-          : mixedPool.length > 0
-          ? mixedPool
-          : targetTopics.length > 0
-          ? targetTopics
-          : searchTopicObjects.length > 0
-          ? searchTopicObjects
-          : searchQueries.map((q) => ({
-              label: q,
-              searchQuery: q,
-              subCategory: "all",
-              emoji: "🔍",
-              id: q,
-              keywords: [q.toLowerCase()],
-              isSearchedTopic: true,
-            }));
+      const pushTopic = (t) => {
+        if (!t) return;
+        const key = (t.label || t.id || "").toLowerCase().trim();
+        if (key && !seenTopicKeys.has(key)) {
+          seenTopicKeys.add(key);
+          topicsPool.push(t);
+        }
+      };
 
-      // On Page 1, ALWAYS mix in authentic country-specific signals (Google Trends & YouTube top trending for the country)
+      // 1. Searched topics lead the feed (user's most active and recent intent)
+      (searchTopicObjects || []).forEach(pushTopic);
+
+      // 2. Explicit tuned topics from "Tune Feed" modal
+      (tunedTopics || []).forEach(pushTopic);
+
+      // 3. User onboarding selected topics
+      (targetTopics || []).forEach(pushTopic);
+
+      // 4. Any raw search queries
+      (searchQueries || []).forEach((q) => {
+        pushTopic({
+          label: q,
+          searchQuery: q,
+          subCategory: "all",
+          emoji: "🔍",
+          id: `search_${q.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`,
+          keywords: [q.toLowerCase()],
+          isSearchedTopic: true,
+        });
+      });
+
+      // On Page 1, if user has searched topics or tuned topics, fetch YouTube shorts and videos FOR THOSE SEARCHED TOPICS!
+      const leadSearchedTopic = searchTopicObjects[0] || tunedTopics[0] || null;
       if (page === 1 && (type === "all" || type === "searches")) {
         promises.push(
           fetchGoogleTrends({ geo: region, page: 1 })
-            .then((items) => (Array.isArray(items) ? items.slice(0, 3) : []))
+            .then((items) => (Array.isArray(items) ? items.slice(0, 2) : []))
             .catch(() => [])
         );
       }
       if (page === 1 && (type === "all" || type === "shorts" || type === "videos")) {
+        const shortQ = leadSearchedTopic ? (leadSearchedTopic.searchQuery || leadSearchedTopic.label) : (topicsPool[0]?.searchQuery || "");
         promises.push(
-          fetchYouTubeShorts({ region, category: "all", query: "", maxResults: 15, page: 1 })
+          fetchYouTubeShorts({ region, category: "all", query: shortQ, maxResults: 15, page: 1 })
+            .then((shorts) =>
+              Array.isArray(shorts) && leadSearchedTopic
+                ? shorts.map((s) => ({
+                    ...s,
+                    matched_topic: leadSearchedTopic.label,
+                    interest_topic: leadSearchedTopic.id,
+                    topic_emoji: leadSearchedTopic.emoji || "🔍",
+                  }))
+                : (shorts || [])
+            )
             .catch(() => [])
         );
       }
       if (page === 1 && (type === "all" || type === "videos")) {
+        const vidQ = leadSearchedTopic ? (leadSearchedTopic.searchQuery || leadSearchedTopic.label) : (topicsPool[0]?.searchQuery || "");
         promises.push(
-          fetchYouTubeTrends({ region, category: "all", query: "", maxResults: 10, page: 1 })
+          fetchYouTubeTrends({ region, category: "all", query: vidQ, maxResults: 10, page: 1 })
+            .then((videos) =>
+              Array.isArray(videos) && leadSearchedTopic
+                ? videos.map((v) => ({
+                    ...v,
+                    matched_topic: leadSearchedTopic.label,
+                    interest_topic: leadSearchedTopic.id,
+                    topic_emoji: leadSearchedTopic.emoji || "🔍",
+                  }))
+                : (videos || [])
+            )
             .catch(() => [])
         );
       }
@@ -641,37 +669,50 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     recentSearches,
   });
 
-  // Build searchTopicObjects for searched topics not covered in targetTopics
-  const searchTopicObjects = (recentSearches || [])
+  // Build searchTopicObjects for searched topics (leads feed personalization)
+  const rawSearchTopicObjects = (recentSearches || [])
     .map((q) => String(q || "").trim())
-    .filter((q) => {
-      const cleanQ = q.toLowerCase().replace(/^#/, "");
-      return (
-        cleanQ.length > 1 &&
-        !targetTopics.some(
-          (t) =>
-            t.label.toLowerCase() === cleanQ ||
-            t.id.toLowerCase() === cleanQ ||
-            (Array.isArray(t.keywords) && t.keywords.some((k) => k.toLowerCase() === cleanQ))
-        )
-      );
-    })
+    .filter((q) => q.replace(/^#/, "").trim().length > 1)
     .map((q) => {
       const cleanQ = q.replace(/^#/, "").trim();
+      const cleanLower = cleanQ.toLowerCase();
+      // Check if there is an existing registry topic definition for this search
+      const existingDef =
+        getTopicDefinition(cleanQ) ||
+        targetTopics.find(
+          (t) => t.label.toLowerCase() === cleanLower || t.id.toLowerCase() === cleanLower
+        );
+      if (existingDef) {
+        return {
+          ...existingDef,
+          isSearchedTopic: true,
+        };
+      }
       return {
-        id: `search_${cleanQ.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`,
+        id: `search_${cleanLower.replace(/[^a-z0-9]+/g, "_")}`,
         label: cleanQ,
         searchQuery: cleanQ,
         pinterestQuery: cleanQ,
         blueskyQuery: cleanQ,
-        keywords: cleanQ.toLowerCase().split(/\s+/).filter((w) => w.length > 1),
+        keywords: cleanLower.split(/\s+/).filter((w) => w.length > 1),
         subCategory: "all",
         emoji: "🔍",
         isSearchedTopic: true,
       };
     });
 
-  const allTopicDefs = [...targetTopics, ...searchTopicObjects];
+  // Deduplicate searchTopicObjects
+  const searchTopicObjects = [];
+  const seenSearchKeys = new Set();
+  for (const st of rawSearchTopicObjects) {
+    const k = (st.label || st.id).toLowerCase();
+    if (!seenSearchKeys.has(k)) {
+      seenSearchKeys.add(k);
+      searchTopicObjects.push(st);
+    }
+  }
+
+  const allTopicDefs = [...searchTopicObjects, ...tunedTopics, ...targetTopics];
   const allKeywords = Array.from(new Set([...keywords, ...searchTopicObjects.flatMap((s) => s.keywords)]));
 
   const decodedCursor = decodeTrendCursor(params.cursor);
@@ -864,15 +905,34 @@ export async function getTrendFeedPage(params = {}, options = {}) {
             return tune.keywords.some((kw) => kw.length > 2 && textHaystack.includes(kw));
           });
 
-          // Prioritize user's own uploads and SocialPilot community posts at top,
-          // followed immediately by items matching user's custom tuned keywords!
+          // Check match with user's recent searches or searched topics
+          const isSearchedMatch =
+            (searchTopicObjects || []).some((sTopic) => {
+              if (post.matched_topic && post.matched_topic.toLowerCase() === sTopic.label.toLowerCase()) return true;
+              if (post.interest_topic && post.interest_topic === sTopic.id) return true;
+              const textHaystack = `${post.title || ""} ${post.caption || ""} ${Array.isArray(post.niche_tags) ? post.niche_tags.join(" ") : ""}`.toLowerCase();
+              return (sTopic.keywords || [sTopic.label.toLowerCase()]).some((kw) => kw.length > 1 && textHaystack.includes(kw));
+            }) ||
+            (recentSearches || []).some((term) => {
+              const cleanTerm = String(term || "").trim().toLowerCase().replace(/^#/, "");
+              if (cleanTerm.length < 2) return false;
+              const textHaystack = `${post.title || ""} ${post.caption || ""} ${Array.isArray(post.niche_tags) ? post.niche_tags.join(" ") : ""}`.toLowerCase();
+              return textHaystack.includes(cleanTerm);
+            });
+
+          // Prioritize user's own uploads at top, followed by searched topic matches and user tuned keywords!
           let rankScore;
           if (isUserOwn) {
             rankScore = 200000000 + score;
-          } else if (isSocialpilot) {
-            rankScore = 100000000 + score;
+          } else if (search) {
+            const relScore = calculateRelevance(post, search);
+            rankScore = (relScore * 1000000) + score;
+          } else if (isSearchedMatch) {
+            rankScore = 80000000 + (score * 800) + matches * 25000;
           } else if (isTunedMatch) {
-            rankScore = 50000000 + (score * 500) + matches * 10000;
+            rankScore = 60000000 + (score * 500) + matches * 10000;
+          } else if (isSocialpilot) {
+            rankScore = 20000000 + score;
           } else {
             rankScore = Number((score * topicBoost).toFixed(6));
           }
@@ -895,39 +955,60 @@ export async function getTrendFeedPage(params = {}, options = {}) {
   function interleavePinterestFeed(posts, targetLimit) {
     if (!posts || posts.length === 0) return [];
 
-    // Prioritize user's own uploads and SocialPilot community posts directly at the very top!
-    const communityPosts = posts.filter((p) => p.source_platform === "socialpilot" || p.is_user_post);
-    communityPosts.sort((a, b) => {
-      if (a.is_user_post && !b.is_user_post) return -1;
-      if (!a.is_user_post && b.is_user_post) return 1;
-      return (b.rank_score || 0) - (a.rank_score || 0);
-    });
-    const nonCommunityPosts = posts.filter((p) => p.source_platform !== "socialpilot" && !p.is_user_post);
-
     const result = [];
     const seenIds = new Set();
 
-    // Place community posts right at the top
+    // When searching, strictly preserve relevance ranking!
+    if (search) {
+      for (const post of posts) {
+        if (result.length >= targetLimit) break;
+        if (!seenIds.has(post.id)) {
+          if (post.source_platform === "socialpilot" && calculateRelevance(post, search) === 0) {
+            continue;
+          }
+          seenIds.add(post.id);
+          result.push(post);
+        }
+      }
+      return result;
+    }
+
+    // 1. User's own uploads directly at the very top!
+    const userOwnPosts = posts.filter((p) => p.is_user_post);
+    for (const post of userOwnPosts) {
+      if (result.length < targetLimit && !seenIds.has(post.id)) {
+        result.push(post);
+        seenIds.add(post.id);
+      }
+    }
+
+    // 2. Place explicit user-searched and tuned keyword posts (rank_score >= 50000000) immediately next
+    const priorityPosts = posts.filter((p) => !p.is_user_post && p.rank_score >= 50000000);
+    priorityPosts.sort((a, b) => (b.rank_score || 0) - (a.rank_score || 0));
+    for (const post of priorityPosts) {
+      if (result.length < targetLimit && !seenIds.has(post.id)) {
+        result.push(post);
+        seenIds.add(post.id);
+      }
+    }
+
+    // 3. Community sparks: cap at 2 on page 1 so they never drown out user's topics
+    const communityPosts = posts.filter((p) => p.source_platform === "socialpilot" && !p.is_user_post);
+    communityPosts.sort((a, b) => (b.rank_score || 0) - (a.rank_score || 0));
+    const communityCap = pageNumber === 1 ? 2 : 1;
+    let commCount = 0;
     for (const post of communityPosts) {
-      if (result.length < targetLimit && !seenIds.has(post.id)) {
+      if (result.length < targetLimit && commCount < communityCap && !seenIds.has(post.id)) {
         result.push(post);
         seenIds.add(post.id);
+        commCount++;
       }
     }
 
-    // Place explicit user-tuned keyword posts (e.g. Spiderman) immediately next
-    const tunedPosts = nonCommunityPosts.filter((p) => p.rank_score >= 50000000);
-    for (const post of tunedPosts) {
-      if (result.length < targetLimit && !seenIds.has(post.id)) {
-        result.push(post);
-        seenIds.add(post.id);
-      }
-    }
-
-    // On Page 1, prominently showcase country breaking trends (e.g. Google Trends / trending pulses)
+    // 4. On Page 1, prominently showcase country breaking trends (e.g. Google Trends / trending pulses)
     if (pageNumber === 1) {
-      const countryPulsePosts = nonCommunityPosts.filter(
-        (p) => p.source_platform === "google_trends" || p.content_type === "trend_query"
+      const countryPulsePosts = posts.filter(
+        (p) => !p.is_user_post && (p.source_platform === "google_trends" || p.content_type === "trend_query")
       );
       for (const post of countryPulsePosts.slice(0, 2)) {
         if (result.length < targetLimit && !seenIds.has(post.id)) {
@@ -940,6 +1021,7 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     const remainingLimit = targetLimit - result.length;
     if (remainingLimit <= 0) return result;
 
+    const nonCommunityPosts = posts.filter((p) => p.source_platform !== "socialpilot" && !p.is_user_post);
     const isPersonalized = targetTopics.length > 0 || searchTopicObjects.length > 0;
 
     // When personalized with multiple topics, interleave across topics for balanced representation
