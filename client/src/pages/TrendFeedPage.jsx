@@ -218,9 +218,7 @@ function sanitizeRecentSearches(searches) {
 
 function sanitizeSavedInterests(str) {
   if (!str || typeof str !== "string") return "";
-  // If the string contains the legacy accumulated search queries from previous test sessions, clear it
-  if (str.includes("gta6") && str.includes("footbal")) return "";
-  return str;
+  return str.trim();
 }
 
 function addTermToInterestsString(existingInterestsStr, newTerm) {
