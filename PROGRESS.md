@@ -1,3 +1,8 @@
+## 2026-11-21 — Eliminated duplicate content across feed columns with canonical key deduplication
+- Root cause: Page 1 was fetching leadSearchedTopic and the topicsForPage loop with overlapping queries, creating YouTube shorts and regular video entries with differing ID prefixes (`yt_short_` vs `yt_`) for identical videos, and round-robin placed adjacent duplicates in adjacent columns.
+- Canonical deduplication: Added `getCanonicalPostKey` and `dedupePostsByCanonicalKey` extracting video IDs, pin IDs, and normalized titles across backend (candidate merge, ranking, and Pinterest interleaving) and frontend (`setItems`, `rememberSeen`, and `columns` round-robin memoization).
+- Client race-condition prevention: Removed redundant `loadPage` invocation on country select in `TrendFeedPage.jsx` so the `useEffect` triggers cleanly once without duplicate simultaneous requests.
+
 ## 2026-11-21 — Made Country Filter truly workable with distinct regional feeds & ticker
 - Multi-source region targeting: YouTube Shorts (`searchQuery` me country name add kiya like `shorts India` / `shorts USA`), YouTube Data API (`chart: mostPopular`, `regionCode`), Google Trends (`geo`), News (GNews/NewsAPI country param), Pinterest, Pexels, aur Unsplash sabhi me selected region enforce kiya.
 - Regional ranking & DB isolation: Non-Indian region select hone par DB ke old Indian videos ko US/GB/CA/AU feed me dilute hone se roka, Page 1 par country pulses (Google Trends + country viral shorts/videos) ko top showcase kiya, aur priority search matches ko 6 tak cap kiya taaki country trends dominate karein.

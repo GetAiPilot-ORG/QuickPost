@@ -252,6 +252,56 @@ function addTermToInterestsString(existingInterestsStr, newTerm) {
   return [cleanTerm, ...filtered].join(", ");
 }
 
+export function getClientPostKey(post) {
+  if (!post) return "";
+  if (post.video_id) {
+    return `yt_${post.video_id}`;
+  }
+  const ytMatch = String(post.source_url || post.embed_html || "").match(
+    /(?:shorts\/|v=|embed\/|youtu\.be\/)([\w-]{11})/i
+  );
+  if (ytMatch && ytMatch[1]) {
+    return `yt_${ytMatch[1]}`;
+  }
+  const pinMatch = String(post.source_url || "").match(/pin\/(\d+)/i);
+  if (pinMatch && pinMatch[1]) {
+    return `pin_${pinMatch[1]}`;
+  }
+  const pxMatch = String(post.source_url || "").match(/video[s]?\/(\d+)/i);
+  if (pxMatch && pxMatch[1]) {
+    return `px_${pxMatch[1]}`;
+  }
+  if (post.source_url) {
+    const cleanUrl = post.source_url.split("?")[0].replace(/\/+$/, "").toLowerCase();
+    if (cleanUrl.length > 10) return cleanUrl;
+  }
+  if (post.title) {
+    const cleanTitle = post.title.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (cleanTitle.length > 6) {
+      return `${post.source_platform || "p"}_${cleanTitle.slice(0, 40)}`;
+    }
+  }
+  return String(post.id || "");
+}
+
+export function dedupeClientPosts(posts) {
+  if (!Array.isArray(posts)) return [];
+  const seenIds = new Set();
+  const seenKeys = new Set();
+  const result = [];
+  for (const post of posts) {
+    if (!post) continue;
+    const id = post.id ? String(post.id) : null;
+    const cKey = getClientPostKey(post);
+    if (id && seenIds.has(id)) continue;
+    if (cKey && seenKeys.has(cKey)) continue;
+    if (id) seenIds.add(id);
+    if (cKey) seenKeys.add(cKey);
+    result.push(post);
+  }
+  return result;
+}
+
 function getHost(url) {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
@@ -1955,11 +2005,12 @@ export default function TrendFeedPage() {
 
   // Pure equal round-robin distribution across all columns (Pinterest Waterfall)
   const columns = useMemo(() => {
-    const effectiveCols = (loading || items.length === 0)
+    const uniqueItems = dedupeClientPosts(items);
+    const effectiveCols = (loading || uniqueItems.length === 0)
       ? colCount
-      : Math.min(items.length, colCount);
+      : Math.min(uniqueItems.length, colCount);
     const cols = Array.from({ length: effectiveCols }, () => []);
-    items.forEach((item, index) => {
+    uniqueItems.forEach((item, index) => {
       cols[index % effectiveCols].push(item);
     });
     return cols;
@@ -2336,7 +2387,9 @@ export default function TrendFeedPage() {
     (posts) => {
       const seen = seenRef.current;
       posts.forEach((post) => {
-        if (post?.id) seen.add(post.id);
+        if (post?.id) seen.add(String(post.id));
+        const cKey = getClientPostKey(post);
+        if (cKey) seen.add(cKey);
       });
       const trimmed = Array.from(seen).slice(-MAX_SEEN_IDS);
       seenRef.current = new Set(trimmed);
@@ -2436,10 +2489,8 @@ export default function TrendFeedPage() {
         }
 
         setItems((current) => {
-          if (reset) return nextItems;
-          const existingIds = new Set(current.map((item) => item.id));
-          const filtered = nextItems.filter((item) => !existingIds.has(item.id));
-          return [...current, ...filtered];
+          const combined = reset ? nextItems : [...current, ...nextItems];
+          return dedupeClientPosts(combined);
         });
 
         cursorRef.current = data.nextCursor || null;
@@ -2728,6 +2779,10 @@ export default function TrendFeedPage() {
                       key={r.code}
                       type="button"
                       onClick={() => {
+                        if (selectedRegion === r.code) {
+                          setRegionOpen(false);
+                          return;
+                        }
                         setSelectedRegion(r.code);
                         selectedRegionRef.current = r.code;
                         try {
@@ -2739,7 +2794,6 @@ export default function TrendFeedPage() {
                         cursorRef.current = null;
                         setItems([]);
                         loadHotTopics(r.code);
-                        loadPage({ reset: true, overrideRegion: r.code });
                         toast.success(`Country switched to ${r.label}`);
                       }}
                       className={`w-full text-left px-3.5 py-2 text-xs font-medium flex items-center gap-2 transition-colors ${selectedRegion === r.code

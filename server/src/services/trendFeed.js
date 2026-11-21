@@ -29,6 +29,61 @@ const CACHE_TTL_SECONDS = Number(process.env.TREND_FEED_CACHE_TTL_SECONDS || 60)
 
 let redisClient;
 
+export function getCanonicalPostKey(post) {
+  if (!post) return "";
+  if (post.video_id) {
+    return `yt_${post.video_id}`;
+  }
+  const ytMatch = String(post.source_url || post.embed_html || "").match(/(?:shorts\/|v=|embed\/|youtu\.be\/)([\w-]{11})/i);
+  if (ytMatch?.[1]) {
+    return `yt_${ytMatch[1]}`;
+  }
+  const pinMatch = String(post.source_url || "").match(/pin\/(\d+)/i);
+  if (pinMatch?.[1]) {
+    return `pin_${pinMatch[1]}`;
+  }
+  const pxMatch = String(post.source_url || "").match(/video[s]?\/(\d+)/i);
+  if (pxMatch?.[1]) {
+    return `px_${pxMatch[1]}`;
+  }
+  if (typeof post.id === "string" && post.id.startsWith("un_")) {
+    return post.id;
+  }
+  if (post.source_url) {
+    const cleanUrl = post.source_url.split("?")[0].replace(/\/+$/, "").toLowerCase();
+    if (cleanUrl.length > 10) return cleanUrl;
+  }
+  if (post.title) {
+    const cleanTitle = post.title.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (cleanTitle.length > 6) {
+      return `${post.source_platform || "post"}_${cleanTitle.slice(0, 40)}`;
+    }
+  }
+  return String(post.id || "");
+}
+
+export function dedupePostsByCanonicalKey(posts = []) {
+  if (!Array.isArray(posts)) return [];
+  const seenKeys = new Set();
+  const seenIds = new Set();
+  const result = [];
+
+  for (const post of posts) {
+    if (!post) continue;
+    const id = post.id ? String(post.id) : null;
+    const cKey = getCanonicalPostKey(post);
+
+    if (id && seenIds.has(id)) continue;
+    if (cKey && seenKeys.has(cKey)) continue;
+
+    if (id) seenIds.add(id);
+    if (cKey) seenKeys.add(cKey);
+    result.push(post);
+  }
+
+  return result;
+}
+
 function toLimit(value) {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed) || parsed < 1) return DEFAULT_LIMIT;
@@ -364,7 +419,6 @@ async function fetchLiveExternalPosts({
       });
 
       // On Page 1, fetch country trending pulses (Google Trends + country viral Shorts + mostPopular videos)
-      const leadSearchedTopic = searchTopicObjects[0] || tunedTopics[0] || null;
       if (page === 1 && (type === "all" || type === "searches")) {
         promises.push(
           fetchGoogleTrends({ geo: region, page: 1 })
@@ -373,56 +427,20 @@ async function fetchLiveExternalPosts({
         );
       }
       if (page === 1 && (type === "all" || type === "shorts" || type === "videos")) {
-        // 1. Regional trending shorts for selected country
+        // Regional trending shorts for selected country
         promises.push(
           fetchYouTubeShorts({ region, category: "all", query: "", maxResults: 10, page: 1 })
             .then((shorts) => (Array.isArray(shorts) ? shorts.slice(0, 4) : []))
             .catch(() => [])
         );
-        // 2. Topic shorts if user has searched/tuned topic
-        const shortQ = leadSearchedTopic ? (leadSearchedTopic.searchQuery || leadSearchedTopic.label) : (topicsPool[0]?.searchQuery || "");
-        if (shortQ) {
-          promises.push(
-            fetchYouTubeShorts({ region, category: "all", query: shortQ, maxResults: 15, page: 1 })
-              .then((shorts) =>
-                Array.isArray(shorts) && leadSearchedTopic
-                  ? shorts.map((s) => ({
-                      ...s,
-                      matched_topic: leadSearchedTopic.label,
-                      interest_topic: leadSearchedTopic.id,
-                      topic_emoji: leadSearchedTopic.emoji || "🔍",
-                    }))
-                  : (shorts || [])
-              )
-              .catch(() => [])
-          );
-        }
       }
       if (page === 1 && (type === "all" || type === "videos")) {
-        // 1. Country trending YouTube videos (official mostPopular chart for this region)
+        // Country trending YouTube videos (official mostPopular chart for this region)
         promises.push(
           fetchYouTubeTrends({ region, category: "all", maxResults: 10, page: 1 })
             .then((videos) => (Array.isArray(videos) ? videos.slice(0, 4) : []))
             .catch(() => [])
         );
-        // 2. Topic videos if user has searched/tuned topic
-        const vidQ = leadSearchedTopic ? (leadSearchedTopic.searchQuery || leadSearchedTopic.label) : (topicsPool[0]?.searchQuery || "");
-        if (vidQ) {
-          promises.push(
-            fetchYouTubeTrends({ region, category: "all", query: vidQ, maxResults: 10, page: 1 })
-              .then((videos) =>
-                Array.isArray(videos) && leadSearchedTopic
-                  ? videos.map((v) => ({
-                      ...v,
-                      matched_topic: leadSearchedTopic.label,
-                      interest_topic: leadSearchedTopic.id,
-                      topic_emoji: leadSearchedTopic.emoji || "🔍",
-                    }))
-                  : (videos || [])
-              )
-              .catch(() => [])
-          );
-        }
       }
 
       const startIndex = ((page - 1) * 3) % topicsPool.length;
@@ -541,9 +559,10 @@ async function fetchLiveExternalPosts({
 
   try {
     const results = await Promise.allSettled(promises);
-    return results
+    const rawList = results
       .filter((r) => r.status === "fulfilled" && Array.isArray(r.value))
       .flatMap((r) => r.value);
+    return dedupePostsByCanonicalKey(rawList);
   } catch (error) {
     console.error("[TREND-FEED] External source aggregation error:", error);
     return [];
@@ -772,8 +791,8 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     }
   }
 
-  // Merge items
-  let allCandidates = [...externalRows, ...dbRows];
+  // Merge items and deduplicate candidates by canonical key
+  let allCandidates = dedupePostsByCanonicalKey([...externalRows, ...dbRows]);
 
   // Apply precision relevance scoring & spam filter when search keyword is provided
   if (search) {
@@ -941,29 +960,44 @@ export async function getTrendFeedPage(params = {}, options = {}) {
 
     const result = [];
     const seenIds = new Set();
-    const targetRegionUpper = String(region || "IN").toUpperCase();
+    const seenKeys = new Set();
+
+    function isSeen(item) {
+      if (!item) return true;
+      if (item.id && seenIds.has(String(item.id))) return true;
+      const cKey = getCanonicalPostKey(item);
+      if (cKey && seenKeys.has(cKey)) return true;
+      return false;
+    }
+
+    function recordSeen(item) {
+      if (!item) return;
+      if (item.id) seenIds.add(String(item.id));
+      const cKey = getCanonicalPostKey(item);
+      if (cKey) seenKeys.add(cKey);
+    }
 
     // When searching, strictly preserve relevance ranking!
     if (search) {
       for (const post of posts) {
         if (result.length >= targetLimit) break;
-        if (!seenIds.has(post.id)) {
+        if (!isSeen(post)) {
           if (post.source_platform === "socialpilot" && calculateRelevance(post, search) === 0) {
             continue;
           }
-          seenIds.add(post.id);
+          recordSeen(post);
           result.push(post);
         }
       }
-      return result;
+      return dedupePostsByCanonicalKey(result);
     }
 
     // 1. User's own uploads directly at the very top!
     const userOwnPosts = posts.filter((p) => p.is_user_post);
     for (const post of userOwnPosts) {
-      if (result.length < targetLimit && !seenIds.has(post.id)) {
+      if (result.length < targetLimit && !isSeen(post)) {
         result.push(post);
-        seenIds.add(post.id);
+        recordSeen(post);
       }
     }
 
@@ -979,41 +1013,41 @@ export async function getTrendFeedPage(params = {}, options = {}) {
       );
       countryPulsePosts.sort((a, b) => (b.rank_score || 0) - (a.rank_score || 0));
       for (const post of countryPulsePosts.slice(0, 3)) {
-        if (result.length < targetLimit && !seenIds.has(post.id)) {
+        if (result.length < targetLimit && !isSeen(post)) {
           result.push(post);
-          seenIds.add(post.id);
+          recordSeen(post);
         }
       }
     }
 
     // 3. Place explicit user-searched and tuned keyword posts (capped on page 1 so country trends are visible)
-    const priorityPosts = posts.filter((p) => !p.is_user_post && p.rank_score >= 50000000 && !seenIds.has(p.id));
+    const priorityPosts = posts.filter((p) => !p.is_user_post && p.rank_score >= 50000000 && !isSeen(p));
     priorityPosts.sort((a, b) => (b.rank_score || 0) - (a.rank_score || 0));
     const priorityCap = pageNumber === 1 ? 6 : targetLimit;
     let priCount = 0;
     for (const post of priorityPosts) {
-      if (result.length < targetLimit && priCount < priorityCap && !seenIds.has(post.id)) {
+      if (result.length < targetLimit && priCount < priorityCap && !isSeen(post)) {
         result.push(post);
-        seenIds.add(post.id);
+        recordSeen(post);
         priCount++;
       }
     }
 
     // 4. Community sparks: cap at 2 on page 1 so they never drown out user's topics
-    const communityPosts = posts.filter((p) => p.source_platform === "socialpilot" && !p.is_user_post && !seenIds.has(p.id));
+    const communityPosts = posts.filter((p) => p.source_platform === "socialpilot" && !p.is_user_post && !isSeen(p));
     communityPosts.sort((a, b) => (b.rank_score || 0) - (a.rank_score || 0));
     const communityCap = pageNumber === 1 ? 2 : 1;
     let commCount = 0;
     for (const post of communityPosts) {
-      if (result.length < targetLimit && commCount < communityCap && !seenIds.has(post.id)) {
+      if (result.length < targetLimit && commCount < communityCap && !isSeen(post)) {
         result.push(post);
-        seenIds.add(post.id);
+        recordSeen(post);
         commCount++;
       }
     }
 
     const remainingLimit = targetLimit - result.length;
-    if (remainingLimit <= 0) return result;
+    if (remainingLimit <= 0) return dedupePostsByCanonicalKey(result);
 
     const nonCommunityPosts = posts.filter((p) => p.source_platform !== "socialpilot" && !p.is_user_post);
     const isPersonalized = targetTopics.length > 0 || searchTopicObjects.length > 0;
@@ -1058,8 +1092,8 @@ export async function getTrendFeedPage(params = {}, options = {}) {
           for (const b of activeBuckets) {
             if (b.items.length > 0 && result.length < targetLimit) {
               const item = b.items.shift();
-              if (item && !seenIds.has(item.id)) {
-                seenIds.add(item.id);
+              if (item && !isSeen(item)) {
+                recordSeen(item);
                 result.push(item);
                 hasMore = true;
               }
@@ -1073,8 +1107,8 @@ export async function getTrendFeedPage(params = {}, options = {}) {
         ];
         for (const item of leftover) {
           if (result.length >= targetLimit) break;
-          if (!seenIds.has(item.id)) {
-            seenIds.add(item.id);
+          if (!isSeen(item)) {
+            recordSeen(item);
             result.push(item);
           }
         }
@@ -1082,14 +1116,14 @@ export async function getTrendFeedPage(params = {}, options = {}) {
         if (result.length < targetLimit) {
           for (const item of nonCommunityPosts) {
             if (result.length >= targetLimit) break;
-            if (!seenIds.has(item.id)) {
-              seenIds.add(item.id);
+            if (!isSeen(item)) {
+              recordSeen(item);
               result.push(item);
             }
           }
         }
 
-        return result;
+        return dedupePostsByCanonicalKey(result);
       }
     }
 
@@ -1132,9 +1166,9 @@ export async function getTrendFeedPage(params = {}, options = {}) {
       for (const bucket of pattern) {
         if (bucket.length > 0 && result.length < targetLimit) {
           const item = bucket.shift();
-          if (item && !seenIds.has(item.id)) {
+          if (item && !isSeen(item)) {
             result.push(item);
-            seenIds.add(item.id);
+            recordSeen(item);
             hasMore = true;
           }
         }
@@ -1145,8 +1179,8 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     const remaining = [...pinterest, ...visuals, ...reels, ...videos, ...news, ...others];
     for (const item of remaining) {
       if (result.length >= targetLimit) break;
-      if (!seenIds.has(item.id)) {
-        seenIds.add(item.id);
+      if (!isSeen(item)) {
+        recordSeen(item);
         result.push(item);
       }
     }
@@ -1154,34 +1188,42 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     if (result.length < targetLimit) {
       for (const item of nonCommunityPosts) {
         if (result.length >= targetLimit) break;
-        if (!seenIds.has(item.id)) {
-          seenIds.add(item.id);
+        if (!isSeen(item)) {
+          recordSeen(item);
           result.push(item);
         }
       }
     }
 
-    return result;
+    return dedupePostsByCanonicalKey(result);
   }
 
   const unseenRows = allCandidates.filter((post) => {
     if (pageNumber === 1 && (post.source_platform === "socialpilot" || post.is_user_post)) return true;
-    return !seen.has(post.id);
+    const cKey = getCanonicalPostKey(post);
+    return !seen.has(post.id) && (!cKey || !seen.has(cKey));
   });
   let ranked;
   if (unseenRows.length >= limit) {
     ranked = rankPosts(unseenRows);
   } else {
     // Put unseen items first, then backfill with previously seen items so the feed page is always dense and complete
-    const seenRows = allCandidates.filter((post) => seen.has(post.id));
+    const seenRows = allCandidates.filter((post) => {
+      const cKey = getCanonicalPostKey(post);
+      return seen.has(post.id) || (cKey && seen.has(cKey));
+    });
     const rankedUnseen = rankPosts(unseenRows);
     const rankedSeen = rankPosts(seenRows);
     const seenSet = new Set(rankedUnseen.map((p) => p.id));
     ranked = [...rankedUnseen, ...rankedSeen.filter((p) => !seenSet.has(p.id))];
   }
 
+  const deduplicatedRanked = dedupePostsByCanonicalKey(ranked);
+
   // Take current page slice (Interleaved for 'all', ranked slice for filtered tabs)
-  const items = type === "all" ? interleavePinterestFeed(ranked, limit) : ranked.slice(0, limit);
+  const items = dedupePostsByCanonicalKey(
+    type === "all" ? interleavePinterestFeed(deduplicatedRanked, limit) : deduplicatedRanked.slice(0, limit)
+  );
   const nextPage = pageNumber + 1;
 
   // Next cursor is always guaranteed for true infinite scroll
