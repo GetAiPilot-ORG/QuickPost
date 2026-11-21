@@ -8,8 +8,12 @@
 
 import { filterAndRankPosts } from "./trendRelevance.js";
 
-const BSKY_PUBLIC_API = "https://public.api.bsky.app/xrpc";
+const BSKY_PUBLIC_API = "https://api.bsky.app/xrpc";
 const BSKY_SEARCH_API = "https://api.bsky.app/xrpc";
+
+// In-memory pagination caches for seamless infinite scroll on Bluesky
+const bskyUntilCache = new Map();
+const bskyFeedCursorCache = new Map();
 
 /**
  * Extract media embeds from post record / embed
@@ -74,15 +78,34 @@ export function extractMedia(embed) {
  * Normalize Bluesky post into QuickPost standard feed post
  */
 function normalizeBlueskyPost(post, feedContext = "trending") {
+  if (!post || !post.record) return null;
+
+  // Filter out replies so we don't display out-of-context conversational fragments
+  if (post.record.reply) return null;
+
   const rkey = post.uri ? post.uri.split("/").pop() : "";
   const handle = post.author?.handle || "unknown";
   const authorName = post.author?.displayName || handle;
   const text = post.record?.text || "";
+
+  // If post starts with @ mention (conversational reply), skip
+  if (/^@[\w.-]+/.test(text.trim())) return null;
+
   const media = extractMedia(post.embed);
 
   const images = media.type === "images" ? media.items : [];
   const external = media.type === "external" ? media.items[0] : null;
   const video = media.type === "video" ? media.items[0] : null;
+
+  // Filter out ultra-short noise without media
+  const trimmed = text.trim();
+  if (trimmed.length < 15 && images.length === 0 && !external && !video) {
+    return null;
+  }
+  // Filter out pure link spam without description
+  if (/^https?:\/\/\S+$/.test(trimmed)) {
+    return null;
+  }
 
   const thumbnail = images[0]?.thumb || images[0]?.fullsize || external?.thumb || video?.thumb || null;
   const fullImage = images[0]?.fullsize || images[0]?.thumb || external?.thumb || null;
@@ -160,22 +183,63 @@ export async function getBlueskyTrendingTopics() {
 }
 
 /**
- * Fetch posts from a Bluesky feed (either a topic feed or what's hot)
+ * Fetch posts from a Bluesky feed (either a category search or official what's hot)
+ * with robust multi-page pagination.
  */
-export async function getBlueskyTrendingPosts({ topic = null, feedUri = null, limit = 25, cursor = null } = {}) {
+export async function getBlueskyTrendingPosts({ category = "all", topic = null, feedUri = null, limit = 30, page = 1 } = {}) {
+  const cat = category || topic || "all";
+
+  // Category-specific or creator-curated search on Bluesky for high quality niche posts
+  const categoryKeywords = {
+    all: "creative OR design OR tech OR photography OR ai",
+    tech_ai: "AI OR tech OR software OR programming",
+    business_finance: "business OR startup OR finance OR saas",
+    marketing_creators: "creator OR marketing OR youtube OR contentcreator",
+    entertainment: "cinema OR movies OR filmmaking OR music",
+    health_fitness: "fitness OR workout OR health OR wellness",
+    design_art: "design OR architecture OR digitalart OR illustration",
+    gaming: "gaming OR gamedev OR videogames",
+    science_space: "science OR space OR astronomy OR physics",
+  };
+  const query = categoryKeywords[cat] || (cat !== "all" ? cat.replace(/_/g, " ") : "creative OR tech OR design");
+  const result = await searchBlueskyPosts({ query, limit, page });
+  if (result.posts && result.posts.length > 0) {
+    return result;
+  }
+
+  // Fallback to official feed generator with quality filtering
   try {
-    let targetFeed = feedUri;
-    if (!targetFeed) {
-      if (topic) {
-        targetFeed = `at://did:plc:qrz3lhbyuxbeilrc6nekdqme/app.bsky.feed.generator/${topic}`;
-      } else {
-        targetFeed = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot";
+    const targetFeed = feedUri || "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot";
+    const pageSize = Math.min(Math.max(limit, 25), 50);
+
+    let cursor = null;
+    if (page > 1) {
+      cursor = bskyFeedCursorCache.get(`whats-hot:${page}`) || null;
+      if (!cursor) {
+        let cur = null;
+        const maxWalk = Math.min(page - 1, 4);
+        for (let p = 1; p <= maxWalk; p++) {
+          const stepParams = new URLSearchParams({ feed: targetFeed, limit: String(pageSize) });
+          if (cur) stepParams.append("cursor", cur);
+          const stepRes = await fetch(`${BSKY_PUBLIC_API}/app.bsky.feed.getFeed?${stepParams.toString()}`, {
+            headers: {
+              Accept: "application/json",
+              "User-Agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            },
+          });
+          if (!stepRes.ok) break;
+          const stepData = await stepRes.json();
+          cur = stepData.cursor || null;
+          if (cur) bskyFeedCursorCache.set(`whats-hot:${p + 1}`, cur);
+        }
+        cursor = cur;
       }
     }
 
     const params = new URLSearchParams({
       feed: targetFeed,
-      limit: String(limit),
+      limit: String(pageSize),
     });
     if (cursor) {
       params.append("cursor", cursor);
@@ -184,7 +248,8 @@ export async function getBlueskyTrendingPosts({ topic = null, feedUri = null, li
     const res = await fetch(`${BSKY_PUBLIC_API}/app.bsky.feed.getFeed?${params.toString()}`, {
       headers: {
         Accept: "application/json",
-        "User-Agent": "TrendFeed/1.0",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       },
     });
 
@@ -194,10 +259,16 @@ export async function getBlueskyTrendingPosts({ topic = null, feedUri = null, li
 
     const data = await res.json();
     const rawFeed = data.feed || [];
-    const posts = rawFeed.map(({ post, feedContext }) => normalizeBlueskyPost(post, feedContext || "trending"));
+    const posts = rawFeed
+      .map(({ post, feedContext }) => normalizeBlueskyPost(post, feedContext || "trending"))
+      .filter(Boolean);
+
+    if (data.cursor) {
+      bskyFeedCursorCache.set(`whats-hot:${page + 1}`, data.cursor);
+    }
 
     return {
-      posts,
+      posts: posts.slice(0, limit),
       cursor: data.cursor,
       feedUri: targetFeed,
     };
@@ -208,26 +279,72 @@ export async function getBlueskyTrendingPosts({ topic = null, feedUri = null, li
 }
 
 /**
- * Search posts on Bluesky by keyword sorted by top engagement or latest
+ * Search posts on Bluesky by keyword with date-based cursor pagination
+ * Returns authentic, high-engagement discussion posts across multiple pages.
  */
-export async function searchBlueskyPosts({ query, sort = "top", limit = 25, cursor = null } = {}) {
+export async function searchBlueskyPosts({ query, sort = "top", limit = 30, page = 1 } = {}) {
   if (!query || !String(query).trim()) return { posts: [] };
-  const cleanQ = String(query).trim();
+  let cleanQ = String(query).trim();
+
+  // If query is multi-word without boolean OR or quotes, convert top 3 words to OR query for Bluesky
+  if (!cleanQ.includes(" OR ") && !cleanQ.includes('"') && cleanQ.split(/\s+/).length > 2) {
+    const terms = cleanQ.split(/\s+/).slice(0, 3);
+    cleanQ = terms.join(" OR ");
+  }
+
+  const lowerQ = cleanQ.toLowerCase();
 
   try {
-    const sortParam = sort === "recent" || sort === "latest" ? "latest" : "top";
-    const fetchLimit = Math.min(Math.max(limit * 2, 40), 100);
+    const fetchLimit = Math.min(Math.max(limit, 25), 50);
+
+    // Date-based pagination cursor (`until`) to bypass Cloudflare WAF restrictions on base64 cursors
+    let until = null;
+    if (page > 1) {
+      until = bskyUntilCache.get(`${lowerQ}:${page}`) || null;
+
+      if (!until) {
+        let curUntil = null;
+        const maxWalk = Math.min(page - 1, 4);
+        for (let p = 1; p <= maxWalk; p++) {
+          const stepSort = p === 1 ? "top" : "latest";
+          const stepParams = new URLSearchParams({
+            q: cleanQ,
+            sort: stepSort,
+            limit: String(fetchLimit),
+          });
+          if (curUntil) stepParams.append("until", curUntil);
+
+          const stepRes = await fetch(`${BSKY_SEARCH_API}/app.bsky.feed.searchPosts?${stepParams.toString()}`, {
+            headers: {
+              Accept: "application/json",
+              "User-Agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            },
+          });
+          if (!stepRes.ok) break;
+          const stepData = await stepRes.json();
+          const stepPosts = stepData.posts || [];
+          if (!stepPosts.length) break;
+          const last = stepPosts[stepPosts.length - 1];
+          curUntil = last.record?.createdAt || last.indexedAt || null;
+          if (curUntil) bskyUntilCache.set(`${lowerQ}:${p + 1}`, curUntil);
+        }
+        until = curUntil;
+      }
+    }
+
+    // Page 1 prioritizes top viral engagement, subsequent pages stream chronological discussions with `until`
+    const sortParam = page === 1 ? (sort === "recent" || sort === "latest" ? "latest" : "top") : "latest";
     const params = new URLSearchParams({
       q: cleanQ,
       sort: sortParam,
       limit: String(fetchLimit),
     });
-    if (cursor) {
-      params.append("cursor", cursor);
+    if (until) {
+      params.append("until", until);
     }
 
-    // Try api.bsky.app first (public unauthenticated search endpoint), fallback to public.api.bsky.app
-    let res = await fetch(`${BSKY_SEARCH_API}/app.bsky.feed.searchPosts?${params.toString()}`, {
+    const res = await fetch(`${BSKY_SEARCH_API}/app.bsky.feed.searchPosts?${params.toString()}`, {
       headers: {
         Accept: "application/json",
         "User-Agent":
@@ -236,26 +353,24 @@ export async function searchBlueskyPosts({ query, sort = "top", limit = 25, curs
     });
 
     if (!res.ok) {
-      res = await fetch(`${BSKY_PUBLIC_API}/app.bsky.feed.searchPosts?${params.toString()}`, {
-        headers: {
-          Accept: "application/json",
-          "User-Agent": "TrendFeed/1.0",
-        },
-      });
-    }
-
-    if (!res.ok) {
       throw new Error(`Bluesky searchPosts error: ${res.status} ${res.statusText}`);
     }
 
     const data = await res.json();
-    const rawPosts = (data.posts || []).map((post) => normalizeBlueskyPost(post, "search"));
+    const rawPosts = (data.posts || [])
+      .map((post) => normalizeBlueskyPost(post, "search"))
+      .filter(Boolean);
 
-    // Apply precision relevance scoring & spam filtering
-    const rankedPosts = filterAndRankPosts(rawPosts, cleanQ).slice(0, limit);
+    if (rawPosts.length > 0) {
+      const last = data.posts[data.posts.length - 1];
+      const nextUntil = last.record?.createdAt || last.indexedAt || null;
+      if (nextUntil) {
+        bskyUntilCache.set(`${lowerQ}:${page + 1}`, nextUntil);
+      }
+    }
 
     return {
-      posts: rankedPosts,
+      posts: rawPosts.slice(0, limit),
       cursor: data.cursor,
     };
   } catch (err) {
