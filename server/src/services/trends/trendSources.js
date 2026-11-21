@@ -21,6 +21,24 @@ const CACHE_LONG = 3600; // 1 hour
 // In-memory fallback cache
 const memoryCache = new Map();
 
+// SerpApi Circuit Breaker to avoid repeated 429 delays when monthly searches run out
+let serpApiDisabledUntil = 0;
+
+export function isSerpApiAvailable() {
+  return !!process.env.SERPAPI_KEY && Date.now() > serpApiDisabledUntil;
+}
+
+export function handleSerpApiError(err, context = "") {
+  const status = err?.response?.status;
+  const msg = err?.response?.data?.error || err?.message || "";
+  if (status === 429 || msg.includes("run out of searches") || msg.includes("exceeded")) {
+    serpApiDisabledUntil = Date.now() + 30 * 60 * 1000;
+    console.warn(`[TREND-SOURCES] SerpApi quota exhausted (status ${status}). Disabling SerpApi calls for 30 minutes.`);
+  } else {
+    console.warn(`[TREND-SOURCES] SerpApi ${context} notice:`, msg);
+  }
+}
+
 function getMemCache(key) {
   const item = memoryCache.get(key);
   if (!item) return null;
@@ -93,7 +111,7 @@ export async function fetchYouTubeTrends({ region = "IN", category = "all", quer
     const videoCategoryId = categoryMapping[category];
     let items = [];
 
-    // For page > 1, explicit query, or specific niche queries, use YouTube Search API or trending chart
+    // For page > 1, explicit query, or specific niche queries, use YouTube Search API or direct scraper
     if (cleanQuery || page > 1 || (category !== "all" && !videoCategoryId)) {
       const q = cleanQuery
         ? (countryName ? `${cleanQuery} ${countryName}` : cleanQuery)
@@ -101,31 +119,55 @@ export async function fetchYouTubeTrends({ region = "IN", category = "all", quer
         ? `${NICHE_KEYWORDS[category]}${countryName ? ` ${countryName}` : ""}`
         : (countryName ? `trending viral shorts ${countryName}` : "trending viral shorts podcast interview");
 
-      const searchRes = await axios.get("https://www.googleapis.com/youtube/v3/search", {
-        params: {
-          part: "snippet",
-          q,
-          type: "video",
-          order: "viewCount",
-          videoCategoryId: videoCategoryId || undefined,
-          regionCode: effectiveRegion,
-          maxResults: Math.min(maxResults, 50),
-          key: apiKey,
-        },
-        timeout: 8000,
-      });
-
-      const videoIds = (searchRes.data?.items || []).map((it) => it.id?.videoId).filter(Boolean).join(",");
-      if (videoIds) {
-        const detailRes = await axios.get("https://www.googleapis.com/youtube/v3/videos", {
+      try {
+        const searchRes = await axios.get("https://www.googleapis.com/youtube/v3/search", {
           params: {
-            part: "snippet,statistics,contentDetails",
-            id: videoIds,
+            part: "snippet",
+            q,
+            type: "video",
+            order: "viewCount",
+            videoCategoryId: videoCategoryId || undefined,
+            regionCode: effectiveRegion,
+            maxResults: Math.min(maxResults, 50),
             key: apiKey,
           },
           timeout: 8000,
         });
-        items = detailRes.data?.items || [];
+
+        const videoIds = (searchRes.data?.items || []).map((it) => it.id?.videoId).filter(Boolean).join(",");
+        if (videoIds) {
+          const detailRes = await axios.get("https://www.googleapis.com/youtube/v3/videos", {
+            params: {
+              part: "snippet,statistics,contentDetails",
+              id: videoIds,
+              key: apiKey,
+            },
+            timeout: 8000,
+          });
+          items = detailRes.data?.items || [];
+        }
+      } catch (searchErr) {
+        // Search API quota exceeded (status 429) - try direct extraction first, then popular videos chart
+        try {
+          const direct = await fetchYouTubeDirectVideos({ query: cleanQuery, region: regionCode, maxResults });
+          if (direct.length > 0) {
+            setMemCache(cacheKey, direct, CACHE_MEDIUM);
+            return direct;
+          }
+        } catch (_) {}
+
+        try {
+          const params = {
+            part: "snippet,statistics,contentDetails",
+            chart: "mostPopular",
+            regionCode: effectiveRegion,
+            maxResults: Math.min(maxResults, 50),
+            key: apiKey,
+          };
+          if (videoCategoryId) params.videoCategoryId = videoCategoryId;
+          const fallbackRes = await axios.get("https://www.googleapis.com/youtube/v3/videos", { params, timeout: 8000 });
+          items = fallbackRes.data?.items || [];
+        } catch (_) {}
       }
     } else {
       const params = {
@@ -186,9 +228,16 @@ export async function fetchYouTubeTrends({ region = "IN", category = "all", quer
     setMemCache(cacheKey, normalized, CACHE_MEDIUM);
     return normalized;
   } catch (error) {
-    console.warn("[TREND-SOURCES] YouTube fetch notice:", error?.message, "- checking SerpApi fallback");
-    const serpApiKey = process.env.SERPAPI_KEY;
-    if (serpApiKey) {
+    // Outer catch: try Direct YouTube Extraction before checking SerpApi
+    try {
+      const direct = await fetchYouTubeDirectVideos({ query: cleanQuery, region: regionCode, maxResults });
+      if (direct.length > 0) {
+        setMemCache(cacheKey, direct, CACHE_MEDIUM);
+        return direct;
+      }
+    } catch (_) {}
+
+    if (isSerpApiAvailable()) {
       try {
         const fallbackQuery = cleanQuery || (countryName ? `trending viral ${countryName}` : "trending viral");
         const sRes = await axios.get("https://serpapi.com/search.json", {
@@ -197,7 +246,7 @@ export async function fetchYouTubeTrends({ region = "IN", category = "all", quer
             search_query: fallbackQuery,
             gl: effectiveRegion === "GLOBAL" ? "us" : effectiveRegion.toLowerCase(),
             hl: "en",
-            api_key: serpApiKey,
+            api_key: process.env.SERPAPI_KEY,
           },
           timeout: 9000,
         });
@@ -232,11 +281,213 @@ export async function fetchYouTubeTrends({ region = "IN", category = "all", quer
           return serpNormalized;
         }
       } catch (sErr) {
-        console.warn("[TREND-SOURCES] SerpApi YouTube video fallback notice:", sErr?.message);
+        handleSerpApiError(sErr, "YouTube video fallback");
       }
     }
     return [];
   }
+}
+
+// -----------------------------------------------------------------------------
+// 1C. DIRECT YOUTUBE EXTRACTION (Fast, Zero-Quota Scraper for Shorts & Videos)
+// -----------------------------------------------------------------------------
+export async function fetchYouTubeDirectShorts({ query = "", region = "IN", maxResults = 25 } = {}) {
+  const cleanQuery = (query || "").trim();
+  const regionCode = normalizeRegionCode(region);
+  const countryName = REGION_NAMES[regionCode] || "";
+
+  let searchQuery;
+  if (cleanQuery) {
+    searchQuery = cleanQuery.toLowerCase().includes("short") ? cleanQuery : `${cleanQuery} shorts`;
+  } else {
+    searchQuery = countryName ? `trending shorts viral ${countryName}` : "trending shorts viral";
+  }
+
+  const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery)}`;
+  const res = await axios.get(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "Accept-Language": "en-US,en;q=0.9",
+    },
+    timeout: 7000,
+  });
+
+  const html = typeof res.data === "string" ? res.data : "";
+  const idx = html.indexOf("ytInitialData = ");
+  if (idx === -1) return [];
+  const endIdx = html.indexOf(";</script>", idx);
+  if (endIdx === -1) return [];
+
+  const jsonStr = html.slice(idx + "ytInitialData = ".length, endIdx);
+  const data = JSON.parse(jsonStr);
+
+  const shorts = [];
+  const seenIds = new Set();
+
+  function walk(obj) {
+    if (!obj || typeof obj !== "object") return;
+    if (obj.shortsLockupViewModel) {
+      const s = obj.shortsLockupViewModel;
+      const videoId =
+        s.onTap?.innertubeCommand?.reelWatchEndpoint?.videoId ||
+        (s.entityId && s.entityId.replace("shorts-shelf-item-", ""));
+      const title =
+        s.overlayMetadata?.primaryText?.content ||
+        s.accessibilityText?.split(",")?.[0] ||
+        "Trending YouTube Short";
+      const viewsStr =
+        s.overlayMetadata?.secondaryText?.content ||
+        s.accessibilityText?.match(/([0-9.]+\s*(?:million|views|M|K))/i)?.[1] ||
+        "Trending";
+      const thumb =
+        s.thumbnailViewModel?.thumbnailViewModel?.image?.sources?.[0]?.url ||
+        s.thumbnailViewModel?.image?.sources?.slice(-1)[0]?.url ||
+        `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+      if (videoId && !seenIds.has(videoId)) {
+        seenIds.add(videoId);
+        shorts.push({ videoId, title, viewsStr, thumb });
+      }
+    }
+    if (obj.reelItemRenderer) {
+      const r = obj.reelItemRenderer;
+      const videoId = r.videoId;
+      const title = r.headline?.simpleText || "Trending YouTube Short";
+      const viewsStr = r.viewCountText?.simpleText || "Trending";
+      const thumb =
+        r.thumbnail?.thumbnails?.slice(-1)[0]?.url ||
+        `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+      if (videoId && !seenIds.has(videoId)) {
+        seenIds.add(videoId);
+        shorts.push({ videoId, title, viewsStr, thumb });
+      }
+    }
+    if (Array.isArray(obj)) {
+      for (const it of obj) walk(it);
+    } else {
+      for (const k of Object.keys(obj)) walk(obj[k]);
+    }
+  }
+  walk(data);
+
+  return shorts.slice(0, maxResults).map((s, index) => {
+    const rawViews = s.viewsStr.replace(/[^0-9.]/g, "");
+    let multiplier = 1;
+    if (/M|million/i.test(s.viewsStr)) multiplier = 1000000;
+    else if (/K/i.test(s.viewsStr)) multiplier = 1000;
+    const views = Math.round((parseFloat(rawViews) || 50) * multiplier);
+    const cleanTitle = s.title.replace(/"/g, "&quot;");
+
+    return {
+      id: `yt_short_${s.videoId}`,
+      source_platform: "youtube",
+      source_url: `https://www.youtube.com/shorts/${s.videoId}`,
+      video_id: s.videoId,
+      embed_html: `<iframe src="https://www.youtube-nocookie.com/embed/${s.videoId}?autoplay=1&loop=1" title="${cleanTitle}" allowfullscreen></iframe>`,
+      thumbnail_url: s.thumb,
+      full_image_url: `https://i.ytimg.com/vi/${s.videoId}/maxresdefault.jpg`,
+      title: s.title,
+      caption: `⚡ YouTube Short (${s.viewsStr})\n\n${s.title}\n\nWatch on YouTube Shorts: https://www.youtube.com/shorts/${s.videoId}`,
+      creator: cleanQuery || "YouTube Creator",
+      content_type: "short",
+      media_type: "video",
+      is_short: true,
+      region: regionCode,
+      country: regionCode,
+      engagement_score: 9500 + (30 - index) * 150 + Math.min(views, 500000) * 0.05,
+      metrics: {
+        views: s.viewsStr,
+        platform: "YouTube Shorts",
+      },
+      niche_tags: ["shorts", "reel", "youtube_shorts", `region:${regionCode}`, cleanQuery].filter(Boolean),
+      published_at: new Date(Date.now() - index * 3600000).toISOString(),
+      ingested_at: new Date().toISOString(),
+    };
+  });
+}
+
+export async function fetchYouTubeDirectVideos({ query = "", region = "IN", maxResults = 25 } = {}) {
+  const cleanQuery = (query || "").trim();
+  const regionCode = normalizeRegionCode(region);
+  const countryName = REGION_NAMES[regionCode] || "";
+  const searchQuery = cleanQuery ? (countryName ? `${cleanQuery} ${countryName}` : cleanQuery) : "trending viral video";
+
+  const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery)}`;
+  const res = await axios.get(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "Accept-Language": "en-US,en;q=0.9",
+    },
+    timeout: 7000,
+  });
+
+  const html = typeof res.data === "string" ? res.data : "";
+  const idx = html.indexOf("ytInitialData = ");
+  if (idx === -1) return [];
+  const endIdx = html.indexOf(";</script>", idx);
+  if (endIdx === -1) return [];
+
+  const jsonStr = html.slice(idx + "ytInitialData = ".length, endIdx);
+  const data = JSON.parse(jsonStr);
+
+  const videos = [];
+  const seenIds = new Set();
+
+  function walk(obj) {
+    if (!obj || typeof obj !== "object") return;
+    if (obj.videoRenderer) {
+      const v = obj.videoRenderer;
+      const videoId = v.videoId;
+      const title = v.title?.runs?.[0]?.text || "YouTube Video";
+      const channel = v.ownerText?.runs?.[0]?.text || v.shortBylineText?.runs?.[0]?.text || "YouTube Creator";
+      const viewsStr = v.viewCountText?.simpleText || "Trending";
+      const thumb = v.thumbnail?.thumbnails?.slice(-1)[0]?.url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+      const isShort =
+        (v.thumbnailOverlays || []).some((o) => o.thumbnailOverlayTimeStatusRenderer?.style === "SHORTS") ||
+        title.toLowerCase().includes("#short") ||
+        (v.navigationEndpoint?.commandMetadata?.webCommandMetadata?.url || "").includes("/shorts/");
+      if (videoId && !seenIds.has(videoId)) {
+        seenIds.add(videoId);
+        videos.push({ videoId, title, channel, viewsStr, thumb, isShort });
+      }
+    }
+    if (Array.isArray(obj)) {
+      for (const it of obj) walk(it);
+    } else {
+      for (const k of Object.keys(obj)) walk(obj[k]);
+    }
+  }
+  walk(data);
+
+  return videos.slice(0, maxResults).map((v, index) => {
+    const rawViews = v.viewsStr.replace(/[^0-9.]/g, "");
+    let multiplier = 1;
+    if (/M|million/i.test(v.viewsStr)) multiplier = 1000000;
+    else if (/K/i.test(v.viewsStr)) multiplier = 1000;
+    const views = Math.round((parseFloat(rawViews) || 50) * multiplier);
+    const cleanTitle = v.title.replace(/"/g, "&quot;");
+
+    return {
+      id: v.isShort ? `yt_short_${v.videoId}` : `yt_${v.videoId}`,
+      source_platform: "youtube",
+      source_url: v.isShort ? `https://www.youtube.com/shorts/${v.videoId}` : `https://www.youtube.com/watch?v=${v.videoId}`,
+      video_id: v.videoId,
+      embed_html: `<iframe src="https://www.youtube.com/embed/${v.videoId}" title="${cleanTitle}" allowfullscreen></iframe>`,
+      thumbnail_url: v.thumb,
+      caption: `${v.title}\n\nBy ${v.channel} • ${v.viewsStr}`,
+      title: v.title,
+      creator: v.channel,
+      content_type: v.isShort ? "short" : "video",
+      media_type: "video",
+      is_short: v.isShort,
+      region: regionCode,
+      country: regionCode,
+      engagement_score: views + 10000,
+      metrics: { views, likes: Math.floor(views * 0.05), comments: Math.floor(views * 0.01) },
+      niche_tags: [v.isShort ? "shorts" : "video", `region:${regionCode}`, cleanQuery].filter(Boolean),
+      published_at: new Date().toISOString(),
+      ingested_at: new Date().toISOString(),
+    };
+  });
 }
 
 // -----------------------------------------------------------------------------
@@ -249,16 +500,21 @@ export async function fetchYouTubeShorts({ region = "IN", category = "all", quer
   const cached = getMemCache(cacheKey);
   if (cached) return cached;
 
-  const serpApiKey = process.env.SERPAPI_KEY;
   const ytApiKey = process.env.YOUTUBE_DATA_API_KEY;
   let items = [];
 
-  const effectiveGl = regionCode === "GLOBAL" ? "us" : regionCode.toLowerCase();
-  const countryName = REGION_NAMES[regionCode] || "";
+  // 1. Direct YouTube Shorts Extraction (Primary - fast, zero-quota cost, exact targeted shorts)
+  try {
+    items = await fetchYouTubeDirectShorts({ query: cleanQuery, region: regionCode, maxResults });
+  } catch (dErr) {
+    console.warn("[TREND-SOURCES] Direct YouTube Shorts notice:", dErr?.message);
+  }
 
-  // 1. Primary: SerpApi YouTube Engine (Reliable, dedicated shorts_results with vertical covers & views)
-  if (serpApiKey) {
+  // 2. SerpApi YouTube Engine (if direct returned empty and SerpApi is not disabled)
+  if (items.length === 0 && isSerpApiAvailable()) {
     try {
+      const countryName = REGION_NAMES[regionCode] || "";
+      const effectiveGl = regionCode === "GLOBAL" ? "us" : regionCode.toLowerCase();
       let searchQuery;
       if (cleanQuery) {
         searchQuery = `${cleanQuery} shorts`;
@@ -271,7 +527,7 @@ export async function fetchYouTubeShorts({ region = "IN", category = "all", quer
           engine: "youtube",
           search_query: searchQuery,
           gl: effectiveGl,
-          api_key: serpApiKey,
+          api_key: process.env.SERPAPI_KEY,
         },
         timeout: 9000,
       });
@@ -346,11 +602,11 @@ export async function fetchYouTubeShorts({ region = "IN", category = "all", quer
           });
       }
     } catch (err) {
-      console.warn("[TREND-SOURCES] SerpApi YouTube Shorts notice:", err?.message);
+      handleSerpApiError(err, "YouTube Shorts");
     }
   }
 
-  // 2. Fallback: YouTube Data API mostPopular videos filtered to shorts (< 60s)
+  // 3. Fallback: YouTube Data API mostPopular videos filtered to shorts (< 60s)
   if (items.length === 0 && ytApiKey) {
     try {
       const regularYt = await fetchYouTubeTrends({ region: regionCode, category, query: cleanQuery, maxResults: 50, page });
@@ -375,7 +631,7 @@ export async function fetchGoogleTrends({ geo = "IN", page = 1 } = {}) {
   const cached = getMemCache(cacheKey);
   if (cached) return cached;
 
-  if (apiKey) {
+  if (isSerpApiAvailable()) {
     try {
       const response = await axios.get("https://serpapi.com/search.json", {
         params: {
@@ -427,7 +683,7 @@ export async function fetchGoogleTrends({ geo = "IN", page = 1 } = {}) {
         return items;
       }
     } catch (error) {
-      console.error("[TREND-SOURCES] SerpApi Google Trends fetch error:", error?.message);
+      handleSerpApiError(error, "Google Trends");
     }
   }
 

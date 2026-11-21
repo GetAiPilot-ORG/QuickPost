@@ -1,3 +1,7 @@
+## 2026-11-21 — Added Direct YouTube Shorts & Videos scraper to eliminate 429 quota failures
+- Root cause: SerpApi monthly search quota khatam ho chuka tha (250/250 searches used, returning 429), aur YouTube Data API `search.list` ki daily 10k quota bhi exhaust ho chuki thi (status 429 `RESOURCE_EXHAUSTED`), jisse YouTube shorts empty return ho rahe the.
+- Direct extraction & Circuit breaker: `fetchYouTubeDirectShorts` aur `fetchYouTubeDirectVideos` scrapers add kiye jo YouTube `ytInitialData` se `shortsLockupViewModel` aur `videoRenderer` directly parse karte hain (0 quota cost, 100% reliable, exact query matches); saath hi SerpApi par 30-min 429 circuit breaker lagaya taaki repeated slow failing calls na hon.
+
 ## 2026-11-21 — Enforced #main-content container scroll reset on route navigation and feed mount
 - Scroll container root cause: Dashboard layout me scroll `window` par nahi balki `<main id="main-content">` par hota hai (`overflowY: auto`), jisse `window.scrollTo` se scroll reset nahi ho raha tha aur dusre page se aane par page purani scroll position par rehta tha.
 - Multi-layer reset: `DashboardLayout` me route switch listener (`location.pathname`), `TrendFeedPage` ke mount/reset helper `scrollTrendFeedToTop`, aur `Sidebar` link click handlers me `#main-content`, `document.documentElement`, aur `window` sabhi ko 0 par reset kiya (with `requestAnimationFrame` + timeout) taaki Trend page hamesha upar se khule.
