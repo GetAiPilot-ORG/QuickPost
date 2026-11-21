@@ -1,3 +1,8 @@
+## 2026-11-21 — Purged stale deleted search pills & enforced scroll to top on mount
+- Search deletion bugfix: `DELETE /api/trends/search-history` me `req.user?.authUserId` missing tha jisse user_metadata se cut kiye hue terms delete nahi ho rahe the; ab `deleteUserSearch` auth UUID use karke `recentSearches`, `interests`, aur `work` (role) sabhi jagah se delete karta hai.
+- Stopped partial typing topic registration: 600ms debounce typing live feed update karti hai par `registerTopic=false` bhejti hai taaki `totalga` jaise adhoore words DB me permanent pill na banein (sirf Enter ya Search click karne par hi register hote hain).
+- Auto scroll to top: Trend feed page open hone par aur feed reset hone par `window.scrollTo({ top: 0, left: 0, behavior: 'instant' })` add kiya taaki page hamesha upar se khule.
+
 ## 2026-11-21 — Strict Search Isolation & Explicit "All My Topics" Multi-Topic Feed
 - Search Mode Isolation: Search query active hone par user ke background onboarding topics (`work`, `interests`, `selectedTopicIds`) ko search feed se completely decouple kiya; DB rows ko `ilike('caption', %search%)` tak restrict kiya aur external APIs sirf searched query ke liye fetch karte hain; har candidate par `calculateRelevance(item, search) > 0` enforce kiya taaki unrelated topics (AS Gaming, Ronaldo, generic DB) ka 0% leakage ho aur sabhi cards par badge `[search]` ho.
 - Explicit "All My Topics" Multi-Topic View: Frontend par search input me 600ms debounce auto-search joda; active search me topic rail par "All My Topics" button prominently show kiya jise click karte hi search aur filters clear hokar user ke saare onboarding, tuned aur searched topics ka balanced round-robin feed instantly load hota hai.

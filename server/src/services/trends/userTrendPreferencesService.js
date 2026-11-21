@@ -307,16 +307,19 @@ export function sanitizeRecentSearchesList(searches) {
     const isFragment = cleaned.some((other) => {
       const otherLower = other.toLowerCase();
       if (otherLower === lower) return false;
+      const lowerNorm = lower.replace(/[^a-z0-9]/g, "");
+      const otherNorm = otherLower.replace(/[^a-z0-9]/g, "");
+      if (otherNorm.length > lowerNorm.length && otherNorm.startsWith(lowerNorm)) return true;
       // 1. Strict prefix: e.g. 'sp', 'spider', 'spiderma' when 'spiderman' exists
       if (otherLower.length > lower.length && otherLower.startsWith(lower)) return true;
       // 2. Substring root for short queries: e.g. 'spid' in 'spiderman'
       if (otherLower.length > lower.length && otherLower.includes(lower) && lower.length <= 4) return true;
-      // 3. Typo/fragment sharing initial 4 chars and length difference <= 3: e.g. 'spidrm', 'spidrman' when 'spiderman' exists
+      // 3. Typo/fragment sharing initial 4 chars and length difference <= 4: e.g. 'spidrm', 'spidrman' when 'spiderman' exists
       if (
         otherLower.length > lower.length &&
         lower.length >= 4 &&
         otherLower.startsWith(lower.slice(0, 4)) &&
-        otherLower.length - lower.length <= 3
+        otherLower.length - lower.length <= 4
       ) {
         return true;
       }
@@ -444,67 +447,97 @@ async function getUserRecentSearchesFromTable(userId, limit = 10) {
 }
 
 /**
- * Delete a search query for a user from Supabase
+ * Delete a search query for a user from Supabase (metadata & table)
  */
 export async function deleteUserSearch(userId, query) {
   if (!userId || !query || typeof query !== "string") return false;
-  const cleanUserId = String(userId);
-  const cleanQuery = query.trim().toLowerCase();
+  const cleanUserId = String(userId).trim();
+  const cleanQuery = query.trim().toLowerCase().replace(/^#/, "");
 
   try {
+    let authUser = null;
+    let actualUserId = cleanUserId;
+
     if (isValidUUID(cleanUserId)) {
       try {
-        const { data: authUser } = await supabase.auth.admin.getUserById(cleanUserId);
-        const currentMeta = authUser?.user?.user_metadata || {};
-        const currentTrend = currentMeta.trend_preferences || {};
-        const existingSearches = Array.isArray(currentTrend.recentSearches) ? currentTrend.recentSearches : [];
-
-        const updated = existingSearches.filter((q) => q.toLowerCase() !== cleanQuery);
-
-        // Also remove from interests keywords if present
-        const existingInterests = typeof currentTrend.interests === "string"
-          ? currentTrend.interests.split(",").map((s) => s.trim()).filter(Boolean)
-          : [];
-        const updatedInterests = existingInterests.filter((s) => s.toLowerCase() !== cleanQuery).join(", ");
-
-        await supabase.auth.admin.updateUserById(cleanUserId, {
-          user_metadata: {
-            ...currentMeta,
-            trend_preferences: {
-              ...currentTrend,
-              recentSearches: updated,
-              interests: updatedInterests,
-              updatedAt: new Date().toISOString(),
-            },
-          },
-        });
+        const { data } = await supabase.auth.admin.getUserById(cleanUserId);
+        authUser = data?.user;
       } catch { }
+    }
+
+    // Fallback: If not UUID or not found directly, lookup in public.users to find auth UUID
+    if (!authUser) {
+      try {
+        const { data: uRow } = await supabase
+          .from("users")
+          .select("auth_user_id, id, email")
+          .or(`id.eq.${cleanUserId},auth_user_id.eq.${cleanUserId}`)
+          .maybeSingle();
+        if (uRow?.auth_user_id) {
+          actualUserId = uRow.auth_user_id;
+          const { data } = await supabase.auth.admin.getUserById(actualUserId);
+          authUser = data?.user;
+        }
+      } catch { }
+    }
+
+    if (authUser) {
+      const currentMeta = authUser.user_metadata || {};
+      const currentTrend = currentMeta.trend_preferences || {};
+      const existingSearches = Array.isArray(currentTrend.recentSearches) ? currentTrend.recentSearches : [];
+
+      const updatedSearches = existingSearches.filter((q) => {
+        const qClean = String(q || "").trim().toLowerCase().replace(/^#/, "");
+        return qClean !== cleanQuery;
+      });
+
+      // Also remove from interests keywords if present
+      const existingInterests = typeof currentTrend.interests === "string"
+        ? currentTrend.interests.split(",").map((s) => s.trim()).filter(Boolean)
+        : [];
+      const updatedInterests = existingInterests
+        .filter((s) => {
+          const sClean = s.toLowerCase().replace(/^#/, "").trim();
+          return sClean !== cleanQuery;
+        })
+        .join(", ");
+
+      // Also clear work (role) or goal if they match this query!
+      let updatedWork = currentTrend.work || "";
+      if (updatedWork && updatedWork.trim().toLowerCase().replace(/^#/, "") === cleanQuery) {
+        updatedWork = "";
+      }
+
+      let updatedGoal = currentTrend.goal || "";
+      if (updatedGoal && updatedGoal.trim().toLowerCase().replace(/^#/, "") === cleanQuery) {
+        updatedGoal = "";
+      }
+
+      await supabase.auth.admin.updateUserById(actualUserId, {
+        user_metadata: {
+          ...currentMeta,
+          trend_preferences: {
+            ...currentTrend,
+            recentSearches: updatedSearches,
+            interests: updatedInterests,
+            work: updatedWork,
+            goal: updatedGoal,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      });
     }
 
     try {
       await supabase
         .from("user_trend_searches")
         .delete()
-        .eq("user_id", cleanUserId)
+        .eq("user_id", actualUserId)
         .ilike("query", query.trim());
     } catch { }
 
-    const cached = preferencesCache.get(cleanUserId);
-    if (cached && cached.data) {
-      const curSearches = Array.isArray(cached.data.recentSearches) ? cached.data.recentSearches : [];
-      const nextSearches = curSearches.filter((q) => q.toLowerCase() !== cleanQuery);
-      const curInterests = typeof cached.data.interests === "string"
-        ? cached.data.interests.split(",").map((s) => s.trim()).filter(Boolean)
-        : [];
-      const nextInterests = curInterests.filter((s) => s.toLowerCase() !== cleanQuery).join(", ");
-      cached.data.recentSearches = nextSearches;
-      cached.data.interests = nextInterests;
-      cached.data.hasInterests = (Array.isArray(cached.data.selectedTopicIds) && cached.data.selectedTopicIds.length > 0) || Boolean(nextInterests);
-      cached.data.onboarded = cached.data.hasInterests;
-      cached.data.isCustomized = cached.data.hasInterests;
-    } else {
-      preferencesCache.delete(cleanUserId);
-    }
+    preferencesCache.delete(actualUserId);
+    preferencesCache.delete(cleanUserId);
     return true;
   } catch (err) {
     console.warn("[USER-TRENDS] Error deleting search:", err.message);

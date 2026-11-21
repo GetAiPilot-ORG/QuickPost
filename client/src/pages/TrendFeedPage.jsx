@@ -192,17 +192,20 @@ function sanitizeRecentSearches(searches) {
   const result = [];
   for (const term of cleaned) {
     const lower = term.toLowerCase();
-    // Drop if another term in the list is a fuller version of this term (e.g. sp, spid, spidrm, spiderma when spiderman exists)
+    // Drop if another term in the list is a fuller version of this term (e.g. totalga when total gaming exists)
     const isFragment = cleaned.some((other) => {
       const otherLower = other.toLowerCase();
       if (otherLower === lower) return false;
+      const lowerNorm = lower.replace(/[^a-z0-9]/g, "");
+      const otherNorm = otherLower.replace(/[^a-z0-9]/g, "");
+      if (otherNorm.length > lowerNorm.length && otherNorm.startsWith(lowerNorm)) return true;
       if (otherLower.length > lower.length && otherLower.startsWith(lower)) return true;
       if (otherLower.length > lower.length && otherLower.includes(lower) && lower.length <= 4) return true;
       if (
         otherLower.length > lower.length &&
         lower.length >= 4 &&
         otherLower.startsWith(lower.slice(0, 4)) &&
-        otherLower.length - lower.length <= 3
+        otherLower.length - lower.length <= 4
       ) {
         return true;
       }
@@ -2424,6 +2427,7 @@ export default function TrendFeedPage() {
       if (!reset && loadingRef.current) return;
       if (!reset && exhaustedRef.current) return;
       if (reset) {
+        window.scrollTo({ top: 0, left: 0, behavior: "instant" });
         exhaustedRef.current = false;
         setItems([]);
       }
@@ -2493,10 +2497,15 @@ export default function TrendFeedPage() {
         if (Array.isArray(data.recentSearches)) {
           const sanitized = sanitizeRecentSearches(data.recentSearches);
           setRecentDbSearches((prev) => {
+            // Keep local deletions intact: do not resurrect terms that user deleted
+            const prevLower = new Set(prev.map((s) => s.toLowerCase()));
+            const filtered = prev.length > 0
+              ? sanitized.filter((s) => prevLower.has(s.toLowerCase()))
+              : sanitized;
             const prevStr = prev.join("|");
-            const nextStr = sanitized.join("|");
+            const nextStr = filtered.join("|");
             if (prevStr === nextStr) return prev;
-            return sanitized;
+            return filtered;
           });
         }
 
@@ -2522,9 +2531,14 @@ export default function TrendFeedPage() {
   );
   loadPageRef.current = loadPage;
 
+  // Always scroll to top when Trend Feed page is opened / mounted
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, []);
+
   // Immediate search execution (real-time live feed update without requiring manual page refresh)
   const handleExecuteSearch = useCallback(
-    (rawTerm) => {
+    (rawTerm, registerTopic = true) => {
       const term = String(rawTerm || "").trim().replace(/^#/, "");
       if (!term || term.length < 2) return;
       setSearchQuery(term);
@@ -2536,7 +2550,9 @@ export default function TrendFeedPage() {
       cursorRef.current = null;
       seenRef.current = new Set();
       setItems([]);
-      registerSearchTopic(term);
+      if (registerTopic) {
+        registerSearchTopic(term);
+      }
       loadPage({ reset: true, overrideSearch: term, overrideTopic: null });
     },
     [registerSearchTopic, loadPage]
@@ -2556,7 +2572,7 @@ export default function TrendFeedPage() {
     loadPage({ reset: true, overrideSearch: "", overrideTopic: null });
   }, [loadPage]);
 
-  // Auto-execute search when user pauses typing (600ms debounce)
+  // Auto-execute search when user pauses typing (600ms debounce - live feed without registering partial words in DB)
   useEffect(() => {
     const trimmed = String(searchQuery || "").trim().replace(/^#/, "");
     if (!trimmed) {
@@ -2569,7 +2585,7 @@ export default function TrendFeedPage() {
     if (trimmed.toLowerCase() === debouncedSearchRef.current.toLowerCase()) return;
 
     const timer = setTimeout(() => {
-      handleExecuteSearch(trimmed);
+      handleExecuteSearch(trimmed, false);
     }, 600);
 
     return () => clearTimeout(timer);
@@ -2577,24 +2593,53 @@ export default function TrendFeedPage() {
 
   // Remove a searched topic from rail, DB, and state
   const handleRemoveSearchedTopic = useCallback(
-    (term) => {
-      setRecentDbSearches((prev) => prev.filter((q) => q.toLowerCase() !== term.toLowerCase()));
+    async (term) => {
+      const cleanTerm = String(term || "").trim().toLowerCase().replace(/^#/, "");
+      setRecentDbSearches((prev) =>
+        prev.filter((q) => {
+          const qClean = String(q || "").trim().toLowerCase().replace(/^#/, "");
+          return qClean !== cleanTerm;
+        })
+      );
+      recentDbSearchesRef.current = (recentDbSearchesRef.current || []).filter((q) => {
+        const qClean = String(q || "").trim().toLowerCase().replace(/^#/, "");
+        return qClean !== cleanTerm;
+      });
+
       setProfile((prev) => {
         const list = prev?.interests ? prev.interests.split(",").map((s) => s.trim()).filter(Boolean) : [];
-        const nextInterests = list.filter((s) => s.toLowerCase() !== term.toLowerCase()).join(", ");
+        const nextInterests = list.filter((s) => {
+          const sClean = s.toLowerCase().replace(/^#/, "").trim();
+          return sClean !== cleanTerm;
+        }).join(", ");
+        const nextWork = (prev?.work && prev.work.trim().toLowerCase() === cleanTerm) ? "" : (prev?.work || "");
+        const nextSearches = (prev?.recentSearches || []).filter((q) => q.toLowerCase() !== cleanTerm);
         try {
           const stored = JSON.parse(localStorage.getItem(profileStorageKey) || "{}");
           stored.interests = nextInterests;
+          stored.work = nextWork;
+          stored.recentSearches = nextSearches;
           localStorage.setItem(profileStorageKey, JSON.stringify(stored));
         } catch { }
-        return { ...prev, interests: nextInterests };
+        return { ...prev, interests: nextInterests, work: nextWork, recentSearches: nextSearches };
       });
+
       setDraftProfile((prev) => {
         const list = prev?.interests ? prev.interests.split(",").map((s) => s.trim()).filter(Boolean) : [];
-        const nextInterests = list.filter((s) => s.toLowerCase() !== term.toLowerCase()).join(", ");
-        return { ...prev, interests: nextInterests };
+        const nextInterests = list.filter((s) => {
+          const sClean = s.toLowerCase().replace(/^#/, "").trim();
+          return sClean !== cleanTerm;
+        }).join(", ");
+        const nextWork = (prev?.work && prev.work.trim().toLowerCase() === cleanTerm) ? "" : (prev?.work || "");
+        return { ...prev, interests: nextInterests, work: nextWork };
       });
-      apiClient.delete("/api/trends/search-history", { data: { query: term } }).catch(() => { });
+
+      try {
+        await apiClient.delete("/api/trends/search-history", { data: { query: term } });
+      } catch (err) {
+        console.warn("Delete search history err:", err?.message);
+      }
+
       if (debouncedSearchRef.current.toLowerCase() === term.toLowerCase()) {
         handleClearSearch();
       }
@@ -2816,7 +2861,7 @@ export default function TrendFeedPage() {
         <div className="relative w-36 sm:w-52 md:w-64">
           <button
             type="button"
-            onClick={() => handleExecuteSearch(searchQuery)}
+            onClick={() => handleExecuteSearch(searchQuery, true)}
             className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors cursor-pointer"
             title="Search topic"
           >
@@ -2835,7 +2880,7 @@ export default function TrendFeedPage() {
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
-                handleExecuteSearch(searchQuery);
+                handleExecuteSearch(searchQuery, true);
               }
             }}
             placeholder="Search topics, creators, hooks..."

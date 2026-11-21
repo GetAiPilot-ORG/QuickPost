@@ -300,7 +300,7 @@ router.get("/trends/search-history", authenticateUser, async (req, res) => {
 
 router.delete("/trends/search-history", authenticateUser, async (req, res) => {
   try {
-    const userId = req.user?.userId || req.user?.id;
+    const userId = req.user?.authUserId || req.user?.userId || req.user?.id;
     const query = req.body?.query || req.query?.query;
     if (userId && query) {
       await deleteUserSearch(userId, query);
