@@ -2039,15 +2039,16 @@ export default function TrendFeedPage() {
 
         const dbPrefs = data.preferences;
         const hasDbTopics = Array.isArray(dbPrefs?.selectedTopicIds) && dbPrefs.selectedTopicIds.length > 0;
-        const isDbOnboarded = Boolean(dbPrefs?.onboarded) || hasDbTopics || Boolean(dbPrefs?.isCustomized);
+        const hasDbInterests = hasDbTopics || Boolean(dbPrefs?.interests?.trim());
 
-        if (hasDbTopics) {
-          setSelectedTopicIds(dbPrefs.selectedTopicIds);
+        if (hasDbInterests) {
+          // User HAS saved interests in DB - populate and do not prompt onboarding
+          setSelectedTopicIds(dbPrefs.selectedTopicIds || []);
           const dbProfile = {
             work: dbPrefs.work || "",
             interests: sanitizeSavedInterests(dbPrefs.interests || ""),
             goal: dbPrefs.goal || "",
-            selectedTopicIds: dbPrefs.selectedTopicIds,
+            selectedTopicIds: dbPrefs.selectedTopicIds || [],
             onboarded: true,
           };
           setProfile(dbProfile);
@@ -2058,16 +2059,17 @@ export default function TrendFeedPage() {
             onboardingTriggeredRef.current = true;
           } catch { }
           setShowInterestModal(false);
-        } else if (isDbOnboarded) {
-          try {
-            localStorage.setItem(onboardingStorageKey, "true");
-            onboardingTriggeredRef.current = true;
-          } catch { }
-          setShowInterestModal(false);
         } else {
-          // FIRST TIME VISIT: User has not onboarded in database or localStorage
-          const userLocalOnboarded = localStorage.getItem(onboardingStorageKey);
-          if (userLocalOnboarded !== "true" && !onboardingTriggeredRef.current) {
+          // DB ME USKA INTEREST KHALI H: Show onboarding modal on page refresh as long as DB interest is empty
+          setSelectedTopicIds([]);
+          setProfile(emptyProfile());
+          setDraftProfile(emptyProfile());
+          try {
+            localStorage.removeItem(onboardingStorageKey);
+            localStorage.removeItem(profileStorageKey);
+          } catch { }
+
+          if (!onboardingTriggeredRef.current) {
             onboardingTriggeredRef.current = true;
             const timer = setTimeout(() => {
               if (isMounted) {
@@ -2436,20 +2438,28 @@ export default function TrendFeedPage() {
   };
 
   const handleSaveInterests = (nextSelectedTopicIds = selectedTopicIds, updatedProfile = draftProfile) => {
-    try {
-      localStorage.setItem(onboardingStorageKey, "true");
-      onboardingTriggeredRef.current = true;
-    } catch { }
+    const customInterests = updatedProfile?.interests?.trim() || "";
+    const hasSavedInterests = (Array.isArray(nextSelectedTopicIds) && nextSelectedTopicIds.length > 0) || Boolean(customInterests);
+
+    if (hasSavedInterests) {
+      try {
+        localStorage.setItem(onboardingStorageKey, "true");
+        onboardingTriggeredRef.current = true;
+      } catch { }
+    } else {
+      try {
+        localStorage.removeItem(onboardingStorageKey);
+      } catch { }
+    }
 
     setSelectedTopicIds(nextSelectedTopicIds);
-    const customInterests = updatedProfile?.interests?.trim() || "";
 
     const nextProfile = {
       work: updatedProfile?.work?.trim() || "",
       interests: customInterests,
       goal: updatedProfile?.goal?.trim() || "",
       selectedTopicIds: nextSelectedTopicIds,
-      onboarded: true,
+      onboarded: hasSavedInterests,
     };
 
     setProfile(nextProfile);
@@ -2491,22 +2501,24 @@ export default function TrendFeedPage() {
 
   const handleSkipInterests = () => {
     try {
-      localStorage.setItem(onboardingStorageKey, "true");
+      // Do NOT save permanent onboarding to localStorage on skip
+      localStorage.removeItem(onboardingStorageKey);
       onboardingTriggeredRef.current = true;
     } catch {
       // ignore
     }
-    apiClient.post("/api/trends/preferences", { selectedTopicIds: [], onboarded: true }).catch(() => { });
+    // Do NOT post onboarded: true to DB! Keep DB interests empty so next refresh will show modal again
     setShowInterestModal(false);
   };
 
   const handleCloseModal = () => {
     if (interestModalMode === "onboarding") {
       try {
-        localStorage.setItem(onboardingStorageKey, "true");
+        // Do NOT save permanent onboarding to localStorage on close without saving
+        localStorage.removeItem(onboardingStorageKey);
         onboardingTriggeredRef.current = true;
       } catch { }
-      apiClient.post("/api/trends/preferences", { selectedTopicIds: selectedTopicIds, onboarded: true }).catch(() => { });
+      // Do NOT send onboarded: true to DB! Keep DB interests empty so next refresh will show modal again
     }
     setShowInterestModal(false);
   };

@@ -52,11 +52,15 @@ export async function getUserTrendPreferences(userId) {
           preferences.work = typeof meta.work === "string" ? meta.work : "";
           preferences.goal = typeof meta.goal === "string" ? meta.goal : "";
           preferences.recentSearches = Array.isArray(meta.recentSearches) ? meta.recentSearches : [];
-          preferences.onboarded = Boolean(meta.onboarded);
-          preferences.isCustomized =
+          
+          const hasSavedInterests =
             preferences.selectedTopicIds.length > 0 ||
-            Boolean(preferences.interests) ||
-            preferences.onboarded;
+            Boolean(preferences.interests.trim());
+
+          preferences.hasInterests = hasSavedInterests;
+          // Only truly onboarded if user has at least one topic or custom interest saved in DB
+          preferences.onboarded = Boolean(meta.onboarded) && hasSavedInterests;
+          preferences.isCustomized = hasSavedInterests;
         }
       } catch (authErr) {
         console.warn("[USER-TRENDS] Auth metadata read notice:", authErr.message);
@@ -134,6 +138,9 @@ export async function saveUserTrendPreferences(
         nextRecentSearches = existingTrend.recentSearches;
       }
 
+      const hasSavedInterests = cleanTopicIds.length > 0 || Boolean(cleanInterests);
+      const isActuallyOnboarded = hasSavedInterests ? Boolean(onboarded) : false;
+
       const updatedTrend = {
         ...existingTrend,
         selectedTopicIds: cleanTopicIds,
@@ -141,7 +148,7 @@ export async function saveUserTrendPreferences(
         work: cleanWork,
         goal: cleanGoal,
         recentSearches: nextRecentSearches,
-        onboarded: Boolean(onboarded),
+        onboarded: isActuallyOnboarded,
         updatedAt: nowIso,
       };
 
@@ -174,6 +181,9 @@ export async function saveUserTrendPreferences(
     // Invalidate local in-memory cache
     preferencesCache.delete(cleanUserId);
 
+    const hasSavedInterests = cleanTopicIds.length > 0 || Boolean(cleanInterests);
+    const isActuallyOnboarded = hasSavedInterests ? Boolean(onboarded) : false;
+
     return {
       success: true,
       preferences: {
@@ -182,8 +192,9 @@ export async function saveUserTrendPreferences(
         work: cleanWork,
         goal: cleanGoal,
         recentSearches: nextRecentSearches,
-        onboarded: Boolean(onboarded),
-        isCustomized: cleanTopicIds.length > 0 || Boolean(cleanInterests) || Boolean(onboarded),
+        onboarded: isActuallyOnboarded,
+        hasInterests: hasSavedInterests,
+        isCustomized: hasSavedInterests,
       },
     };
   } catch (err) {

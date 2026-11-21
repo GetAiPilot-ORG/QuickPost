@@ -1,3 +1,7 @@
+## 2026-11-21 — Onboarding modal re-trigger jab tak DB me interests khali hain
+- Skip ya Close karne par onboarding ko permanently suppress hone se roka: `localStorage` aur DB dono me `onboarded: true` tabhi set hoga jab user ke paas actual saved topics/interests honge.
+- Page refresh par DB interests check kiye: agar `selectedTopicIds` aur `interests` khali hain, onboarding modal dobara show hoga jab tak user topics save na kare.
+
 ## 2026-11-20 — First-time per-user interest onboarding, isolated DB persistence & dynamic search topics
 - Fixed first-time visit onboarding modal: removed global browser-wide localStorage blocker (`GLOBAL_ONBOARDED_KEY`) and hardcoded default topic IDs, strictly scoping onboarding state and storage keys to each authenticated `userKey`.
 - Guaranteed per-user persistence: saved preferences, niche topics, and custom interests directly into Supabase Auth `user_metadata.trend_preferences` for each specific user UUID, completely isolating User A and User B.
