@@ -1,3 +1,7 @@
+## 2026-11-21 — Auto-add searched topics to user interests across DB & UI
+- Searched topic auto-add to interests: koi bhi user jab search kare (search bar, Enter, ya trending tags), topic automatically user ke `interests` keywords list aur Supabase DB me add hota hai, prefix fragments deduplicate hote hain, aur predefined topics se match hone par `selectedTopicIds` me bhi include hota hai.
+- Onboarding & Tune modal sync: Onboarding modal me searched/custom interests tags display kiye aur quick add input joda; rail se remove karne par interests aur DB se bhi clean sync rakha.
+
 ## 2026-11-21 — Onboarding modal re-trigger jab tak DB me interests khali hain
 - Skip ya Close karne par onboarding ko permanently suppress hone se roka: `localStorage` aur DB dono me `onboarded: true` tabhi set hoga jab user ke paas actual saved topics/interests honge.
 - Page refresh par DB interests check kiye: agar `selectedTopicIds` aur `interests` khali hain, onboarding modal dobara show hoga jab tak user topics save na kare.

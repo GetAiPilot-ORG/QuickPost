@@ -191,6 +191,26 @@ function sanitizeSavedInterests(str) {
   return str;
 }
 
+function addTermToInterestsString(existingInterestsStr, newTerm) {
+  const cleanTerm = String(newTerm || "").trim().replace(/^#/, "");
+  if (!cleanTerm || cleanTerm.length < 2) return existingInterestsStr || "";
+
+  const cleanLower = cleanTerm.toLowerCase();
+  const list = typeof existingInterestsStr === "string"
+    ? existingInterestsStr.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
+
+  // Remove duplicate or prefix fragments of the same term (e.g. "cri" when "cricket" is typed)
+  const filtered = list.filter((item) => {
+    const itemLower = item.toLowerCase();
+    if (itemLower === cleanLower) return false;
+    if (cleanLower.startsWith(itemLower) && cleanLower.length - itemLower.length <= 4) return false;
+    return true;
+  });
+
+  return [cleanTerm, ...filtered].join(", ");
+}
+
 function getHost(url) {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
@@ -1601,6 +1621,29 @@ function CreatorInterestModal({
     interests: initialProfile?.interests || "",
     goal: initialProfile?.goal || "",
   }));
+  const [customInput, setCustomInput] = useState("");
+
+  const handleAddCustom = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    const term = customInput.trim().replace(/^#/, "");
+    if (!term || term.length < 2) return;
+
+    // Check if matches registered topic
+    const cleanLower = term.toLowerCase();
+    const matched = TREND_INTEREST_TOPICS.find(
+      (t) =>
+        t.id.toLowerCase() === cleanLower ||
+        t.label.toLowerCase() === cleanLower ||
+        t.keywords.toLowerCase().includes(cleanLower)
+    );
+    if (matched && !localTopicIds.includes(matched.id)) {
+      setLocalTopicIds((prev) => [...prev, matched.id]);
+    }
+
+    const nextInterests = addTermToInterestsString(localProfile.interests, term);
+    setLocalProfile((prev) => ({ ...prev, interests: nextInterests }));
+    setCustomInput("");
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -1721,8 +1764,75 @@ function CreatorInterestModal({
             </div>
           </div>
         ) : (
-          /* First-Time Visit Onboarding: Strictly Topic Niches (Only shown one time!) */
+          /* First-Time Visit Onboarding: Strictly Topic Niches + Searched/Custom Interests */
           <div className="flex-1 overflow-y-auto p-4 sm:p-5 custom-scrollbar space-y-4 overscroll-contain">
+            {/* Quick search/add custom interest topic */}
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+                <input
+                  type="text"
+                  value={customInput}
+                  onChange={(e) => setCustomInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddCustom();
+                    }
+                  }}
+                  placeholder="Search or add custom interest topic (e.g. Cricket, Anime, Spiderman)..."
+                  className="w-full h-9 pl-8 pr-3 rounded-xl bg-neutral-50 dark:bg-white/[0.04] border border-black/[0.08] dark:border-white/10 text-xs text-neutral-900 dark:text-white placeholder:text-neutral-400 outline-none focus:border-amber-500/60"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleAddCustom}
+                className="h-9 px-3.5 rounded-xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 text-xs font-bold hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-colors cursor-pointer"
+              >
+                Add Topic
+              </button>
+            </div>
+
+            {/* Display user's searched & added custom interests */}
+            {Boolean(localProfile.interests && localProfile.interests.trim()) && (
+              <div className="p-3 rounded-2xl bg-amber-500/[0.08] dark:bg-amber-500/[0.12] border border-amber-500/25">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-amber-800 dark:text-amber-300 mb-2">
+                  <Sparkles size={12} className="text-amber-500" />
+                  <span>Your Searched & Custom Interests:</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {localProfile.interests
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean)
+                    .map((item, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 border border-amber-500/30 shadow-xs"
+                      >
+                        <Search size={10} className="text-amber-500" />
+                        <span>{item}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = localProfile.interests
+                              .split(",")
+                              .map((s) => s.trim())
+                              .filter((s) => s.toLowerCase() !== item.toLowerCase())
+                              .join(", ");
+                            setLocalProfile((prev) => ({ ...prev, interests: updated }));
+                          }}
+                          className="hover:text-red-500 cursor-pointer ml-0.5 text-neutral-400 hover:scale-110 transition-transform"
+                          title="Remove"
+                        >
+                          <X size={10} />
+                        </button>
+                      </span>
+                    ))}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
               {TREND_INTEREST_TOPICS.map((topic) => {
                 const isSelected = localTopicIds.includes(topic.id);
@@ -2139,7 +2249,7 @@ export default function TrendFeedPage() {
         t.keywords.toLowerCase().includes(cleanLower)
     );
 
-    // If matched, add to selectedTopicIds if not already present
+    // If matched, also add to selectedTopicIds if not already present
     if (matched) {
       setSelectedTopicIds((prev) => {
         if (prev.includes(matched.id)) return prev;
@@ -2151,25 +2261,26 @@ export default function TrendFeedPage() {
         } catch { }
         return next;
       });
-    } else {
-      // Custom search topic (e.g. Spiderman, Batman) - add to user's interests keywords
-      setProfile((prev) => {
-        const curList = prev?.interests ? prev.interests.split(",").map((s) => s.trim()).filter(Boolean) : [];
-        if (!curList.some((s) => s.toLowerCase() === cleanLower)) {
-          const nextInterests = [...curList, term].join(", ");
-          const next = { ...prev, interests: nextInterests };
-          try {
-            const stored = JSON.parse(localStorage.getItem(profileStorageKey) || "{}");
-            stored.interests = nextInterests;
-            localStorage.setItem(profileStorageKey, JSON.stringify(stored));
-          } catch { }
-          return next;
-        }
-        return prev;
-      });
     }
 
-    // 2. Add to recent searched topics (avoid prefix fragments)
+    // 2. ALWAYS add searched topic to user's interests (both profile & draftProfile)
+    setProfile((prev) => {
+      const nextInterests = addTermToInterestsString(prev?.interests, term);
+      const next = { ...prev, interests: nextInterests };
+      try {
+        const stored = JSON.parse(localStorage.getItem(profileStorageKey) || "{}");
+        stored.interests = nextInterests;
+        localStorage.setItem(profileStorageKey, JSON.stringify(stored));
+      } catch { }
+      return next;
+    });
+
+    setDraftProfile((prev) => {
+      const nextInterests = addTermToInterestsString(prev?.interests, term);
+      return { ...prev, interests: nextInterests };
+    });
+
+    // 3. Add to recent searched topics (avoid prefix fragments)
     setRecentDbSearches((prev) => {
       const filtered = prev.filter(
         (q) =>
@@ -2207,6 +2318,10 @@ export default function TrendFeedPage() {
               } catch { }
               return next;
             });
+            setDraftProfile((prev) => ({ ...prev, interests: prefs.interests }));
+          }
+          if (Array.isArray(prefs.recentSearches) && prefs.recentSearches.length > 0) {
+            setRecentDbSearches(prefs.recentSearches);
           }
         }
       })
@@ -2900,6 +3015,21 @@ export default function TrendFeedPage() {
                       onClick={(e) => {
                         e.stopPropagation();
                         setRecentDbSearches((prev) => prev.filter((q) => q !== term));
+                        setProfile((prev) => {
+                          const list = prev?.interests ? prev.interests.split(",").map((s) => s.trim()).filter(Boolean) : [];
+                          const nextInterests = list.filter((s) => s.toLowerCase() !== term.toLowerCase()).join(", ");
+                          try {
+                            const stored = JSON.parse(localStorage.getItem(profileStorageKey) || "{}");
+                            stored.interests = nextInterests;
+                            localStorage.setItem(profileStorageKey, JSON.stringify(stored));
+                          } catch { }
+                          return { ...prev, interests: nextInterests };
+                        });
+                        setDraftProfile((prev) => {
+                          const list = prev?.interests ? prev.interests.split(",").map((s) => s.trim()).filter(Boolean) : [];
+                          const nextInterests = list.filter((s) => s.toLowerCase() !== term.toLowerCase()).join(", ");
+                          return { ...prev, interests: nextInterests };
+                        });
                         apiClient.delete("/api/trends/search-history", { data: { query: term } }).catch(() => { });
                         if (debouncedSearch.toLowerCase() === term.toLowerCase()) {
                           setSearchQuery("");

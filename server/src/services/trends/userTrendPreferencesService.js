@@ -178,24 +178,25 @@ export async function saveUserTrendPreferences(
       // Ignore if table does not exist
     }
 
-    // Invalidate local in-memory cache
-    preferencesCache.delete(cleanUserId);
-
     const hasSavedInterests = cleanTopicIds.length > 0 || Boolean(cleanInterests);
     const isActuallyOnboarded = hasSavedInterests ? Boolean(onboarded) : false;
 
+    const savedPreferences = {
+      selectedTopicIds: cleanTopicIds,
+      interests: cleanInterests,
+      work: cleanWork,
+      goal: cleanGoal,
+      recentSearches: nextRecentSearches,
+      onboarded: isActuallyOnboarded,
+      hasInterests: hasSavedInterests,
+      isCustomized: hasSavedInterests,
+    };
+
+    preferencesCache.set(cleanUserId, { data: savedPreferences, _cachedAt: Date.now() });
+
     return {
       success: true,
-      preferences: {
-        selectedTopicIds: cleanTopicIds,
-        interests: cleanInterests,
-        work: cleanWork,
-        goal: cleanGoal,
-        recentSearches: nextRecentSearches,
-        onboarded: isActuallyOnboarded,
-        hasInterests: hasSavedInterests,
-        isCustomized: hasSavedInterests,
-      },
+      preferences: savedPreferences,
     };
   } catch (err) {
     console.error("[USER-TRENDS] Error saving preferences for user:", cleanUserId, err.message);
@@ -269,6 +270,25 @@ export async function recordUserSearch(userId, query) {
   }
 }
 
+function addTermToInterestsString(existingInterestsStr, newTerm) {
+  const cleanTerm = String(newTerm || "").trim().replace(/^#/, "");
+  if (!cleanTerm || cleanTerm.length < 2) return existingInterestsStr || "";
+
+  const cleanLower = cleanTerm.toLowerCase();
+  const list = typeof existingInterestsStr === "string"
+    ? existingInterestsStr.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
+
+  const filtered = list.filter((item) => {
+    const itemLower = item.toLowerCase();
+    if (itemLower === cleanLower) return false;
+    if (cleanLower.startsWith(itemLower) && cleanLower.length - itemLower.length <= 4) return false;
+    return true;
+  });
+
+  return [cleanTerm, ...filtered].join(", ");
+}
+
 /**
  * Automatically add a searched topic to user's saved interests in Supabase
  * and update their selected_topic_ids if it matches a registered topic.
@@ -283,35 +303,38 @@ export async function addSearchQueryToUserInterests(userId, query) {
   try {
     const currentPrefs = await getUserTrendPreferences(cleanUserId);
     let selectedTopicIds = Array.isArray(currentPrefs?.selectedTopicIds) ? [...currentPrefs.selectedTopicIds] : [];
-    let interestsList = currentPrefs?.interests
-      ? currentPrefs.interests.split(",").map((s) => s.trim()).filter(Boolean)
-      : [];
 
-    // Check if the query matches a predefined registered topic
+    // 1. Check if the query matches a predefined registered topic ID/label/keywords
     const matched = getTopicDefinition(cleanQuery);
     if (matched && matched.id) {
       if (!selectedTopicIds.includes(matched.id)) {
         selectedTopicIds.push(matched.id);
       }
-    } else {
-      // Add custom search query to user's custom interests keywords!
-      const lowerQuery = cleanQuery.toLowerCase();
-      const alreadyHas = interestsList.some((item) => item.toLowerCase() === lowerQuery);
-      if (!alreadyHas) {
-        interestsList.push(cleanQuery);
-      }
     }
 
-    const nextInterests = interestsList.join(", ");
+    // 2. ALWAYS add searched topic to user's saved interests keywords string
+    const nextInterests = addTermToInterestsString(currentPrefs?.interests, cleanQuery);
+
+    // 3. Update recent searches array
+    const cleanLower = cleanQuery.toLowerCase();
+    let recentSearches = Array.isArray(currentPrefs?.recentSearches) ? [...currentPrefs.recentSearches] : [];
+    const filteredSearches = recentSearches.filter((q) => {
+      const qLower = q.toLowerCase();
+      if (qLower === cleanLower) return false;
+      if (cleanLower.startsWith(qLower) && cleanLower.length - qLower.length <= 4) return false;
+      return true;
+    });
+    const updatedSearches = [cleanQuery, ...filteredSearches].slice(0, 15);
+
     const saved = await saveUserTrendPreferences(cleanUserId, {
       selectedTopicIds,
       interests: nextInterests,
       work: currentPrefs?.work || "",
       goal: currentPrefs?.goal || "",
+      recentSearches: updatedSearches,
       onboarded: true,
     });
 
-    preferencesCache.delete(cleanUserId);
     return saved;
   } catch (err) {
     console.warn("[USER-TRENDS] Error adding search to interests:", err.message);
@@ -375,12 +398,19 @@ export async function deleteUserSearch(userId, query) {
 
         const updated = existingSearches.filter((q) => q.toLowerCase() !== cleanQuery);
 
+        // Also remove from interests keywords if present
+        const existingInterests = typeof currentTrend.interests === "string"
+          ? currentTrend.interests.split(",").map((s) => s.trim()).filter(Boolean)
+          : [];
+        const updatedInterests = existingInterests.filter((s) => s.toLowerCase() !== cleanQuery).join(", ");
+
         await supabase.auth.admin.updateUserById(cleanUserId, {
           user_metadata: {
             ...currentMeta,
             trend_preferences: {
               ...currentTrend,
               recentSearches: updated,
+              interests: updatedInterests,
               updatedAt: new Date().toISOString(),
             },
           },
@@ -396,7 +426,22 @@ export async function deleteUserSearch(userId, query) {
         .ilike("query", query.trim());
     } catch { }
 
-    preferencesCache.delete(cleanUserId);
+    const cached = preferencesCache.get(cleanUserId);
+    if (cached && cached.data) {
+      const curSearches = Array.isArray(cached.data.recentSearches) ? cached.data.recentSearches : [];
+      const nextSearches = curSearches.filter((q) => q.toLowerCase() !== cleanQuery);
+      const curInterests = typeof cached.data.interests === "string"
+        ? cached.data.interests.split(",").map((s) => s.trim()).filter(Boolean)
+        : [];
+      const nextInterests = curInterests.filter((s) => s.toLowerCase() !== cleanQuery).join(", ");
+      cached.data.recentSearches = nextSearches;
+      cached.data.interests = nextInterests;
+      cached.data.hasInterests = (Array.isArray(cached.data.selectedTopicIds) && cached.data.selectedTopicIds.length > 0) || Boolean(nextInterests);
+      cached.data.onboarded = cached.data.hasInterests;
+      cached.data.isCustomized = cached.data.hasInterests;
+    } else {
+      preferencesCache.delete(cleanUserId);
+    }
     return true;
   } catch (err) {
     console.warn("[USER-TRENDS] Error deleting search:", err.message);
