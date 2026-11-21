@@ -2446,8 +2446,7 @@ export default function TrendFeedPage() {
         if (!activeSearch) {
           if (activeTopic) {
             params.topic = activeTopic;
-          } else if (!user?.userId && !user?.id) {
-            // Only unauthenticated visitors pass client-side topics/interests
+          } else {
             if (topicIds.length > 0) {
               params.topics = topicIds.join(",");
             }

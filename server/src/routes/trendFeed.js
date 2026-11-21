@@ -224,7 +224,7 @@ router.get("/trends/pinterest/channels", authenticateUser, (req, res) => {
 // 10. User Trend Preferences (Read/Save to Supabase DB)
 router.get("/trends/preferences", authenticateUser, async (req, res) => {
   try {
-    const userId = req.user?.userId || req.user?.id;
+    const userId = req.user?.authUserId || req.user?.userId || req.user?.id;
     if (!userId) {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
@@ -238,7 +238,7 @@ router.get("/trends/preferences", authenticateUser, async (req, res) => {
 
 router.post("/trends/preferences", authenticateUser, async (req, res) => {
   try {
-    const userId = req.user?.userId || req.user?.id;
+    const userId = req.user?.authUserId || req.user?.userId || req.user?.id;
     if (!userId) {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
@@ -253,7 +253,7 @@ router.post("/trends/preferences", authenticateUser, async (req, res) => {
 
 router.delete("/trends/preferences", authenticateUser, async (req, res) => {
   try {
-    const userId = req.user?.userId || req.user?.id;
+    const userId = req.user?.authUserId || req.user?.userId || req.user?.id;
     if (!userId) {
       return res.status(401).json({ success: false, error: "Unauthorized" });
     }
@@ -275,7 +275,7 @@ router.delete("/trends/preferences", authenticateUser, async (req, res) => {
 // 11. User Search History & Auto-Add to Interests
 router.post("/trends/search-history", authenticateUser, async (req, res) => {
   try {
-    const userId = req.user?.userId || req.user?.id;
+    const userId = req.user?.authUserId || req.user?.userId || req.user?.id;
     const { query } = req.body || {};
     let updatedPrefs = null;
     if (userId && query) {
@@ -290,7 +290,7 @@ router.post("/trends/search-history", authenticateUser, async (req, res) => {
 
 router.get("/trends/search-history", authenticateUser, async (req, res) => {
   try {
-    const userId = req.user?.userId || req.user?.id;
+    const userId = req.user?.authUserId || req.user?.userId || req.user?.id;
     const searches = await getUserRecentSearches(userId, 10);
     res.json({ success: true, searches });
   } catch (err) {

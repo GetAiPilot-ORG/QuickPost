@@ -418,37 +418,23 @@ async function fetchLiveExternalPosts({
         });
       });
 
-      // On Page 1, fetch country trending pulses (Google Trends + country viral Shorts + mostPopular videos)
-      if (page === 1 && (type === "all" || type === "searches")) {
+      // If user is specifically on "searches" tab, include Google Trends
+      if (page === 1 && type === "searches") {
         promises.push(
           fetchGoogleTrends({ geo: region, page: 1 })
             .then((items) => (Array.isArray(items) ? items.slice(0, 3) : []))
             .catch(() => [])
         );
       }
-      if (page === 1 && (type === "all" || type === "shorts" || type === "videos")) {
-        // Regional trending shorts for selected country
-        promises.push(
-          fetchYouTubeShorts({ region, category: "all", query: "", maxResults: 10, page: 1 })
-            .then((shorts) => (Array.isArray(shorts) ? shorts.slice(0, 4) : []))
-            .catch(() => [])
-        );
-      }
-      if (page === 1 && (type === "all" || type === "videos")) {
-        // Country trending YouTube videos (official mostPopular chart for this region)
-        promises.push(
-          fetchYouTubeTrends({ region, category: "all", maxResults: 10, page: 1 })
-            .then((videos) => (Array.isArray(videos) ? videos.slice(0, 4) : []))
-            .catch(() => [])
-        );
-      }
 
-      const startIndex = ((page - 1) * 3) % topicsPool.length;
-      let topicsForPage = topicsPool.slice(startIndex, startIndex + 3);
-      if (topicsForPage.length < 3 && topicsPool.length >= 3) {
-        topicsForPage = [...topicsForPage, ...topicsPool.slice(0, 3 - topicsForPage.length)];
+      // In personalized feed, fetch across user's topics (up to 5 topics on Page 1 for rich diverse niche coverage)
+      const countForPage = page === 1 ? Math.min(topicsPool.length, 5) : 3;
+      const startIndex = ((page - 1) * countForPage) % topicsPool.length;
+      let topicsForPage = topicsPool.slice(startIndex, startIndex + countForPage);
+      if (topicsForPage.length < countForPage && topicsPool.length >= countForPage) {
+        topicsForPage = [...topicsForPage, ...topicsPool.slice(0, countForPage - topicsForPage.length)];
       }
-      const limitPerTopic = Math.max(Math.floor(36 / topicsForPage.length), 12);
+      const limitPerTopic = Math.max(Math.floor(40 / topicsForPage.length), 10);
 
       for (const tDef of topicsForPage) {
         const pinQ = getPinterestTopicQuery(tDef);
@@ -614,18 +600,18 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     try {
       const dbPrefs = await getUserTrendPreferences(userId);
       if (dbPrefs) {
-        // STRICT USER ISOLATION: When a user is authenticated, their topics, interests,
-        // and searches come EXCLUSIVELY from their own DB preferences!
-        // Client-passed topics/interests/searches from any other/previous session are IGNORED.
-        topicsParam = Array.isArray(dbPrefs.selectedTopicIds) ? dbPrefs.selectedTopicIds.join(",") : "";
-        rawInterests = [dbPrefs.work, dbPrefs.interests, dbPrefs.goal]
-          .filter(Boolean)
-          .join(", ");
-        recentSearches = Array.isArray(dbPrefs.recentSearches) ? [...dbPrefs.recentSearches] : [];
-      } else {
-        topicsParam = "";
-        rawInterests = "";
-        recentSearches = [];
+        // Merge DB saved topics with client-passed topics for this authenticated user
+        const dbTopicIds = Array.isArray(dbPrefs.selectedTopicIds) ? dbPrefs.selectedTopicIds : [];
+        const clientTopicIds = String(topicsParam || "").split(",").map((t) => t.trim()).filter(Boolean);
+        const mergedTopicIds = Array.from(new Set([...dbTopicIds, ...clientTopicIds]));
+        topicsParam = mergedTopicIds.join(",");
+
+        const dbInterests = [dbPrefs.work, dbPrefs.interests, dbPrefs.goal].filter(Boolean).join(", ");
+        rawInterests = [dbInterests, rawInterests].filter(Boolean).join(", ");
+
+        const dbSearches = Array.isArray(dbPrefs.recentSearches) ? dbPrefs.recentSearches : [];
+        const clientSearches = String(params.searches || "").split(",").map((s) => s.trim()).filter(Boolean);
+        recentSearches = Array.from(new Set([...dbSearches, ...clientSearches]));
       }
     } catch (e) {
       console.warn("[TREND-FEED] Could not load DB preferences:", e.message);
@@ -919,21 +905,24 @@ export async function getTrendFeedPage(params = {}, options = {}) {
             (post.source_platform === "google_trends" || post.content_type === "trend_query") &&
             (targetRegionUpper === "GLOBAL" || isMatchingRegion);
 
-          // Prioritize user's own uploads at top, followed by country pulses and searched/tuned matches!
+          // Prioritize user's own uploads at top, followed by user's searched, tuned, and interest topics!
           let rankScore;
           if (isUserOwn) {
             rankScore = 200000000 + score;
           } else if (search) {
             const relScore = calculateRelevance(post, search);
             rankScore = (relScore * 1000000) + score;
-          } else if (isCountryPulse) {
-            rankScore = 95000000 + score;
           } else if (isSearchedMatch) {
             const regMultiplier = isMatchingRegion ? 1.4 : 1.0;
-            rankScore = (80000000 * regMultiplier) + (score * 800) + matches * 25000;
+            rankScore = (90000000 * regMultiplier) + (score * 800) + matches * 25000;
           } else if (isTunedMatch) {
             const regMultiplier = isMatchingRegion ? 1.4 : 1.0;
-            rankScore = (60000000 * regMultiplier) + (score * 500) + matches * 10000;
+            rankScore = (80000000 * regMultiplier) + (score * 500) + matches * 10000;
+          } else if (hasDirectTopic || matches > 0) {
+            const regMultiplier = isMatchingRegion ? 1.4 : 1.0;
+            rankScore = (70000000 * regMultiplier) + (score * 500) + matches * 10000;
+          } else if (isCountryPulse) {
+            rankScore = 30000000 + score;
           } else if (isSocialpilot) {
             rankScore = 20000000 + score;
           } else {
@@ -995,6 +984,8 @@ export async function getTrendFeedPage(params = {}, options = {}) {
       return dedupePostsByCanonicalKey(result);
     }
 
+    const isPersonalized = allTopicDefs.length > 0;
+
     // 1. User's own uploads directly at the very top!
     const userOwnPosts = posts.filter((p) => p.is_user_post);
     for (const post of userOwnPosts) {
@@ -1004,8 +995,8 @@ export async function getTrendFeedPage(params = {}, options = {}) {
       }
     }
 
-    // 2. On Page 1, prominently showcase country breaking trends (Google Trends & Country-trending YouTube pulses)
-    if (pageNumber === 1) {
+    // 2. On Page 1, showcase country breaking trends ONLY if feed is NOT personalized to user's topics
+    if (pageNumber === 1 && !isPersonalized) {
       const countryPulsePosts = posts.filter(
         (p) =>
           !p.is_user_post &&
@@ -1023,10 +1014,10 @@ export async function getTrendFeedPage(params = {}, options = {}) {
       }
     }
 
-    // 3. Place explicit user-searched and tuned keyword posts (capped on page 1 so country trends are visible)
-    const priorityPosts = posts.filter((p) => !p.is_user_post && p.rank_score >= 50000000 && !isSeen(p));
+    // 3. Place explicit user-searched, tuned keyword, and onboarding topic posts
+    const priorityPosts = posts.filter((p) => !p.is_user_post && p.rank_score >= 70000000 && !isSeen(p));
     priorityPosts.sort((a, b) => (b.rank_score || 0) - (a.rank_score || 0));
-    const priorityCap = pageNumber === 1 ? 6 : targetLimit;
+    const priorityCap = pageNumber === 1 && allTopicDefs.length > 1 ? 6 : targetLimit;
     let priCount = 0;
     for (const post of priorityPosts) {
       if (result.length < targetLimit && priCount < priorityCap && !isSeen(post)) {
@@ -1036,8 +1027,14 @@ export async function getTrendFeedPage(params = {}, options = {}) {
       }
     }
 
-    // 4. Community sparks: cap at 2 on page 1 so they never drown out user's topics
-    const communityPosts = posts.filter((p) => p.source_platform === "socialpilot" && !p.is_user_post && !isSeen(p));
+    // 4. Community sparks: only include if they match the user's topics or if feed is not personalized
+    const communityPosts = posts.filter(
+      (p) =>
+        p.source_platform === "socialpilot" &&
+        !p.is_user_post &&
+        (!isPersonalized || (p.interest_match_count && p.interest_match_count > 0)) &&
+        !isSeen(p)
+    );
     communityPosts.sort((a, b) => (b.rank_score || 0) - (a.rank_score || 0));
     const communityCap = pageNumber === 1 ? 2 : 1;
     let commCount = 0;
@@ -1053,10 +1050,9 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     if (remainingLimit <= 0) return dedupePostsByCanonicalKey(result);
 
     const nonCommunityPosts = posts.filter((p) => p.source_platform !== "socialpilot" && !p.is_user_post);
-    const isPersonalized = targetTopics.length > 0 || searchTopicObjects.length > 0;
 
     // When personalized with multiple topics, interleave across topics for balanced representation
-    if (isPersonalized && allTopicDefs.length > 1) {
+    if (isPersonalized && allTopicDefs.length > 0) {
       const topicBuckets = new Map();
       const otherPosts = [];
 

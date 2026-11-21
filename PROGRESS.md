@@ -1,3 +1,8 @@
+## 2026-11-21 — "All Topics" feed strictly personalized to each user's search & interest topics
+- Root cause: Personalized feeds me Page 1 par generic country pulses (cricket, bhajans, popular videos) top 3 slots le rahe the aur community test posts slots 4-5 occupy kar rahe the, jisse alag-alag accounts me All Topics feed same lag rahi thi aur topic matches ka score 250k tha jo generic 95M pulses se dab jata tha.
+- User-specific topic leadership: Personalized feeds me generic country pulses aur unrelated community posts suppress kiye; user ke searched (90M), tuned (80M) aur onboarding (70M) topic matches ko top priority di.
+- Multi-topic coverage on Page 1: Page 1 par up to 5 user topics ke YouTube Shorts/Trends aur Pinterest pins fetch kiye aur topic buckets ke through round-robin distribute kiye taaki har account me feed 100% usi user ke interests ke hisab se aaye.
+
 ## 2026-11-21 — Immediate real-time search execution without page refresh
 - Real-time search update: Search submit (Enter key, search button click, trending ticker click, rail pill click) now directly invokes `handleExecuteSearch` which updates `debouncedSearchRef.current` and triggers `loadPage({ reset: true, overrideSearch })` synchronously, eliminating the need to refresh the page.
 - Debounce conflict eliminated: Removed 350ms typing auto-debounce so typing full words doesn't create race conditions or bail-out no-ops in React; added `handleClearSearch` for instant reset on clear/empty input.
