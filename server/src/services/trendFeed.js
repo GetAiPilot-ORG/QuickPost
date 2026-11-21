@@ -363,48 +363,66 @@ async function fetchLiveExternalPosts({
         });
       });
 
-      // On Page 1, if user has searched topics or tuned topics, fetch YouTube shorts and videos FOR THOSE SEARCHED TOPICS!
+      // On Page 1, fetch country trending pulses (Google Trends + country viral Shorts + mostPopular videos)
       const leadSearchedTopic = searchTopicObjects[0] || tunedTopics[0] || null;
       if (page === 1 && (type === "all" || type === "searches")) {
         promises.push(
           fetchGoogleTrends({ geo: region, page: 1 })
-            .then((items) => (Array.isArray(items) ? items.slice(0, 2) : []))
+            .then((items) => (Array.isArray(items) ? items.slice(0, 3) : []))
             .catch(() => [])
         );
       }
       if (page === 1 && (type === "all" || type === "shorts" || type === "videos")) {
-        const shortQ = leadSearchedTopic ? (leadSearchedTopic.searchQuery || leadSearchedTopic.label) : (topicsPool[0]?.searchQuery || "");
+        // 1. Regional trending shorts for selected country
         promises.push(
-          fetchYouTubeShorts({ region, category: "all", query: shortQ, maxResults: 15, page: 1 })
-            .then((shorts) =>
-              Array.isArray(shorts) && leadSearchedTopic
-                ? shorts.map((s) => ({
-                    ...s,
-                    matched_topic: leadSearchedTopic.label,
-                    interest_topic: leadSearchedTopic.id,
-                    topic_emoji: leadSearchedTopic.emoji || "🔍",
-                  }))
-                : (shorts || [])
-            )
+          fetchYouTubeShorts({ region, category: "all", query: "", maxResults: 10, page: 1 })
+            .then((shorts) => (Array.isArray(shorts) ? shorts.slice(0, 4) : []))
             .catch(() => [])
         );
+        // 2. Topic shorts if user has searched/tuned topic
+        const shortQ = leadSearchedTopic ? (leadSearchedTopic.searchQuery || leadSearchedTopic.label) : (topicsPool[0]?.searchQuery || "");
+        if (shortQ) {
+          promises.push(
+            fetchYouTubeShorts({ region, category: "all", query: shortQ, maxResults: 15, page: 1 })
+              .then((shorts) =>
+                Array.isArray(shorts) && leadSearchedTopic
+                  ? shorts.map((s) => ({
+                      ...s,
+                      matched_topic: leadSearchedTopic.label,
+                      interest_topic: leadSearchedTopic.id,
+                      topic_emoji: leadSearchedTopic.emoji || "🔍",
+                    }))
+                  : (shorts || [])
+              )
+              .catch(() => [])
+          );
+        }
       }
       if (page === 1 && (type === "all" || type === "videos")) {
-        const vidQ = leadSearchedTopic ? (leadSearchedTopic.searchQuery || leadSearchedTopic.label) : (topicsPool[0]?.searchQuery || "");
+        // 1. Country trending YouTube videos (official mostPopular chart for this region)
         promises.push(
-          fetchYouTubeTrends({ region, category: "all", query: vidQ, maxResults: 10, page: 1 })
-            .then((videos) =>
-              Array.isArray(videos) && leadSearchedTopic
-                ? videos.map((v) => ({
-                    ...v,
-                    matched_topic: leadSearchedTopic.label,
-                    interest_topic: leadSearchedTopic.id,
-                    topic_emoji: leadSearchedTopic.emoji || "🔍",
-                  }))
-                : (videos || [])
-            )
+          fetchYouTubeTrends({ region, category: "all", maxResults: 10, page: 1 })
+            .then((videos) => (Array.isArray(videos) ? videos.slice(0, 4) : []))
             .catch(() => [])
         );
+        // 2. Topic videos if user has searched/tuned topic
+        const vidQ = leadSearchedTopic ? (leadSearchedTopic.searchQuery || leadSearchedTopic.label) : (topicsPool[0]?.searchQuery || "");
+        if (vidQ) {
+          promises.push(
+            fetchYouTubeTrends({ region, category: "all", query: vidQ, maxResults: 10, page: 1 })
+              .then((videos) =>
+                Array.isArray(videos) && leadSearchedTopic
+                  ? videos.map((v) => ({
+                      ...v,
+                      matched_topic: leadSearchedTopic.label,
+                      interest_topic: leadSearchedTopic.id,
+                      topic_emoji: leadSearchedTopic.emoji || "🔍",
+                    }))
+                  : (videos || [])
+              )
+              .catch(() => [])
+          );
+        }
       }
 
       const startIndex = ((page - 1) * 3) % topicsPool.length;
@@ -716,6 +734,16 @@ export async function getTrendFeedPage(params = {}, options = {}) {
       if (!uniqueMap.has(r.id)) uniqueMap.set(r.id, r);
     }
     dbRows = Array.from(uniqueMap.values()).map(communityFeedPost);
+    // If a specific non-Indian country was chosen (e.g. US, GB, CA, AU), do not let ingested Indian YouTube posts drown out live items
+    const targetRegionUpper = String(region || "IN").toUpperCase();
+    if (targetRegionUpper !== "IN" && targetRegionUpper !== "GLOBAL") {
+      dbRows = dbRows.filter((p) => {
+        if (p.source_platform === "socialpilot") return true;
+        if (p.region === targetRegionUpper || p.country === targetRegionUpper) return true;
+        if (Array.isArray(p.niche_tags) && p.niche_tags.includes(`region:${targetRegionUpper}`)) return true;
+        return false;
+      });
+    }
   } catch (err) {
     console.warn("[TREND-FEED] DB query notice:", err?.message);
   }
@@ -860,21 +888,36 @@ export async function getTrendFeedPage(params = {}, options = {}) {
               return textHaystack.includes(cleanTerm);
             });
 
-          // Prioritize user's own uploads at top, followed by searched topic matches and user tuned keywords!
+          const targetRegionUpper = String(region || "IN").toUpperCase();
+          const isMatchingRegion =
+            post.region === targetRegionUpper ||
+            post.country === targetRegionUpper ||
+            (Array.isArray(post.niche_tags) && post.niche_tags.includes(`region:${targetRegionUpper}`));
+
+          const isCountryPulse =
+            (post.source_platform === "google_trends" || post.content_type === "trend_query") &&
+            (targetRegionUpper === "GLOBAL" || isMatchingRegion);
+
+          // Prioritize user's own uploads at top, followed by country pulses and searched/tuned matches!
           let rankScore;
           if (isUserOwn) {
             rankScore = 200000000 + score;
           } else if (search) {
             const relScore = calculateRelevance(post, search);
             rankScore = (relScore * 1000000) + score;
+          } else if (isCountryPulse) {
+            rankScore = 95000000 + score;
           } else if (isSearchedMatch) {
-            rankScore = 80000000 + (score * 800) + matches * 25000;
+            const regMultiplier = isMatchingRegion ? 1.4 : 1.0;
+            rankScore = (80000000 * regMultiplier) + (score * 800) + matches * 25000;
           } else if (isTunedMatch) {
-            rankScore = 60000000 + (score * 500) + matches * 10000;
+            const regMultiplier = isMatchingRegion ? 1.4 : 1.0;
+            rankScore = (60000000 * regMultiplier) + (score * 500) + matches * 10000;
           } else if (isSocialpilot) {
             rankScore = 20000000 + score;
           } else {
-            rankScore = Number((score * topicBoost).toFixed(6));
+            const regMultiplier = isMatchingRegion ? 2.5 : 1.0;
+            rankScore = Number((score * topicBoost * regMultiplier).toFixed(6));
           }
 
           return {
@@ -884,6 +927,7 @@ export async function getTrendFeedPage(params = {}, options = {}) {
             topic_emoji: post.topic_emoji || matchResult.matchedTopic?.emoji || null,
             interest_match_count: matches,
             is_user_post: isUserOwn,
+            is_country_pulse: isCountryPulse,
             rank_score: rankScore,
           };
         })
@@ -897,6 +941,7 @@ export async function getTrendFeedPage(params = {}, options = {}) {
 
     const result = [];
     const seenIds = new Set();
+    const targetRegionUpper = String(region || "IN").toUpperCase();
 
     // When searching, strictly preserve relevance ranking!
     if (search) {
@@ -922,18 +967,40 @@ export async function getTrendFeedPage(params = {}, options = {}) {
       }
     }
 
-    // 2. Place explicit user-searched and tuned keyword posts (rank_score >= 50000000) immediately next
-    const priorityPosts = posts.filter((p) => !p.is_user_post && p.rank_score >= 50000000);
-    priorityPosts.sort((a, b) => (b.rank_score || 0) - (a.rank_score || 0));
-    for (const post of priorityPosts) {
-      if (result.length < targetLimit && !seenIds.has(post.id)) {
-        result.push(post);
-        seenIds.add(post.id);
+    // 2. On Page 1, prominently showcase country breaking trends (Google Trends & Country-trending YouTube pulses)
+    if (pageNumber === 1) {
+      const countryPulsePosts = posts.filter(
+        (p) =>
+          !p.is_user_post &&
+          (p.source_platform === "google_trends" ||
+            p.content_type === "trend_query" ||
+            p.is_country_pulse ||
+            ((p.region === targetRegionUpper || p.country === targetRegionUpper) && (p.source_platform === "youtube" && !p.interest_topic)))
+      );
+      countryPulsePosts.sort((a, b) => (b.rank_score || 0) - (a.rank_score || 0));
+      for (const post of countryPulsePosts.slice(0, 3)) {
+        if (result.length < targetLimit && !seenIds.has(post.id)) {
+          result.push(post);
+          seenIds.add(post.id);
+        }
       }
     }
 
-    // 3. Community sparks: cap at 2 on page 1 so they never drown out user's topics
-    const communityPosts = posts.filter((p) => p.source_platform === "socialpilot" && !p.is_user_post);
+    // 3. Place explicit user-searched and tuned keyword posts (capped on page 1 so country trends are visible)
+    const priorityPosts = posts.filter((p) => !p.is_user_post && p.rank_score >= 50000000 && !seenIds.has(p.id));
+    priorityPosts.sort((a, b) => (b.rank_score || 0) - (a.rank_score || 0));
+    const priorityCap = pageNumber === 1 ? 6 : targetLimit;
+    let priCount = 0;
+    for (const post of priorityPosts) {
+      if (result.length < targetLimit && priCount < priorityCap && !seenIds.has(post.id)) {
+        result.push(post);
+        seenIds.add(post.id);
+        priCount++;
+      }
+    }
+
+    // 4. Community sparks: cap at 2 on page 1 so they never drown out user's topics
+    const communityPosts = posts.filter((p) => p.source_platform === "socialpilot" && !p.is_user_post && !seenIds.has(p.id));
     communityPosts.sort((a, b) => (b.rank_score || 0) - (a.rank_score || 0));
     const communityCap = pageNumber === 1 ? 2 : 1;
     let commCount = 0;
@@ -942,19 +1009,6 @@ export async function getTrendFeedPage(params = {}, options = {}) {
         result.push(post);
         seenIds.add(post.id);
         commCount++;
-      }
-    }
-
-    // 4. On Page 1, prominently showcase country breaking trends (e.g. Google Trends / trending pulses)
-    if (pageNumber === 1) {
-      const countryPulsePosts = posts.filter(
-        (p) => !p.is_user_post && (p.source_platform === "google_trends" || p.content_type === "trend_query")
-      );
-      for (const post of countryPulsePosts.slice(0, 2)) {
-        if (result.length < targetLimit && !seenIds.has(post.id)) {
-          result.push(post);
-          seenIds.add(post.id);
-        }
       }
     }
 
@@ -1154,9 +1208,11 @@ export async function getTrendFeedPage(params = {}, options = {}) {
 }
 
 // Hot topics radar (using authentic Google Trends)
-export async function getHotTopicsRadar({ geo = "IN" } = {}) {
+export async function getHotTopicsRadar({ geo = "IN", region } = {}) {
+  const targetGeo = String(region || geo || "IN").trim().toUpperCase();
+  const effectiveGeo = targetGeo === "GLOBAL" ? "US" : targetGeo;
   try {
-    const googleTrends = await fetchGoogleTrends({ geo, page: 1 }).catch(() => []);
+    const googleTrends = await fetchGoogleTrends({ geo: effectiveGeo, page: 1 }).catch(() => []);
     const topics = [];
 
     // Map Google Trends
@@ -1166,7 +1222,7 @@ export async function getHotTopicsRadar({ geo = "IN" } = {}) {
         volume: t.metrics?.searchVolume || "200K+",
         related: t.related_queries || [],
         url: t.source_url,
-        source: "Google Trends",
+        source: `Google Trends (${targetGeo})`,
       });
     }
 
@@ -1177,42 +1233,66 @@ export async function getHotTopicsRadar({ geo = "IN" } = {}) {
       };
     }
 
-    const isIndia = String(geo || "IN").toUpperCase() === "IN";
+    const HOT_TOPICS_BY_REGION = {
+      IN: [
+        { query: "IPL & Cricket", volume: "2M+", source: "India Trends" },
+        { query: "AI in India", volume: "1M+", source: "India Tech" },
+        { query: "Bollywood & Music", volume: "800K+", source: "India Entertainment" },
+        { query: "Indian Startups & SaaS", volume: "500K+", source: "India Business" },
+        { query: "Viral Reels India", volume: "650K+", source: "India Creators" },
+      ],
+      US: [
+        { query: "Super Bowl & NFL Highlights", volume: "3.5M+", source: "US Sports" },
+        { query: "Silicon Valley AI Models", volume: "2M+", source: "US Tech" },
+        { query: "Hollywood & Box Office", volume: "1.2M+", source: "US Entertainment" },
+        { query: "Wall Street Market Surge", volume: "900K+", source: "US Finance" },
+        { query: "Viral TikTok & Reels USA", volume: "850K+", source: "US Creators" },
+      ],
+      GB: [
+        { query: "Premier League Matches", volume: "2M+", source: "UK Sports" },
+        { query: "BBC Breaking UK News", volume: "1.1M+", source: "UK News" },
+        { query: "London Tech Startups", volume: "600K+", source: "UK Tech" },
+        { query: "British Film & Arts", volume: "500K+", source: "UK Culture" },
+        { query: "Viral UK Creators", volume: "450K+", source: "UK Viral" },
+      ],
+      CA: [
+        { query: "NHL Hockey Tonight", volume: "1.5M+", source: "Canada Sports" },
+        { query: "Toronto & Vancouver Tech", volume: "700K+", source: "Canada Tech" },
+        { query: "Canadian Market News", volume: "500K+", source: "Canada Business" },
+        { query: "TIFF & Film Canada", volume: "400K+", source: "Canada Arts" },
+        { query: "Banff & Alberta Visuals", volume: "350K+", source: "Canada Travel" },
+      ],
+      AU: [
+        { query: "AFL & Australian Cricket", volume: "1.8M+", source: "Australia Sports" },
+        { query: "Sydney & Melbourne Tech", volume: "650K+", source: "Australia Tech" },
+        { query: "Australian Open Action", volume: "800K+", source: "Australia Tennis" },
+        { query: "Bondi & Coastal Lifestyle", volume: "400K+", source: "Australia Lifestyle" },
+        { query: "Reef & Wildlife Discoveries", volume: "350K+", source: "Australia Nature" },
+      ],
+      GLOBAL: [
+        { query: "Artificial Intelligence 2026", volume: "4M+", source: "Global Tech" },
+        { query: "SpaceX Starship Orbital", volume: "2.5M+", source: "Global Science" },
+        { query: "Global Creator Economy", volume: "1.2M+", source: "Global Creators" },
+        { query: "World Technology Summit", volume: "900K+", source: "Global Innovation" },
+        { query: "Viral Reels Strategy", volume: "750K+", source: "Global Viral" },
+      ],
+    };
+
+    const fallbackList = HOT_TOPICS_BY_REGION[targetGeo] || HOT_TOPICS_BY_REGION.GLOBAL;
     return {
       success: true,
-      hotTopics: isIndia
-        ? [
-            { query: "IPL & Cricket", volume: "2M+", source: "India Trends" },
-            { query: "AI in India", volume: "1M+", source: "India Tech" },
-            { query: "Bollywood & Music", volume: "800K+", source: "India Entertainment" },
-            { query: "Indian Startups & SaaS", volume: "500K+", source: "India Business" },
-            { query: "Viral Reels India", volume: "650K+", source: "India Creators" },
-          ]
-        : [
-            { query: "Artificial Intelligence", volume: "1M+", source: "Global" },
-            { query: "Social Media Growth", volume: "500K+", source: "Global" },
-            { query: "Viral Reels Strategy", volume: "350K+", source: "Global" },
-            { query: "AI Content Creation", volume: "250K+", source: "Global" },
-          ],
+      hotTopics: fallbackList,
     };
   } catch (err) {
-    const isIndia = String(geo || "IN").toUpperCase() === "IN";
+    const fallbackList = [
+      { query: "Artificial Intelligence", volume: "1M+", source: "Global" },
+      { query: "Social Media Growth", volume: "500K+", source: "Global" },
+      { query: "Viral Reels Strategy", volume: "350K+", source: "Global" },
+      { query: "AI Content Creation", volume: "250K+", source: "Global" },
+    ];
     return {
       success: true,
-      hotTopics: isIndia
-        ? [
-            { query: "IPL & Cricket", volume: "2M+", source: "India Trends" },
-            { query: "AI in India", volume: "1M+", source: "India Tech" },
-            { query: "Bollywood & Music", volume: "800K+", source: "India Entertainment" },
-            { query: "Indian Startups & SaaS", volume: "500K+", source: "India Business" },
-            { query: "Viral Reels India", volume: "650K+", source: "India Creators" },
-          ]
-        : [
-            { query: "Artificial Intelligence", volume: "1M+", source: "Global" },
-            { query: "Social Media Growth", volume: "500K+", source: "Global" },
-            { query: "Viral Reels Strategy", volume: "350K+", source: "Global" },
-            { query: "AI Content Creation", volume: "250K+", source: "Global" },
-          ],
+      hotTopics: fallbackList,
     };
   }
 }

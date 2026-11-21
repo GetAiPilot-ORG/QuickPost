@@ -1,3 +1,8 @@
+## 2026-11-21 — Made Country Filter truly workable with distinct regional feeds & ticker
+- Multi-source region targeting: YouTube Shorts (`searchQuery` me country name add kiya like `shorts India` / `shorts USA`), YouTube Data API (`chart: mostPopular`, `regionCode`), Google Trends (`geo`), News (GNews/NewsAPI country param), Pinterest, Pexels, aur Unsplash sabhi me selected region enforce kiya.
+- Regional ranking & DB isolation: Non-Indian region select hone par DB ke old Indian videos ko US/GB/CA/AU feed me dilute hone se roka, Page 1 par country pulses (Google Trends + country viral shorts/videos) ko top showcase kiya, aur priority search matches ko 6 tak cap kiya taaki country trends dominate karein.
+- Client race-condition & request ID fix: `loadRequestIdRef` add kiya taaki country switch karte hi previous in-flight requests discard ho jayein aur immediate reset ke sath distinct regional content load ho.
+
 ## 2026-11-21 — Stop auto-adding partial search fragments, enforce explicit search submission & remove Bluesky
 - Stopped partial word auto-add: Removed debounce-triggered topic registration so typing never creates fragment badges ('sp', 'spidrm', 'spiderma'); topics only register when user presses Enter or clicks Search on a full word.
 - Fragment pruning & DB sanitization: Added `sanitizeRecentSearchesList` to prune all substring and typo fragments, keeping only complete words in DB, metadata, and topic rails.

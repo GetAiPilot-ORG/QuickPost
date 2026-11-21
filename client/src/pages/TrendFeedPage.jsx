@@ -2059,6 +2059,7 @@ export default function TrendFeedPage() {
   const pageRef = useRef(1);
   const cursorRef = useRef(null);
   const seenRef = useRef(new Set());
+  const loadRequestIdRef = useRef(0);
 
   // Stable refs to eliminate infinite re-render loops in loadPage and effects
   const recentDbSearchesRef = useRef(recentDbSearches);
@@ -2317,7 +2318,7 @@ export default function TrendFeedPage() {
     try {
       const geo = geoParam || selectedRegionRef.current || "IN";
       const { data } = await apiClient.get("/api/trends/hot-topics", {
-        params: { geo },
+        params: { geo, region: geo },
       });
       if (data.success && Array.isArray(data.hotTopics)) {
         setHotTopics(data.hotTopics);
@@ -2353,7 +2354,9 @@ export default function TrendFeedPage() {
       overrideMode = null,
       overrideRegion = null,
     } = {}) => {
-      if (loadingRef.current || (!reset && exhaustedRef.current)) return;
+      const currentRequestId = ++loadRequestIdRef.current;
+      if (!reset && loadingRef.current) return;
+      if (!reset && exhaustedRef.current) return;
       if (reset) {
         exhaustedRef.current = false;
         setItems([]);
@@ -2414,6 +2417,11 @@ export default function TrendFeedPage() {
 
         const { data } = await apiClient.get("/api/trends/feed", { params });
 
+        if (currentRequestId !== loadRequestIdRef.current) {
+          // Stale request discarded (e.g. user switched country or tab while previous request was in flight)
+          return;
+        }
+
         const nextItems = data.items || [];
         rememberSeen(nextItems);
 
@@ -2438,10 +2446,13 @@ export default function TrendFeedPage() {
         pageRef.current = targetPage + 1;
         setInitialLoaded(true);
       } catch (err) {
+        if (currentRequestId !== loadRequestIdRef.current) return;
         setError(err.response?.data?.error || err.message || "Failed to load trend sparks.");
       } finally {
-        loadingRef.current = false;
-        setLoading(false);
+        if (currentRequestId === loadRequestIdRef.current) {
+          loadingRef.current = false;
+          setLoading(false);
+        }
       }
     },
     [rememberSeen]
