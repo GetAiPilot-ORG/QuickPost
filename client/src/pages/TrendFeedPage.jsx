@@ -2113,14 +2113,6 @@ export default function TrendFeedPage() {
   feedModeRef.current = feedMode;
   const loadPageRef = useRef(null);
 
-  // Debounce search input
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(searchQuery.trim());
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
   // Reset all state when active user identity changes (Guarantees 100% user isolation)
   useEffect(() => {
     if (activeUserKeyRef.current !== userKey) {
@@ -2404,6 +2396,7 @@ export default function TrendFeedPage() {
       overrideTopic = undefined,
       overrideMode = null,
       overrideRegion = null,
+      overrideSearch = undefined,
     } = {}) => {
       if (authLoading) return;
       const currentRequestId = ++loadRequestIdRef.current;
@@ -2426,7 +2419,8 @@ export default function TrendFeedPage() {
       const activeFormat = selectedFormatRef.current;
       const activeNiche = selectedNicheRef.current;
       const activeRegion = overrideRegion || selectedRegionRef.current || "IN";
-      const activeSearch = debouncedSearchRef.current;
+      const activeSearch = overrideSearch !== undefined ? overrideSearch : debouncedSearchRef.current;
+      debouncedSearchRef.current = activeSearch;
 
       try {
         const topicIds = activeProfile?.selectedTopicIds || selectedTopicIdsRef.current || [];
@@ -2508,7 +2502,68 @@ export default function TrendFeedPage() {
   );
   loadPageRef.current = loadPage;
 
-  // Trigger reload on filter changes
+  // Immediate search execution (real-time live feed update without requiring manual page refresh)
+  const handleExecuteSearch = useCallback(
+    (rawTerm) => {
+      const term = String(rawTerm || "").trim().replace(/^#/, "");
+      if (!term || term.length < 2) return;
+      setSearchQuery(term);
+      setDebouncedSearch(term);
+      debouncedSearchRef.current = term;
+      setSelectedTopicFilter(null);
+      selectedTopicFilterRef.current = null;
+      pageRef.current = 1;
+      cursorRef.current = null;
+      seenRef.current = new Set();
+      setItems([]);
+      registerSearchTopic(term);
+      loadPage({ reset: true, overrideSearch: term, overrideTopic: null });
+    },
+    [registerSearchTopic, loadPage]
+  );
+
+  // Clear active search and return immediately to normal/personalized feed
+  const handleClearSearch = useCallback(() => {
+    setSearchQuery("");
+    setDebouncedSearch("");
+    debouncedSearchRef.current = "";
+    setSelectedTopicFilter(null);
+    selectedTopicFilterRef.current = null;
+    pageRef.current = 1;
+    cursorRef.current = null;
+    seenRef.current = new Set();
+    setItems([]);
+    loadPage({ reset: true, overrideSearch: "", overrideTopic: null });
+  }, [loadPage]);
+
+  // Remove a searched topic from rail, DB, and state
+  const handleRemoveSearchedTopic = useCallback(
+    (term) => {
+      setRecentDbSearches((prev) => prev.filter((q) => q.toLowerCase() !== term.toLowerCase()));
+      setProfile((prev) => {
+        const list = prev?.interests ? prev.interests.split(",").map((s) => s.trim()).filter(Boolean) : [];
+        const nextInterests = list.filter((s) => s.toLowerCase() !== term.toLowerCase()).join(", ");
+        try {
+          const stored = JSON.parse(localStorage.getItem(profileStorageKey) || "{}");
+          stored.interests = nextInterests;
+          localStorage.setItem(profileStorageKey, JSON.stringify(stored));
+        } catch { }
+        return { ...prev, interests: nextInterests };
+      });
+      setDraftProfile((prev) => {
+        const list = prev?.interests ? prev.interests.split(",").map((s) => s.trim()).filter(Boolean) : [];
+        const nextInterests = list.filter((s) => s.toLowerCase() !== term.toLowerCase()).join(", ");
+        return { ...prev, interests: nextInterests };
+      });
+      apiClient.delete("/api/trends/search-history", { data: { query: term } }).catch(() => { });
+      if (debouncedSearchRef.current.toLowerCase() === term.toLowerCase()) {
+        handleClearSearch();
+      }
+    },
+    [profileStorageKey, handleClearSearch]
+  );
+
+  // Trigger reload on filter changes (format, category niche, country region, feed mode)
   useEffect(() => {
     if (authLoading) return;
     pageRef.current = 1;
@@ -2519,8 +2574,6 @@ export default function TrendFeedPage() {
     selectedFormat,
     selectedNiche,
     selectedRegion,
-    debouncedSearch,
-    selectedTopicFilter,
     feedMode,
     loadPage,
   ]);
@@ -2701,14 +2754,7 @@ export default function TrendFeedPage() {
         <div className="relative w-36 sm:w-52 md:w-64">
           <button
             type="button"
-            onClick={() => {
-              const term = searchQuery.trim().replace(/^#/, "");
-              if (term && term.length >= 2) {
-                setDebouncedSearch(term);
-                setSelectedTopicFilter(null);
-                registerSearchTopic(term);
-              }
-            }}
+            onClick={() => handleExecuteSearch(searchQuery)}
             className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors cursor-pointer"
             title="Search topic"
           >
@@ -2717,16 +2763,17 @@ export default function TrendFeedPage() {
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              const val = e.target.value;
+              setSearchQuery(val);
+              if (!val.trim() && debouncedSearchRef.current) {
+                handleClearSearch();
+              }
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
-                const term = searchQuery.trim().replace(/^#/, "");
-                if (term && term.length >= 2) {
-                  setDebouncedSearch(term);
-                  setSelectedTopicFilter(null);
-                  registerSearchTopic(term);
-                }
+                handleExecuteSearch(searchQuery);
               }
             }}
             placeholder="Search topics, creators, hooks..."
@@ -2734,10 +2781,8 @@ export default function TrendFeedPage() {
           />
           {searchQuery && (
             <button
-              onClick={() => {
-                setSearchQuery("");
-                setDebouncedSearch("");
-              }}
+              type="button"
+              onClick={handleClearSearch}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 p-0.5 cursor-pointer"
               title="Clear search"
             >
@@ -2925,23 +2970,21 @@ export default function TrendFeedPage() {
                 {/* ONLY Trending Hashtags Scrollable */}
                 <div className="flex items-center gap-1 overflow-x-auto no-scrollbar flex-1 py-0.5">
                   {hotTopics.map((topic, idx) => {
-                    const isCurrent = searchQuery.toLowerCase() === topic.query.toLowerCase();
+                    const isCurrent = (debouncedSearch || searchQuery).toLowerCase() === topic.query.toLowerCase();
                     return (
                       <button
                         key={idx}
+                        type="button"
                         onClick={() => {
                           if (isCurrent) {
-                            setSearchQuery("");
-                            setDebouncedSearch("");
+                            handleClearSearch();
                           } else {
                             setSelectedNiche("all");
-                            setSelectedTopicFilter(null);
-                            setSearchQuery(topic.query);
-                            setDebouncedSearch(topic.query);
-                            registerSearchTopic(topic.query);
+                            selectedNicheRef.current = "all";
+                            handleExecuteSearch(topic.query);
                           }
                         }}
-                        className={`h-6.5 px-2.5 rounded-full text-[11px] whitespace-nowrap transition-all border flex items-center gap-1 flex-shrink-0 ${isCurrent
+                        className={`h-6.5 px-2.5 rounded-full text-[11px] whitespace-nowrap transition-all border flex items-center gap-1 flex-shrink-0 cursor-pointer ${isCurrent
                           ? "bg-amber-500 text-white border-amber-500 font-bold shadow-xs"
                           : "bg-black/[0.02] dark:bg-white/[0.03] border-black/[0.06] dark:border-white/[0.08] text-neutral-600 dark:text-neutral-300 hover:border-amber-500/50 hover:text-amber-600 dark:hover:text-amber-400"
                           }`}
@@ -2971,10 +3014,7 @@ export default function TrendFeedPage() {
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  setSearchQuery("");
-                  setDebouncedSearch("");
-                }}
+                onClick={handleClearSearch}
                 className="text-[11px] font-semibold text-sky-700 dark:text-sky-300 hover:underline px-1.5 py-0.5 transition-colors flex-shrink-0 cursor-pointer"
               >
                 Clear
@@ -2992,9 +3032,15 @@ export default function TrendFeedPage() {
                 type="button"
                 onClick={() => {
                   setSelectedTopicFilter(null);
-                  if (debouncedSearch) {
-                    setSearchQuery("");
-                    setDebouncedSearch("");
+                  selectedTopicFilterRef.current = null;
+                  if (debouncedSearchRef.current) {
+                    handleClearSearch();
+                  } else {
+                    pageRef.current = 1;
+                    cursorRef.current = null;
+                    seenRef.current = new Set();
+                    setItems([]);
+                    loadPage({ reset: true, overrideTopic: null, overrideSearch: "" });
                   }
                 }}
                 className={`h-7 px-3 rounded-lg text-xs font-semibold whitespace-nowrap transition-all inline-flex items-center gap-1.5 flex-shrink-0 cursor-pointer ${
@@ -3019,10 +3065,15 @@ export default function TrendFeedPage() {
                     onClick={() => {
                       const next = isSelected ? null : topicId;
                       setSelectedTopicFilter(next);
-                      if (debouncedSearch) {
-                        setSearchQuery("");
-                        setDebouncedSearch("");
-                      }
+                      selectedTopicFilterRef.current = next;
+                      setSearchQuery("");
+                      setDebouncedSearch("");
+                      debouncedSearchRef.current = "";
+                      pageRef.current = 1;
+                      cursorRef.current = null;
+                      seenRef.current = new Set();
+                      setItems([]);
+                      loadPage({ reset: true, overrideTopic: next, overrideSearch: "" });
                     }}
                     className={`h-7 px-2.5 sm:px-3 rounded-lg text-xs font-medium whitespace-nowrap transition-all inline-flex items-center gap-1.5 flex-shrink-0 border cursor-pointer ${
                       isSelected
@@ -3052,12 +3103,9 @@ export default function TrendFeedPage() {
                       type="button"
                       onClick={() => {
                         if (isCurrentSearch) {
-                          setSearchQuery("");
-                          setDebouncedSearch("");
+                          handleClearSearch();
                         } else {
-                          setSelectedTopicFilter(null);
-                          setSearchQuery(term);
-                          setDebouncedSearch(term);
+                          handleExecuteSearch(term);
                         }
                       }}
                       className="inline-flex items-center gap-1 cursor-pointer"
@@ -3069,27 +3117,7 @@ export default function TrendFeedPage() {
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setRecentDbSearches((prev) => prev.filter((q) => q !== term));
-                        setProfile((prev) => {
-                          const list = prev?.interests ? prev.interests.split(",").map((s) => s.trim()).filter(Boolean) : [];
-                          const nextInterests = list.filter((s) => s.toLowerCase() !== term.toLowerCase()).join(", ");
-                          try {
-                            const stored = JSON.parse(localStorage.getItem(profileStorageKey) || "{}");
-                            stored.interests = nextInterests;
-                            localStorage.setItem(profileStorageKey, JSON.stringify(stored));
-                          } catch { }
-                          return { ...prev, interests: nextInterests };
-                        });
-                        setDraftProfile((prev) => {
-                          const list = prev?.interests ? prev.interests.split(",").map((s) => s.trim()).filter(Boolean) : [];
-                          const nextInterests = list.filter((s) => s.toLowerCase() !== term.toLowerCase()).join(", ");
-                          return { ...prev, interests: nextInterests };
-                        });
-                        apiClient.delete("/api/trends/search-history", { data: { query: term } }).catch(() => { });
-                        if (debouncedSearch.toLowerCase() === term.toLowerCase()) {
-                          setSearchQuery("");
-                          setDebouncedSearch("");
-                        }
+                        handleRemoveSearchedTopic(term);
                       }}
                       className="p-0.5 hover:bg-black/10 dark:hover:bg-white/10 rounded-md transition-colors cursor-pointer text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
                       title={`Remove "${term}"`}

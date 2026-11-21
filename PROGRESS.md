@@ -1,3 +1,7 @@
+## 2026-11-21 — Immediate real-time search execution without page refresh
+- Real-time search update: Search submit (Enter key, search button click, trending ticker click, rail pill click) now directly invokes `handleExecuteSearch` which updates `debouncedSearchRef.current` and triggers `loadPage({ reset: true, overrideSearch })` synchronously, eliminating the need to refresh the page.
+- Debounce conflict eliminated: Removed 350ms typing auto-debounce so typing full words doesn't create race conditions or bail-out no-ops in React; added `handleClearSearch` for instant reset on clear/empty input.
+
 ## 2026-11-21 — Enforced 100% strict per-user isolation for interest topics and trend feeds
 - Root cause of mixing: Frontend state was transmitting client-side `params.topics`, `params.interests`, and `params.searches` during feed requests, causing stale/previous session localStorage to overwrite other users' preferences on the server; additionally `GET /trends/feed` was auto-mutating DB interests on search query.
 - Server isolation: For authenticated requests, `trendFeed.js` now reads topics, interests, and recent searches strictly and exclusively from that specific user's DB record (`getUserTrendPreferences`), completely rejecting client-injected query params; removed auto-recording from GET feed route.
