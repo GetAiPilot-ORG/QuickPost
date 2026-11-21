@@ -2556,6 +2556,25 @@ export default function TrendFeedPage() {
     loadPage({ reset: true, overrideSearch: "", overrideTopic: null });
   }, [loadPage]);
 
+  // Auto-execute search when user pauses typing (600ms debounce)
+  useEffect(() => {
+    const trimmed = String(searchQuery || "").trim().replace(/^#/, "");
+    if (!trimmed) {
+      if (debouncedSearchRef.current) {
+        handleClearSearch();
+      }
+      return;
+    }
+    if (trimmed.length < 2) return;
+    if (trimmed.toLowerCase() === debouncedSearchRef.current.toLowerCase()) return;
+
+    const timer = setTimeout(() => {
+      handleExecuteSearch(trimmed);
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, handleExecuteSearch, handleClearSearch]);
+
   // Remove a searched topic from rail, DB, and state
   const handleRemoveSearchedTopic = useCallback(
     (term) => {
@@ -3067,7 +3086,7 @@ export default function TrendFeedPage() {
         </div>
 
         {/* 2B. USER'S CURATED & SEARCHED TOPICS RAIL */}
-        {totalTopicsCount > 0 && (
+        {(totalTopicsCount > 0 || Boolean(debouncedSearch)) && (
           <div className="rounded-xl bg-white/95 dark:bg-[#161B22]/95 backdrop-blur-md border border-black/[0.07] dark:border-white/[0.08] shadow-xs px-2.5 sm:px-3 py-1.5 mb-2 sm:mb-2.5">
             <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
               {/* All Topics Combined Pill */}
@@ -3076,7 +3095,7 @@ export default function TrendFeedPage() {
                 onClick={() => {
                   setSelectedTopicFilter(null);
                   selectedTopicFilterRef.current = null;
-                  if (debouncedSearchRef.current) {
+                  if (debouncedSearchRef.current || searchQuery) {
                     handleClearSearch();
                   } else {
                     pageRef.current = 1;
@@ -3093,7 +3112,7 @@ export default function TrendFeedPage() {
                 }`}
               >
                 <Sparkles size={11} className={selectedTopicFilter === null && !debouncedSearch ? "text-amber-400 fill-amber-400" : "text-neutral-400"} />
-                <span>All My Topics ({totalTopicsCount})</span>
+                <span>All My Topics {totalTopicsCount > 0 ? `(${totalTopicsCount})` : ""}</span>
               </button>
 
               {/* Selected Onboarding Topics */}

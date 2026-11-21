@@ -97,18 +97,20 @@ export function calculateRelevance(item, query) {
   // If query had keywords, verify match criteria
   if (keywords.length > 0) {
     // If not even a single keyword matched in text/title/author, reject!
-    if (matchedCount === 0) return 0;
+    if (matchedCount === 0 && !combined.includes(rawQuery)) return 0;
 
     // Multi-word query: at least 45% of terms must match to be considered relevant
     if (keywords.length > 1) {
       const matchRatio = matchedCount / keywords.length;
       const minRatio = (platform === 'pinterest' || platform === 'youtube') ? 0.3 : 0.45;
-      if (matchRatio < minRatio) return 0;
+      if (matchRatio < minRatio && !combined.includes(rawQuery)) return 0;
       score *= matchRatio;
     }
+  } else if (!combined.includes(rawQuery)) {
+    return 0;
   }
 
-  if (platform === 'pinterest' || platform === 'youtube') {
+  if (score > 0 && (platform === 'pinterest' || platform === 'youtube')) {
     // Verified search results get a solid baseline relevance score
     score = Math.max(score, 35);
   }

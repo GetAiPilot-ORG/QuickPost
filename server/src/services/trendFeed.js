@@ -12,6 +12,7 @@ import {
   filterAndRankPosts,
   calculateRelevance,
 } from "./trends/trendSources.js";
+import { extractKeywords } from "./trends/trendRelevance.js";
 import {
   resolveTargetTopics,
   calculateItemTopicMatch,
@@ -267,23 +268,51 @@ async function fetchLiveExternalPosts({
     const q = String(search).trim();
     if (type === "all" || type === "pinterest" || type === "visuals") {
       const pLimit = type === "pinterest" ? 40 : 25;
-      promises.push(fetchPinterestTrends({ category, query: q, limit: pLimit, page, token, region }));
+      promises.push(
+        fetchPinterestTrends({ category, query: q, limit: pLimit, page, token, region })
+          .then((pins) => (Array.isArray(pins) ? pins.map((p) => ({ ...p, matched_topic: q, topic_emoji: "🔍" })) : []))
+          .catch(() => [])
+      );
     }
     if (type === "all" || type === "shorts" || type === "videos") {
-      promises.push(fetchYouTubeShorts({ region, category, query: q, maxResults: 25, page }));
+      promises.push(
+        fetchYouTubeShorts({ region, category, query: q, maxResults: 25, page })
+          .then((shorts) => (Array.isArray(shorts) ? shorts.map((s) => ({ ...s, matched_topic: q, topic_emoji: "🔍" })) : []))
+          .catch(() => [])
+      );
     }
     if (type === "all" || type === "videos") {
-      promises.push(fetchYouTubeTrends({ region, category, query: q, maxResults: 25, page }));
-      promises.push(fetchPexelsTrends({ category, query: q, perPage: 25, page, region }));
+      promises.push(
+        fetchYouTubeTrends({ region, category, query: q, maxResults: 25, page })
+          .then((videos) => (Array.isArray(videos) ? videos.map((v) => ({ ...v, matched_topic: q, topic_emoji: "🔍" })) : []))
+          .catch(() => [])
+      );
+      promises.push(
+        fetchPexelsTrends({ category, query: q, perPage: 25, page, region })
+          .then((items) => (Array.isArray(items) ? items.map((i) => ({ ...i, matched_topic: q, topic_emoji: "🔍" })) : []))
+          .catch(() => [])
+      );
     }
     if (type === "all" || type === "visuals") {
-      promises.push(fetchUnsplashTrends({ category, query: q, perPage: 25, page, region }));
+      promises.push(
+        fetchUnsplashTrends({ category, query: q, perPage: 25, page, region })
+          .then((items) => (Array.isArray(items) ? items.map((i) => ({ ...i, matched_topic: q, topic_emoji: "🔍" })) : []))
+          .catch(() => [])
+      );
     }
     if (type === "all" || type === "news") {
-      promises.push(fetchTrendingNews({ category, region, query: q, page }));
+      promises.push(
+        fetchTrendingNews({ category, region, query: q, page })
+          .then((items) => (Array.isArray(items) ? items.map((i) => ({ ...i, matched_topic: q, topic_emoji: "🔍" })) : []))
+          .catch(() => [])
+      );
     }
     if (type === "searches") {
-      promises.push(fetchGoogleTrends({ geo: region, page }));
+      promises.push(
+        fetchGoogleTrends({ geo: region, page })
+          .then((items) => (Array.isArray(items) ? items.map((i) => ({ ...i, matched_topic: q, topic_emoji: "🔍" })) : []))
+          .catch(() => [])
+      );
     }
   }
   // Case 2: Specific category selected by user from category pills (e.g. Gaming, Tech & AI, Design & Art)
@@ -635,116 +664,147 @@ export async function getTrendFeedPage(params = {}, options = {}) {
   const region = params.region || params.geo || "IN";
   const search = (params.search || params.q || "").trim().toLowerCase();
 
-  const topicParam = params.topic || "";
-  let topicsParam = params.topics || "";
-  let rawInterests = params.interests || "";
+  const topicParam = search ? "" : (params.topic || "");
+  let topicsParam = search ? "" : (params.topics || "");
+  let rawInterests = search ? "" : (params.interests || "");
 
   // Auto-load preferences & recent search history strictly from database for authenticated user
   const userId = options.userId || params.userId || null;
   let recentSearches = [];
 
-  if (userId) {
-    try {
-      const dbPrefs = await getUserTrendPreferences(userId);
-      if (dbPrefs) {
-        // Merge DB saved topics with client-passed topics for this authenticated user
-        const dbTopicIds = Array.isArray(dbPrefs.selectedTopicIds) ? dbPrefs.selectedTopicIds : [];
-        const clientTopicIds = String(topicsParam || "").split(",").map((t) => t.trim()).filter(Boolean);
-        const mergedTopicIds = Array.from(new Set([...dbTopicIds, ...clientTopicIds]));
-        topicsParam = mergedTopicIds.join(",");
+  if (!search) {
+    if (userId) {
+      try {
+        const dbPrefs = await getUserTrendPreferences(userId);
+        if (dbPrefs) {
+          // Merge DB saved topics with client-passed topics for this authenticated user
+          const dbTopicIds = Array.isArray(dbPrefs.selectedTopicIds) ? dbPrefs.selectedTopicIds : [];
+          const clientTopicIds = String(topicsParam || "").split(",").map((t) => t.trim()).filter(Boolean);
+          const mergedTopicIds = Array.from(new Set([...dbTopicIds, ...clientTopicIds]));
+          topicsParam = mergedTopicIds.join(",");
 
-        const dbInterests = [dbPrefs.work, dbPrefs.interests, dbPrefs.goal].filter(Boolean).join(", ");
-        rawInterests = [dbInterests, rawInterests].filter(Boolean).join(", ");
+          const dbInterests = [dbPrefs.work, dbPrefs.interests, dbPrefs.goal].filter(Boolean).join(", ");
+          rawInterests = [dbInterests, rawInterests].filter(Boolean).join(", ");
 
-        const dbSearches = Array.isArray(dbPrefs.recentSearches) ? dbPrefs.recentSearches : [];
-        const clientSearches = String(params.searches || "").split(",").map((s) => s.trim()).filter(Boolean);
-        recentSearches = Array.from(new Set([...dbSearches, ...clientSearches]));
+          const dbSearches = Array.isArray(dbPrefs.recentSearches) ? dbPrefs.recentSearches : [];
+          const clientSearches = String(params.searches || "").split(",").map((s) => s.trim()).filter(Boolean);
+          recentSearches = Array.from(new Set([...dbSearches, ...clientSearches]));
+        }
+      } catch (e) {
+        console.warn("[TREND-FEED] Could not load DB preferences:", e.message);
       }
-    } catch (e) {
-      console.warn("[TREND-FEED] Could not load DB preferences:", e.message);
-    }
-  } else {
-    // Only unauthenticated/anonymous visitors use query parameters
-    const searchesParam = params.searches || null;
-    if (searchesParam) {
-      recentSearches = String(searchesParam)
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
+    } else {
+      // Only unauthenticated/anonymous visitors use query parameters
+      const searchesParam = params.searches || null;
+      if (searchesParam) {
+        recentSearches = String(searchesParam)
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
     }
   }
 
-  const {
-    targetTopics,
-    tunedTopics = [],
-    searchQueries,
-    keywords,
-    isFilteredToSingleTopic,
-    activeTopic,
-  } = resolveTargetTopics({
-    topics: topicsParam,
-    topic: topicParam,
-    interests: rawInterests,
-    recentSearches,
-  });
+  let targetTopics = [];
+  let tunedTopics = [];
+  let searchQueries = [];
+  let keywords = [];
+  let isFilteredToSingleTopic = false;
+  let activeTopic = null;
+  let searchTopicObjects = [];
+  let allTopicDefs = [];
+  let allKeywords = [];
 
-  // Build searchTopicObjects for searched topics (leads feed personalization)
-  const rawSearchTopicObjects = (recentSearches || [])
-    .map((q) => String(q || "").trim())
-    .filter((q) => q.replace(/^#/, "").trim().length > 1)
-    .map((q) => {
-      const cleanQ = q.replace(/^#/, "").trim();
-      const cleanLower = cleanQ.toLowerCase();
-      // Check if there is an existing registry topic definition for this search
-      const existingDef =
-        getTopicDefinition(cleanQ) ||
-        targetTopics.find(
-          (t) => t.label.toLowerCase() === cleanLower || t.id.toLowerCase() === cleanLower
-        );
-      if (existingDef) {
+  if (search) {
+    const searchKw = extractKeywords(search);
+    const searchTopicDef = {
+      id: `search_${search.replace(/[^a-z0-9]+/g, "_")}`,
+      label: search,
+      searchQuery: search,
+      pinterestQuery: search,
+      blueskyQuery: search,
+      keywords: searchKw,
+      subCategory: "all",
+      emoji: "🔍",
+      isSearchedTopic: true,
+    };
+    targetTopics = [searchTopicDef];
+    searchTopicObjects = [searchTopicDef];
+    allTopicDefs = [searchTopicDef];
+    allKeywords = searchKw;
+    searchQueries = [search];
+    keywords = searchKw;
+  } else {
+    const resolved = resolveTargetTopics({
+      topics: topicsParam,
+      topic: topicParam,
+      interests: rawInterests,
+      recentSearches,
+    });
+    targetTopics = resolved.targetTopics;
+    tunedTopics = resolved.tunedTopics || [];
+    searchQueries = resolved.searchQueries;
+    keywords = resolved.keywords;
+    isFilteredToSingleTopic = resolved.isFilteredToSingleTopic;
+    activeTopic = resolved.activeTopic;
+
+    // Build searchTopicObjects for searched topics (leads feed personalization)
+    const rawSearchTopicObjects = (recentSearches || [])
+      .map((q) => String(q || "").trim())
+      .filter((q) => q.replace(/^#/, "").trim().length > 1)
+      .map((q) => {
+        const cleanQ = q.replace(/^#/, "").trim();
+        const cleanLower = cleanQ.toLowerCase();
+        // Check if there is an existing registry topic definition for this search
+        const existingDef =
+          getTopicDefinition(cleanQ) ||
+          targetTopics.find(
+            (t) => t.label.toLowerCase() === cleanLower || t.id.toLowerCase() === cleanLower
+          );
+        if (existingDef) {
+          return {
+            ...existingDef,
+            isSearchedTopic: true,
+          };
+        }
         return {
-          ...existingDef,
+          id: `search_${cleanLower.replace(/[^a-z0-9]+/g, "_")}`,
+          label: cleanQ,
+          searchQuery: cleanQ,
+          pinterestQuery: cleanQ,
+          blueskyQuery: cleanQ,
+          keywords: cleanLower.split(/\s+/).filter((w) => w.length > 1),
+          subCategory: "all",
+          emoji: "🔍",
           isSearchedTopic: true,
         };
+      });
+
+    // Deduplicate searchTopicObjects
+    const seenSearchKeys = new Set();
+    for (const st of rawSearchTopicObjects) {
+      const k = (st.label || st.id).toLowerCase();
+      if (!seenSearchKeys.has(k)) {
+        seenSearchKeys.add(k);
+        searchTopicObjects.push(st);
       }
-      return {
-        id: `search_${cleanLower.replace(/[^a-z0-9]+/g, "_")}`,
-        label: cleanQ,
-        searchQuery: cleanQ,
-        pinterestQuery: cleanQ,
-        blueskyQuery: cleanQ,
-        keywords: cleanLower.split(/\s+/).filter((w) => w.length > 1),
-        subCategory: "all",
-        emoji: "🔍",
-        isSearchedTopic: true,
-      };
-    });
-
-  // Deduplicate searchTopicObjects
-  const searchTopicObjects = [];
-  const seenSearchKeys = new Set();
-  for (const st of rawSearchTopicObjects) {
-    const k = (st.label || st.id).toLowerCase();
-    if (!seenSearchKeys.has(k)) {
-      seenSearchKeys.add(k);
-      searchTopicObjects.push(st);
     }
-  }
 
-  const uniqueTopicDefs = [];
-  const seenTopicLabels = new Set();
-  const rawDefs = (isFilteredToSingleTopic && activeTopic)
-    ? [activeTopic]
-    : [...tunedTopics, ...searchTopicObjects, ...targetTopics];
-  for (const def of rawDefs) {
-    const key = (def.label || def.id || "").toLowerCase().trim();
-    if (key && !seenTopicLabels.has(key)) {
-      seenTopicLabels.add(key);
-      uniqueTopicDefs.push(def);
+    const uniqueTopicDefs = [];
+    const seenTopicLabels = new Set();
+    const rawDefs = (isFilteredToSingleTopic && activeTopic)
+      ? [activeTopic]
+      : [...tunedTopics, ...searchTopicObjects, ...targetTopics];
+    for (const def of rawDefs) {
+      const key = (def.label || def.id || "").toLowerCase().trim();
+      if (key && !seenTopicLabels.has(key)) {
+        seenTopicLabels.add(key);
+        uniqueTopicDefs.push(def);
+      }
     }
+    allTopicDefs = uniqueTopicDefs;
+    allKeywords = Array.from(new Set([...keywords, ...allTopicDefs.flatMap((s) => s.keywords || [])]));
   }
-  const allTopicDefs = uniqueTopicDefs;
-  const allKeywords = Array.from(new Set([...keywords, ...allTopicDefs.flatMap((s) => s.keywords || [])]));
 
   const decodedCursor = decodeTrendCursor(params.cursor);
   const pageNumber = Number(params.page || decodedCursor?.page || 1);
@@ -771,47 +831,61 @@ export async function getTrendFeedPage(params = {}, options = {}) {
 
   // 1. Fetch DB candidates
   let dbRows = [];
-  try {
-    // Explicitly query all recent SocialPilot community posts so they never get crowded out
-    const { data: spRows } = await supabase
-      .from("posts")
-      .select("id,source_platform,source_url,embed_html,thumbnail_url,caption,engagement_score,niche_tags,published_at,ingested_at,creator,creator_avatar_url,author_id,media_urls,media_type")
-      .eq("source_platform", "socialpilot")
-      .order("published_at", { ascending: false })
-      .limit(50);
-
-    let query = supabase
-      .from("posts")
-      .select("id,source_platform,source_url,embed_html,thumbnail_url,caption,engagement_score,niche_tags,published_at,ingested_at,creator,creator_avatar_url,author_id,media_urls,media_type")
-      .order("ingested_at", { ascending: false });
-
-    if (type === "social") {
-      query = query.in("source_platform", ["reddit", "socialpilot"]);
-    } else if (type === "videos" || type === "shorts") {
-      query = query.in("source_platform", ["youtube", "socialpilot"]);
-    } else if (type === "pinterest") {
-      query = query.eq("source_platform", "pinterest");
+  if (search) {
+    try {
+      const { data } = await supabase
+        .from("posts")
+        .select("id,source_platform,source_url,embed_html,thumbnail_url,caption,engagement_score,niche_tags,published_at,ingested_at,creator,creator_avatar_url,author_id,media_urls,media_type")
+        .ilike("caption", `%${search}%`)
+        .order("published_at", { ascending: false })
+        .limit(30);
+      dbRows = (data || []).map(communityFeedPost);
+    } catch (err) {
+      console.warn("[TREND-FEED] DB search query notice:", err?.message);
     }
+  } else {
+    try {
+      // Explicitly query all recent SocialPilot community posts so they never get crowded out
+      const { data: spRows } = await supabase
+        .from("posts")
+        .select("id,source_platform,source_url,embed_html,thumbnail_url,caption,engagement_score,niche_tags,published_at,ingested_at,creator,creator_avatar_url,author_id,media_urls,media_type")
+        .eq("source_platform", "socialpilot")
+        .order("published_at", { ascending: false })
+        .limit(50);
 
-    const { data, error } = await query.limit(CANDIDATE_LIMIT);
-    const combined = [...(spRows || []), ...(data || [])];
-    const uniqueMap = new Map();
-    for (const r of combined) {
-      if (!uniqueMap.has(r.id)) uniqueMap.set(r.id, r);
+      let query = supabase
+        .from("posts")
+        .select("id,source_platform,source_url,embed_html,thumbnail_url,caption,engagement_score,niche_tags,published_at,ingested_at,creator,creator_avatar_url,author_id,media_urls,media_type")
+        .order("ingested_at", { ascending: false });
+
+      if (type === "social") {
+        query = query.in("source_platform", ["reddit", "socialpilot"]);
+      } else if (type === "videos" || type === "shorts") {
+        query = query.in("source_platform", ["youtube", "socialpilot"]);
+      } else if (type === "pinterest") {
+        query = query.eq("source_platform", "pinterest");
+      }
+
+      const { data, error } = await query.limit(CANDIDATE_LIMIT);
+      const combined = [...(spRows || []), ...(data || [])];
+      const uniqueMap = new Map();
+      for (const r of combined) {
+        if (!uniqueMap.has(r.id)) uniqueMap.set(r.id, r);
+      }
+      dbRows = Array.from(uniqueMap.values()).map(communityFeedPost);
+      // If a specific non-Indian country was chosen (e.g. US, GB, CA, AU), do not let ingested Indian YouTube posts drown out live items
+      const targetRegionUpper = String(region || "IN").toUpperCase();
+      if (targetRegionUpper !== "IN" && targetRegionUpper !== "GLOBAL") {
+        dbRows = dbRows.filter((p) => {
+          if (p.source_platform === "socialpilot") return true;
+          if (p.region === targetRegionUpper || p.country === targetRegionUpper) return true;
+          if (Array.isArray(p.niche_tags) && p.niche_tags.includes(`region:${targetRegionUpper}`)) return true;
+          return false;
+        });
+      }
+    } catch (err) {
+      console.warn("[TREND-FEED] DB query notice:", err?.message);
     }
-    dbRows = Array.from(uniqueMap.values()).map(communityFeedPost);
-    // If a specific non-Indian country was chosen (e.g. US, GB, CA, AU), do not let ingested Indian YouTube posts drown out live items
-    const targetRegionUpper = String(region || "IN").toUpperCase();
-    if (targetRegionUpper !== "IN" && targetRegionUpper !== "GLOBAL") {
-      dbRows = dbRows.filter((p) => {
-        if (p.source_platform === "socialpilot") return true;
-        if (p.region === targetRegionUpper || p.country === targetRegionUpper) return true;
-        if (Array.isArray(p.niche_tags) && p.niche_tags.includes(`region:${targetRegionUpper}`)) return true;
-        return false;
-      });
-    }
-  } catch (err) {
-    console.warn("[TREND-FEED] DB query notice:", err?.message);
   }
 
   // 2. Fetch live external items for current page
@@ -846,9 +920,10 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     if (type === "pinterest") {
       // Retain direct live pins matching Pinterest's search results without artificial keyword dropping
       allCandidates = allCandidates.filter((item) => item.source_platform === "pinterest");
-    } else {
-      allCandidates = filterAndRankPosts(allCandidates, search);
     }
+    allCandidates = filterAndRankPosts(allCandidates, search);
+    // Hard guarantee: reject anything with calculateRelevance <= 0
+    allCandidates = allCandidates.filter((item) => calculateRelevance(item, search) > 0);
   } else if (isFilteredToSingleTopic && activeTopic) {
     // When filtered to a single topic, prioritize/keep matching items
     const topicFiltered = allCandidates.filter((item) => {
@@ -986,11 +1061,12 @@ export async function getTrendFeedPage(params = {}, options = {}) {
 
           // Prioritize user's own uploads at top, followed by user's searched, tuned, and interest topics!
           let rankScore;
-          if (isUserOwn) {
-            rankScore = 200000000 + score;
-          } else if (search) {
+          if (search) {
             const relScore = calculateRelevance(post, search);
-            rankScore = (relScore * 1000000) + score;
+            const ownBonus = isUserOwn ? 50000000 : 0;
+            rankScore = ownBonus + (relScore * 1000000) + score;
+          } else if (isUserOwn) {
+            rankScore = 200000000 + score;
           } else if (isTunedMatch) {
             const regMultiplier = isMatchingRegion ? 1.4 : 1.0;
             rankScore = (95000000 * regMultiplier) + (score * 800) + matches * 30000;
@@ -1009,11 +1085,15 @@ export async function getTrendFeedPage(params = {}, options = {}) {
             rankScore = Number((score * topicBoost * regMultiplier).toFixed(6));
           }
 
+          const matchedTopicLabel = search ? search : (post.matched_topic || matchResult.matchedTopic?.label || null);
+          const topicEmoji = search ? "🔍" : (post.topic_emoji || matchResult.matchedTopic?.emoji || null);
+          const interestTopicId = search ? `search_${search.replace(/[^a-z0-9]+/g, "_")}` : (post.interest_topic || matchResult.matchedTopic?.id || null);
+
           return {
             ...post,
-            matched_topic: post.matched_topic || matchResult.matchedTopic?.label || null,
-            interest_topic: post.interest_topic || matchResult.matchedTopic?.id || null,
-            topic_emoji: post.topic_emoji || matchResult.matchedTopic?.emoji || null,
+            matched_topic: matchedTopicLabel,
+            interest_topic: interestTopicId,
+            topic_emoji: topicEmoji,
             interest_match_count: matches,
             is_user_post: isUserOwn,
             is_country_pulse: isCountryPulse,
@@ -1048,16 +1128,20 @@ export async function getTrendFeedPage(params = {}, options = {}) {
       if (cKey) seenKeys.add(cKey);
     }
 
-    // When searching, strictly preserve relevance ranking!
+    // When searching, strictly preserve relevance ranking and ensure NO unrelated items slip through!
     if (search) {
       for (const post of posts) {
         if (result.length >= targetLimit) break;
         if (!isSeen(post)) {
-          if (post.source_platform === "socialpilot" && calculateRelevance(post, search) === 0) {
+          if (calculateRelevance(post, search) <= 0) {
             continue;
           }
           recordSeen(post);
-          result.push(post);
+          result.push({
+            ...post,
+            matched_topic: search,
+            topic_emoji: "🔍",
+          });
         }
       }
       return dedupePostsByCanonicalKey(result);
@@ -1069,7 +1153,11 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     const userOwnPosts = posts.filter((p) => p.is_user_post);
     for (const post of userOwnPosts) {
       if (result.length < targetLimit && !isSeen(post)) {
-        result.push(post);
+        result.push({
+          ...post,
+          matched_topic: post.matched_topic || "My Upload",
+          topic_emoji: post.topic_emoji || "✨",
+        });
         recordSeen(post);
       }
     }
@@ -1116,9 +1204,6 @@ export async function getTrendFeedPage(params = {}, options = {}) {
             if (isItemRelevantToTopic(p, tDef)) {
               matchedBucket = topicBuckets.get(tDef.label.toLowerCase());
               if (matchedBucket) {
-                p.matched_topic = tDef.label;
-                p.interest_topic = tDef.id;
-                p.topic_emoji = tDef.emoji;
                 break;
               }
             }
@@ -1126,6 +1211,9 @@ export async function getTrendFeedPage(params = {}, options = {}) {
         }
 
         if (matchedBucket) {
+          p.matched_topic = matchedBucket.def.label;
+          p.interest_topic = matchedBucket.def.id;
+          p.topic_emoji = matchedBucket.def.emoji;
           matchedBucket.items.push(p);
         }
         // If not matched to any active user topic, it is DISCARDED! Strictly "uske alawa kuch nhi".
