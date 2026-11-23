@@ -231,6 +231,31 @@ function emptyProfile() {
   return { work: "", interests: "", goal: "" };
 }
 
+function detectFormatFromGoal(goal) {
+  if (!goal) return null;
+  const lower = String(goal).toLowerCase().trim();
+  if (lower.includes("short") || lower.includes("reel") || lower.includes("tiktok") || lower.includes("clip")) {
+    return "shorts";
+  }
+  if (lower.includes("video") || lower.includes("youtube") || lower.includes("film")) {
+    return "videos";
+  }
+  if (
+    lower.includes("photo") ||
+    lower.includes("visual") ||
+    lower.includes("image") ||
+    lower.includes("carousel") ||
+    lower.includes("picture") ||
+    lower.includes("pin")
+  ) {
+    return "visuals";
+  }
+  if (lower.includes("news") || lower.includes("story") || lower.includes("article") || lower.includes("thread")) {
+    return "news";
+  }
+  return null;
+}
+
 function sanitizeRecentSearches(searches) {
   if (!Array.isArray(searches)) return [];
   const cleaned = searches
@@ -1810,14 +1835,53 @@ function CreatorInterestModal({
             </div>
 
             <div>
-              <label className="block text-xs sm:text-[13px] font-normal text-neutral-700 dark:text-neutral-300 mb-1.5">
-                Preferred content formats
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs sm:text-[13px] font-normal text-neutral-700 dark:text-neutral-300">
+                  Preferred content format
+                </label>
+                <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                  Select or type (e.g. Short video, Reel)
+                </span>
+              </div>
+
+              {/* Quick Format Selection Chips */}
+              <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                {[
+                  { id: "shorts", label: "🎬 Shorts & Reels", value: "Short video, Reels" },
+                  { id: "videos", label: "🎥 Long Videos", value: "YouTube Videos" },
+                  { id: "visuals", label: "🖼️ Visuals & Photos", value: "Visuals, Photos" },
+                  { id: "news", label: "📰 News & Stories", value: "News & Stories" },
+                  { id: "all", label: "🌐 All Formats", value: "All Formats" },
+                ].map((chip) => {
+                  const currentGoalLower = (localProfile.goal || "").toLowerCase();
+                  const isChipActive =
+                    (chip.id === "shorts" && (currentGoalLower.includes("short") || currentGoalLower.includes("reel"))) ||
+                    (chip.id === "videos" && currentGoalLower.includes("video") && !currentGoalLower.includes("short")) ||
+                    (chip.id === "visuals" && (currentGoalLower.includes("visual") || currentGoalLower.includes("photo"))) ||
+                    (chip.id === "news" && currentGoalLower.includes("news")) ||
+                    (chip.id === "all" && (currentGoalLower.includes("all") || !currentGoalLower));
+                  return (
+                    <button
+                      key={chip.id}
+                      type="button"
+                      onClick={() => setLocalProfile((cur) => ({ ...cur, goal: chip.value }))}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
+                        isChipActive
+                          ? "bg-amber-500 text-white border-amber-500 font-bold shadow-xs"
+                          : "bg-neutral-100 dark:bg-white/5 text-neutral-600 dark:text-neutral-300 border-neutral-200 dark:border-white/10 hover:border-amber-500/50"
+                      }`}
+                    >
+                      {chip.label}
+                    </button>
+                  );
+                })}
+              </div>
+
               <input
                 type="text"
                 value={localProfile.goal || ""}
                 onChange={(e) => setLocalProfile((cur) => ({ ...cur, goal: e.target.value }))}
-                placeholder="e.g. 30s Viral Reels, Carousels, Twitter/X Threads"
+                placeholder="e.g. Short video, Viral Reels, Carousels, YouTube Videos"
                 className="w-full h-10 px-3.5 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-300 dark:border-white/10 text-xs sm:text-[13px] font-normal text-neutral-900 dark:text-white placeholder:text-neutral-400 dark:placeholder:text-neutral-500 outline-none focus:border-amber-500/60 focus:ring-2 focus:ring-amber-500/15 transition-all"
               />
             </div>
@@ -2011,6 +2075,11 @@ export default function TrendFeedPage() {
   // Filters State
   const [selectedFormat, setSelectedFormat] = useState("all");
   const [selectedNiche, setSelectedNiche] = useState("all");
+
+  // Tuned Filter active state (When user tunes from Tune Modal: dedicated tab + format optimization)
+  const [activeTunedFilter, setActiveTunedFilter] = useState(null);
+  const activeTunedFilterRef = useRef(null);
+  activeTunedFilterRef.current = activeTunedFilter;
   const [selectedRegion, setSelectedRegion] = useState(() => {
     try {
       return localStorage.getItem("qp_trend_region") || "IN";
@@ -2142,6 +2211,8 @@ export default function TrendFeedPage() {
 
     if (activeUserKeyRef.current !== userKey) {
       activeUserKeyRef.current = userKey;
+      setActiveTunedFilter(null);
+      activeTunedFilterRef.current = null;
       setSelectedTopicIds([]);
       setProfile(emptyProfile());
       setDraftProfile(emptyProfile());
@@ -2451,6 +2522,7 @@ export default function TrendFeedPage() {
       overrideMode = null,
       overrideRegion = null,
       overrideSearch = undefined,
+      overrideFormat = undefined,
     } = {}) => {
       if (authLoading) return;
       const currentRequestId = ++loadRequestIdRef.current;
@@ -2471,7 +2543,7 @@ export default function TrendFeedPage() {
       const activeProfile = overrideProfile || profileRef.current;
       const activeTopic = overrideTopic !== undefined ? overrideTopic : selectedTopicFilterRef.current;
       const activeMode = overrideMode || feedModeRef.current;
-      const activeFormat = selectedFormatRef.current;
+      const activeFormat = overrideFormat !== undefined ? overrideFormat : selectedFormatRef.current;
       const activeNiche = selectedNicheRef.current;
       const activeRegion = overrideRegion || selectedRegionRef.current || "IN";
       const activeSearch = overrideSearch !== undefined ? overrideSearch : debouncedSearchRef.current;
@@ -2719,6 +2791,21 @@ export default function TrendFeedPage() {
     handleOpenComposer(post);
   };
 
+  // Clear active tuned filter and return immediately to all formats feed
+  const handleClearTunedFilter = useCallback(() => {
+    setActiveTunedFilter(null);
+    activeTunedFilterRef.current = null;
+    setSelectedFormat("all");
+    selectedFormatRef.current = "all";
+    setSelectedTopicFilter(null);
+    selectedTopicFilterRef.current = null;
+    pageRef.current = 1;
+    cursorRef.current = null;
+    seenRef.current = new Set();
+    setItems([]);
+    loadPage({ reset: true, overrideFormat: "all", overrideTopic: null, overrideSearch: "" });
+  }, [loadPage]);
+
   const handleSaveInterests = async (nextSelectedTopicIds = selectedTopicIds, updatedProfile = draftProfile) => {
     const isTuneModal = interestModalMode === "tune";
     const existingInterests = profileRef.current?.interests || "";
@@ -2733,6 +2820,13 @@ export default function TrendFeedPage() {
     const goalTerm = isTuneModal
       ? (updatedProfile?.goal?.trim() || "")
       : (profileRef.current?.goal || updatedProfile?.goal?.trim() || "");
+
+    // If tuned in Tune modal, detect format (e.g. "short video", "reels" -> "shorts")
+    const detectedFormat = isTuneModal && goalTerm ? (detectFormatFromGoal(goalTerm) || "all") : null;
+    if (detectedFormat) {
+      setSelectedFormat(detectedFormat);
+      selectedFormatRef.current = detectedFormat;
+    }
 
     // Guarantee that recent searched topics are preserved in custom interests
     if (recentDbSearches.length > 0) {
@@ -2766,9 +2860,27 @@ export default function TrendFeedPage() {
     if (customInterests) {
       customInterests.split(",").forEach((item) => {
         const t = item.trim();
-        if (t.length > 1) {
+        if (t.length > 1 && !newTunedTerms.includes(t)) {
           newTunedTerms.push(t);
         }
+      });
+    }
+
+    // Also un-dismiss any tuned terms from dismissedSuggestions so they appear as suggestion pills on the rail
+    if (newTunedTerms.length > 0) {
+      setDismissedSuggestions((prev) => {
+        const next = new Set(prev);
+        newTunedTerms.forEach((t) => next.delete(t.toLowerCase()));
+        try {
+          localStorage.setItem(dismissedSuggestionsStorageKey, JSON.stringify(Array.from(next)));
+        } catch { }
+        dismissedSuggestionsRef.current = next;
+        return next;
+      });
+
+      // Post each new tuned term to search-history API so it is saved in DB recentSearches
+      newTunedTerms.forEach((t) => {
+        apiClient.post("/api/trends/search-history", { query: t }).catch(() => {});
       });
     }
 
@@ -2798,10 +2910,24 @@ export default function TrendFeedPage() {
       // ignore
     }
 
+    // If tuned via Tune modal, create activeTunedFilter dedicated view
+    if (isTuneModal) {
+      const tunedLabel = [roleTerm, customInterests].filter(Boolean).join(", ");
+      if (tunedLabel || detectedFormat) {
+        const filterObj = {
+          label: tunedLabel || "Custom Tuning",
+          format: detectedFormat || "all",
+          terms: newTunedTerms,
+        };
+        setActiveTunedFilter(filterObj);
+        activeTunedFilterRef.current = filterObj;
+      }
+    }
+
     setShowInterestModal(false);
     toast.success(
       interestModalMode === "tune"
-        ? "Tuning saved to database & feed refreshed!"
+        ? (detectedFormat === "shorts" ? "Tuned to Shorts & Reels!" : "Tuning saved to database & feed refreshed!")
         : (nextSelectedTopicIds.length > 0
           ? `Saved ${nextSelectedTopicIds.length} topic${nextSelectedTopicIds.length === 1 ? "" : "s"} & personalized feed!`
           : "Preferences saved to database!")
@@ -2822,6 +2948,7 @@ export default function TrendFeedPage() {
       reset: true,
       overrideProfile: nextProfile,
       overrideTopic: null,
+      overrideFormat: detectedFormat || undefined,
       overrideMode: "personalized",
     });
   };
@@ -3055,7 +3182,13 @@ export default function TrendFeedPage() {
                 return (
                   <button
                     key={tab.id}
-                    onClick={() => setSelectedFormat(tab.id)}
+                    onClick={() => {
+                      setSelectedFormat(tab.id);
+                      selectedFormatRef.current = tab.id;
+                      if (activeTunedFilterRef.current) {
+                        setActiveTunedFilter((prev) => (prev ? { ...prev, format: tab.id } : null));
+                      }
+                    }}
                     className={`h-7 px-2.5 sm:px-3 rounded-lg text-xs font-semibold whitespace-nowrap transition-all inline-flex items-center gap-1.5 ${active
                       ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-950 shadow-xs"
                       : "bg-neutral-100/70 hover:bg-neutral-200/80 dark:bg-neutral-800/60 dark:hover:bg-neutral-700/80 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
@@ -3140,10 +3273,41 @@ export default function TrendFeedPage() {
               </button>
             </div>
           )}
+
+          {/* Tuned Filter Active Status Banner */}
+          {activeTunedFilter && !debouncedSearch && (
+            <div className="flex items-center justify-between px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/50 text-xs mt-1.5">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <SlidersHorizontal size={12} className="text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                <span className="text-neutral-600 dark:text-neutral-300 text-[11px]">Tuned View:</span>
+                <span className="font-bold text-neutral-900 dark:text-white truncate text-[11px]">
+                  "{activeTunedFilter.label}"
+                </span>
+                {activeTunedFilter.format && activeTunedFilter.format !== "all" && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-amber-200 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 text-[10px] font-bold uppercase">
+                    {activeTunedFilter.format === "shorts" ? "Shorts & Reels" : activeTunedFilter.format}
+                  </span>
+                )}
+                {items.length > 0 && (
+                  <span className="text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 whitespace-nowrap">
+                    • {items.length} sparks
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={handleClearTunedFilter}
+                className="text-[11px] font-semibold text-amber-700 dark:text-amber-300 hover:underline px-1.5 py-0.5 transition-colors flex-shrink-0 cursor-pointer flex items-center gap-0.5"
+              >
+                <span>Reset</span>
+                <X size={11} />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* 2B. USER'S CURATED & SEARCHED TOPICS RAIL */}
-        {(totalTopicsCount > 0 || Boolean(debouncedSearch)) && (
+        {(totalTopicsCount > 0 || Boolean(debouncedSearch) || Boolean(activeTunedFilter)) && (
           <div className="rounded-xl bg-white/95 dark:bg-[#161B22]/95 backdrop-blur-md border border-black/[0.07] dark:border-white/[0.08] shadow-xs px-2.5 sm:px-3 py-1.5 mb-2 sm:mb-2.5">
             <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
               {/* All Topics Combined Pill */}
@@ -3163,13 +3327,36 @@ export default function TrendFeedPage() {
                   }
                 }}
                 className={`h-7 px-3 rounded-lg text-xs font-semibold whitespace-nowrap transition-all inline-flex items-center gap-1.5 flex-shrink-0 cursor-pointer ${
-                  selectedTopicFilter === null && !debouncedSearch
+                  selectedTopicFilter === null && !debouncedSearch && !activeTunedFilter
                     ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-950 shadow-xs"
                     : "bg-neutral-100/70 hover:bg-neutral-200/80 dark:bg-neutral-800/60 dark:hover:bg-neutral-700/80 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
                 }`}
               >
                 <span>All My Topics {totalTopicsCount > 0 ? `(${totalTopicsCount})` : ""}</span>
               </button>
+
+              {/* Tuned Filter Tab with Cross Option */}
+              {activeTunedFilter && (
+                <div className="h-7 pl-2.5 pr-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all inline-flex items-center gap-1.5 flex-shrink-0 border bg-gradient-to-r from-amber-500 to-orange-500 text-white border-amber-600 shadow-xs">
+                  <SlidersHorizontal size={11} className="text-white" />
+                  <span className="max-w-[150px] sm:max-w-[200px] truncate">
+                    Tuned: {activeTunedFilter.label}
+                  </span>
+                  {activeTunedFilter.format !== "all" && (
+                    <span className="text-[10px] uppercase font-bold bg-white/20 px-1 py-0.2 rounded">
+                      {activeTunedFilter.format === "shorts" ? "Shorts" : activeTunedFilter.format}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleClearTunedFilter}
+                    className="p-0.5 hover:bg-black/20 rounded-md transition-colors cursor-pointer text-white/90 hover:text-white"
+                    title="Close tuned tab"
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
+              )}
 
               {/* Selected Onboarding Topics */}
               {selectedTopicIds.map((topicId) => {

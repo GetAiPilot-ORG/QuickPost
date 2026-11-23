@@ -961,11 +961,13 @@ export async function getTrendFeedPage(params = {}, options = {}) {
   if (type === "shorts") {
     allCandidates = allCandidates.filter(
       (item) =>
-        (item.source_platform === "youtube" || item.target_platform === "youtube") &&
-        (item.content_type === "short" ||
-          item.source_url?.includes("/shorts/") ||
-          item.is_short ||
-          Boolean(item.video_id))
+        item.content_type === "short" ||
+        item.is_short ||
+        item.source_url?.includes("/shorts/") ||
+        item.content_type === "reel_video" ||
+        ((item.source_platform === "youtube" || item.target_platform === "youtube") &&
+          (item.source_url?.includes("/shorts/") ||
+            (Array.isArray(item.niche_tags) && (item.niche_tags.includes("shorts") || item.niche_tags.includes("reel")))))
     );
   } else if (type === "videos") {
     allCandidates = allCandidates.filter(

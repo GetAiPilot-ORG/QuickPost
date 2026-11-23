@@ -1,3 +1,8 @@
+## 2026-11-23 — Dedicated Tuned tab with cross option, strict format optimization & DB interest auto-sync
+- Tuned tab with cross option: Tune modal me keywords/format save karne par topics rail par dedicated active tab `[⚡ Tuned: "<query>" (FORMAT) ✕]` aur status banner khulta hai; cross (`✕`) ya reset click karne par tuned filter reset hokar All Topics feed load hoti hai.
+- Strict Format Optimization: Tune modal me "short video", "reel", ya chip select karne par `detectFormatFromGoal` ke through backend `type: "shorts"` pass hota hai aur feed strictly sirf YouTube shorts/reels show karta hai (0 non-shorts).
+- Auto-sync to DB interests: Tune modal ke custom keywords aur role ko `/api/trends/search-history` aur `user_metadata.trend_preferences.interests` me auto-register kiya jisse wo DB me persist hokar topics rail par interest topics ban jate hain.
+
 ## 2026-11-23 — Suggestion-only dismiss on cross & full search-topics multi-feed retention
 - Suggestion-only dismiss: Cross (`x`) click karne par topic ko user DB interests se delete nahi kiya jata; sirf topics bar se suggestion pill ko hide/dismiss kiya jata hai (`dismissedSuggestions` in `localStorage`), jisse top bar clean rahe.
 - All search topics feed active: Saare searched topics (`recentSearches` aur `interests`) user preferences aur feed params me 100% active rehte hain, aur feed un sabhi search topics (`spiderman`, `total gaming`, `cr7`, etc.) ke according posts fetch aur rank karti hai.
