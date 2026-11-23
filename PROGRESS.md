@@ -1,7 +1,7 @@
-## 2026-11-23 — Fixed cross-removed search pills resurrecting & removed AI sparkle icon
-- Fixed pill resurrection & leak loops: `TrendFeedPage.jsx` ke `loadPage` se `setRecentDbSearches` merge logic ko completely hata diya; `deletedSearchesRef` ko `localStorage` (`qp_trend_deleted_searches_${userKey}`) se persist kiya taaki refresh ya scroll par deleted terms resurrect na hon; backend me authenticated user ke liye `clientSearches` param merge block kiya aur DB ko authoritative banaya.
-- Instant UI & Feed sync: Topic cross (`x`) karte hi state, ref, profile, draftProfile aur Supabase metadata se remove hota hai, aur feed turant reload hoti hai taaki deleted topic ka content gayab ho sake.
-- Removed AI sparkle icon: "All My Topics" button se `<Sparkles />` icon remove kar diya for a cleaner professional UI.
+## 2026-11-23 — Suggestion-only dismiss on cross & full search-topics multi-feed retention
+- Suggestion-only dismiss: Cross (`x`) click karne par topic ko user DB interests se delete nahi kiya jata; sirf topics bar se suggestion pill ko hide/dismiss kiya jata hai (`dismissedSuggestions` in `localStorage`), jisse top bar clean rahe.
+- All search topics feed active: Saare searched topics (`recentSearches` aur `interests`) user preferences aur feed params me 100% active rehte hain, aur feed un sabhi search topics (`spiderman`, `total gaming`, `cr7`, etc.) ke according posts fetch aur rank karti hai.
+- Re-enabling on search: User dobara search kare toh pill suggestion wapas un-dismiss hokar rail par visible ho jata hai; All My Topics button se AI sparkle icon removed hai.
 
 ## 2026-11-23 — Fixed searched topics not populating in main personalized All Feeds
 - First-class searched topic definitions: `resolveTargetTopics` me searched terms ke liye custom topic objects banaye taaki `targetTopics` me jud kar live external fetches (YouTube, Pinterest, News) aur 90M ranking boost trigger ho sakein.

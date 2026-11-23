@@ -684,10 +684,11 @@ export async function getTrendFeedPage(params = {}, options = {}) {
         }
 
         const dbInterests = [dbPrefs.work, dbPrefs.interests, dbPrefs.goal].filter(Boolean).join(", ");
-        rawInterests = dbInterests || rawInterests;
+        rawInterests = [dbInterests, rawInterests].filter(Boolean).join(", ");
 
         const dbSearches = Array.isArray(dbPrefs.recentSearches) ? dbPrefs.recentSearches : [];
-        const searchList = search ? [search, ...dbSearches] : dbSearches;
+        const clientSearches = String(params.searches || "").split(",").map((s) => s.trim()).filter(Boolean);
+        const searchList = search ? [search, ...dbSearches, ...clientSearches] : [...dbSearches, ...clientSearches];
         recentSearches = Array.from(new Set(searchList));
       }
     } catch (e) {
