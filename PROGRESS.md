@@ -1,3 +1,8 @@
+## 2026-11-23 — Fixed cross-removed search pills resurrecting & removed AI sparkle icon
+- Fixed pill resurrection & leak loops: `TrendFeedPage.jsx` ke `loadPage` se `setRecentDbSearches` merge logic ko completely hata diya; `deletedSearchesRef` ko `localStorage` (`qp_trend_deleted_searches_${userKey}`) se persist kiya taaki refresh ya scroll par deleted terms resurrect na hon; backend me authenticated user ke liye `clientSearches` param merge block kiya aur DB ko authoritative banaya.
+- Instant UI & Feed sync: Topic cross (`x`) karte hi state, ref, profile, draftProfile aur Supabase metadata se remove hota hai, aur feed turant reload hoti hai taaki deleted topic ka content gayab ho sake.
+- Removed AI sparkle icon: "All My Topics" button se `<Sparkles />` icon remove kar diya for a cleaner professional UI.
+
 ## 2026-11-23 — Fixed searched topics not populating in main personalized All Feeds
 - First-class searched topic definitions: `resolveTargetTopics` me searched terms ke liye custom topic objects banaye taaki `targetTopics` me jud kar live external fetches (YouTube, Pinterest, News) aur 90M ranking boost trigger ho sakein.
 - Cache key & Onboarding persistence fix: `trendFeed.js` ke `cacheKey` me `recentSearches` add kiya taaki purana unpersonalized feed cache hit na kare; `TrendFeedPage` me `hasDbInterests` aur `handleSaveInterests` ko fix kiya taaki modal save karne par existing searched topics wipe out na hon.
@@ -118,16 +123,4 @@
 ## 2026-11-20 — Multi-platform creator username resolution, video playback & universal feed sync
 - Resolved foreign key failure on `posts.author_id` by checking `auth.users` existence, persisting `author:${userId}` in `niche_tags` and ranking user uploads at the top.
 - Auto-synced all broadcast uploads across every platform to Trend Feed community posts with video hover-playback support.
-- Enforced username precedence: Instagram handle default for multi-platform broadcasts, individual platform handle for single-platform uploads (e.g. YouTube shows channel name), and "GAP Social-pilot" for community-only posts.
-
-## 2026-11-20 — Pinned user uploaded SocialPilot posts to top of Trend Feed
-- Explicitly prioritized SocialPilot uploads and user-authored posts with highest ranking tier (`rank_score > 100,000,000`), placing them at the very top of page 1.
-- Updated `interleavePinterestFeed` to lead with community uploads before interleaving external platforms, and wired `onPostCreated` in `ComposerModal` to auto-refresh feed immediately upon upload.
-
-## 2026-11-20 — Guaranteed equal round-robin card distribution across all feed columns
-- Implemented pure sequential round-robin distribution (`items[i % colCount]`): as items load, they are immediately spread 1-by-1 across all columns equally.
-- Integrated skeleton placeholder cards directly inside every column simultaneously during loading (`TrendCardSkeleton` across all 4 columns), eliminating blank spaces.
-
-## 2026-11-20 — Refactored Trend Feed to authentic Pinterest layout with uncropped natural image sizing
-- Eliminated forced aspect ratios (`aspect-[2/3]`, `aspect-[3/4]`, `object-cover`) on feed cards; images now render at `w-full h-auto block`, preserving their exact original size and aspect ratio without any cropping.
-- Restructured `TrendCard` to authentic Pinterest layout: image at the top of the pin, floating hover actions (Save, source link), and clean creator/stats row below.
+- Enforced username precedence: Instagram handle default for multi-platform broadcasts, individual platform handle for single-platform uploads, and "GAP Social-pilot" for community-only posts.

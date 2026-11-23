@@ -2030,6 +2030,7 @@ export default function TrendFeedPage() {
   const profileStorageKey = `qp_trend_profile_${userKey}`;
   const savedIdeasStorageKey = `qp_trend_saved_ideas_${userKey}`;
   const onboardingStorageKey = `qp_trend_onboarded_${userKey}`;
+  const deletedSearchesStorageKey = `qp_trend_deleted_searches_${userKey}`;
   const onboardingTriggeredRef = useRef(false);
   const activeUserKeyRef = useRef(userKey);
 
@@ -2108,9 +2109,17 @@ export default function TrendFeedPage() {
 
   // Reset all state when active user identity changes (Guarantees 100% user isolation)
   useEffect(() => {
+    try {
+      const storedDeleted = JSON.parse(localStorage.getItem(deletedSearchesStorageKey) || "[]");
+      deletedSearchesRef.current = new Set(
+        Array.isArray(storedDeleted) ? storedDeleted.map((s) => String(s).toLowerCase().trim()) : []
+      );
+    } catch {
+      deletedSearchesRef.current = new Set();
+    }
+
     if (activeUserKeyRef.current !== userKey) {
       activeUserKeyRef.current = userKey;
-      deletedSearchesRef.current = new Set();
       setSelectedTopicIds([]);
       setProfile(emptyProfile());
       setDraftProfile(emptyProfile());
@@ -2121,7 +2130,7 @@ export default function TrendFeedPage() {
       cursorRef.current = null;
       onboardingTriggeredRef.current = false;
     }
-  }, [userKey]);
+  }, [userKey, deletedSearchesStorageKey]);
 
   // Load localStorage state & First-time visit onboarding
   useEffect(() => {
@@ -2172,7 +2181,8 @@ export default function TrendFeedPage() {
 
         const dbPrefs = data.preferences;
         const hasDbTopics = Array.isArray(dbPrefs?.selectedTopicIds) && dbPrefs.selectedTopicIds.length > 0;
-        const dbSearches = Array.isArray(dbPrefs?.recentSearches) ? sanitizeRecentSearches(dbPrefs.recentSearches) : [];
+        const rawDbSearches = Array.isArray(dbPrefs?.recentSearches) ? sanitizeRecentSearches(dbPrefs.recentSearches) : [];
+        const dbSearches = rawDbSearches.filter((s) => !deletedSearchesRef.current.has(s.toLowerCase()));
         const hasDbInterests = hasDbTopics || Boolean(dbPrefs?.interests?.trim()) || dbSearches.length > 0;
 
         if (hasDbInterests) {
@@ -2182,6 +2192,16 @@ export default function TrendFeedPage() {
           recentDbSearchesRef.current = dbSearches;
 
           let interestsStr = sanitizeSavedInterests(dbPrefs.interests || "");
+          if (deletedSearchesRef.current.size > 0) {
+            interestsStr = interestsStr
+              .split(",")
+              .map((s) => s.trim())
+              .filter((s) => {
+                const sClean = s.toLowerCase().replace(/^#/, "");
+                return !deletedSearchesRef.current.has(sClean);
+              })
+              .join(", ");
+          }
           if (dbSearches.length > 0) {
             const list = Array.from(new Set([...interestsStr.split(",").map((s) => s.trim()).filter(Boolean), ...dbSearches]));
             interestsStr = list.join(", ");
@@ -2275,8 +2295,14 @@ export default function TrendFeedPage() {
     // User pura search kare tabhi add kro - ignore empty or 1-char partial fragments
     if (term.length < 2) return;
 
-    deletedSearchesRef.current.delete(term.toLowerCase());
     const cleanLower = term.toLowerCase();
+    if (deletedSearchesRef.current.has(cleanLower)) {
+      deletedSearchesRef.current.delete(cleanLower);
+      try {
+        const arr = Array.from(deletedSearchesRef.current);
+        localStorage.setItem(deletedSearchesStorageKey, JSON.stringify(arr));
+      } catch { }
+    }
 
     // 1. Check if it matches any predefined registered topic in TREND_INTEREST_TOPICS
     const matched = TREND_INTEREST_TOPICS.find(
@@ -2303,10 +2329,14 @@ export default function TrendFeedPage() {
     // 2. ALWAYS add searched topic to user's interests (both profile & draftProfile)
     setProfile((prev) => {
       const nextInterests = addTermToInterestsString(prev?.interests, term);
-      const next = { ...prev, interests: nextInterests };
+      const nextSearches = sanitizeRecentSearches([term, ...(prev?.recentSearches || [])]).filter(
+        (s) => !deletedSearchesRef.current.has(s.toLowerCase())
+      );
+      const next = { ...prev, interests: nextInterests, recentSearches: nextSearches };
       try {
         const stored = JSON.parse(localStorage.getItem(profileStorageKey) || "{}");
         stored.interests = nextInterests;
+        stored.recentSearches = nextSearches;
         localStorage.setItem(profileStorageKey, JSON.stringify(stored));
       } catch { }
       return next;
@@ -2317,9 +2347,11 @@ export default function TrendFeedPage() {
       return { ...prev, interests: nextInterests };
     });
 
-    // 3. Add to recent searched topics (with full fragment pruning)
+    // 3. Add to recent searched topics (with full fragment pruning & filter out deleted)
     setRecentDbSearches((prev) => {
-      const next = sanitizeRecentSearches([term, ...prev]);
+      const next = sanitizeRecentSearches([term, ...prev]).filter(
+        (s) => !deletedSearchesRef.current.has(s.toLowerCase())
+      );
       recentDbSearchesRef.current = next;
       return next;
     });
@@ -2342,26 +2374,36 @@ export default function TrendFeedPage() {
             });
           }
           if (prefs.interests) {
+            let sanitizedInterests = prefs.interests;
+            if (deletedSearchesRef.current.size > 0) {
+              sanitizedInterests = sanitizedInterests
+                .split(",")
+                .map((s) => s.trim())
+                .filter((s) => !deletedSearchesRef.current.has(s.toLowerCase().replace(/^#/, "")))
+                .join(", ");
+            }
             setProfile((prev) => {
-              const next = { ...prev, interests: prefs.interests };
+              const next = { ...prev, interests: sanitizedInterests };
               try {
                 const stored = JSON.parse(localStorage.getItem(profileStorageKey) || "{}");
-                stored.interests = prefs.interests;
+                stored.interests = sanitizedInterests;
                 localStorage.setItem(profileStorageKey, JSON.stringify(stored));
               } catch { }
               return next;
             });
-            setDraftProfile((prev) => ({ ...prev, interests: prefs.interests }));
+            setDraftProfile((prev) => ({ ...prev, interests: sanitizedInterests }));
           }
           if (Array.isArray(prefs.recentSearches) && prefs.recentSearches.length > 0) {
-            const next = sanitizeRecentSearches(prefs.recentSearches);
+            const next = sanitizeRecentSearches(prefs.recentSearches).filter(
+              (s) => !deletedSearchesRef.current.has(s.toLowerCase())
+            );
             setRecentDbSearches(next);
             recentDbSearchesRef.current = next;
           }
         }
       })
       .catch(() => { });
-  }, [profileStorageKey]);
+  }, [profileStorageKey, deletedSearchesStorageKey]);
 
   // Load Hot Topics Radar
   const loadHotTopics = useCallback(async (geoParam = null) => {
@@ -2434,7 +2476,9 @@ export default function TrendFeedPage() {
 
       try {
         const topicIds = activeProfile?.selectedTopicIds || selectedTopicIdsRef.current || [];
-        const searches = recentDbSearchesRef.current || [];
+        const searches = (recentDbSearchesRef.current || []).filter(
+          (s) => !deletedSearchesRef.current.has(s.toLowerCase())
+        );
         const isPersonalized =
           activeMode === "personalized" && (topicIds.length > 0 || activeProfile?.interests || searches.length > 0);
 
@@ -2478,19 +2522,6 @@ export default function TrendFeedPage() {
 
         const nextItems = data.items || [];
         rememberSeen(nextItems);
-
-        if (Array.isArray(data.recentSearches)) {
-          const sanitized = sanitizeRecentSearches(data.recentSearches);
-          const filtered = sanitized.filter((s) => !deletedSearchesRef.current.has(s.toLowerCase()));
-          setRecentDbSearches((prev) => {
-            const merged = Array.from(new Set([...prev, ...filtered]));
-            const prevStr = prev.join("|");
-            const nextStr = merged.join("|");
-            if (prevStr === nextStr) return prev;
-            recentDbSearchesRef.current = merged;
-            return merged;
-          });
-        }
 
         setItems((current) => {
           const combined = reset ? nextItems : [...current, ...nextItems];
@@ -2584,26 +2615,47 @@ export default function TrendFeedPage() {
   const handleRemoveSearchedTopic = useCallback(
     async (term) => {
       const cleanTerm = String(term || "").trim().toLowerCase().replace(/^#/, "");
+      if (!cleanTerm) return;
+
+      // 1. Mark as permanently deleted in memory ref and localStorage
       deletedSearchesRef.current.add(cleanTerm);
+      try {
+        const arr = Array.from(deletedSearchesRef.current);
+        localStorage.setItem(deletedSearchesStorageKey, JSON.stringify(arr));
+      } catch { }
+
+      // 2. Remove immediately from UI state & ref (including any partial fragments)
       setRecentDbSearches((prev) =>
         prev.filter((q) => {
           const qClean = String(q || "").trim().toLowerCase().replace(/^#/, "");
-          return qClean !== cleanTerm;
+          if (qClean === cleanTerm) return false;
+          if (qClean.length >= 3 && cleanTerm.startsWith(qClean)) return false;
+          if (cleanTerm.length >= 3 && qClean.startsWith(cleanTerm)) return false;
+          return true;
         })
       );
-      recentDbSearchesRef.current = (recentDbSearchesRef.current || []).filter((q) => {
+      const nextSearches = (recentDbSearchesRef.current || []).filter((q) => {
         const qClean = String(q || "").trim().toLowerCase().replace(/^#/, "");
-        return qClean !== cleanTerm;
+        if (qClean === cleanTerm) return false;
+        if (qClean.length >= 3 && cleanTerm.startsWith(qClean)) return false;
+        if (cleanTerm.length >= 3 && qClean.startsWith(cleanTerm)) return false;
+        return true;
       });
+      recentDbSearchesRef.current = nextSearches;
 
+      // 3. Update profile state and ref synchronously
       setProfile((prev) => {
         const list = prev?.interests ? prev.interests.split(",").map((s) => s.trim()).filter(Boolean) : [];
         const nextInterests = list.filter((s) => {
           const sClean = s.toLowerCase().replace(/^#/, "").trim();
-          return sClean !== cleanTerm;
+          if (sClean === cleanTerm) return false;
+          if (sClean.length >= 3 && cleanTerm.startsWith(sClean)) return false;
+          if (cleanTerm.length >= 3 && sClean.startsWith(cleanTerm)) return false;
+          return true;
         }).join(", ");
         const nextWork = (prev?.work && prev.work.trim().toLowerCase() === cleanTerm) ? "" : (prev?.work || "");
-        const nextSearches = (prev?.recentSearches || []).filter((q) => q.toLowerCase() !== cleanTerm);
+        const nextProfileObj = { ...prev, interests: nextInterests, work: nextWork, recentSearches: nextSearches };
+        profileRef.current = nextProfileObj;
         try {
           const stored = JSON.parse(localStorage.getItem(profileStorageKey) || "{}");
           stored.interests = nextInterests;
@@ -2611,30 +2663,42 @@ export default function TrendFeedPage() {
           stored.recentSearches = nextSearches;
           localStorage.setItem(profileStorageKey, JSON.stringify(stored));
         } catch { }
-        return { ...prev, interests: nextInterests, work: nextWork, recentSearches: nextSearches };
+        return nextProfileObj;
       });
 
       setDraftProfile((prev) => {
         const list = prev?.interests ? prev.interests.split(",").map((s) => s.trim()).filter(Boolean) : [];
-        const nextInterests = list.filter((s) => {
+        const nInterests = list.filter((s) => {
           const sClean = s.toLowerCase().replace(/^#/, "").trim();
-          return sClean !== cleanTerm;
+          if (sClean === cleanTerm) return false;
+          if (sClean.length >= 3 && cleanTerm.startsWith(sClean)) return false;
+          if (cleanTerm.length >= 3 && sClean.startsWith(cleanTerm)) return false;
+          return true;
         }).join(", ");
         const nextWork = (prev?.work && prev.work.trim().toLowerCase() === cleanTerm) ? "" : (prev?.work || "");
-        return { ...prev, interests: nextInterests, work: nextWork };
+        return { ...prev, interests: nInterests, work: nextWork };
       });
 
+      // 4. Fire API delete to update Supabase DB
       try {
         await apiClient.delete("/api/trends/search-history", { data: { query: term } });
       } catch (err) {
         console.warn("Delete search history err:", err?.message);
       }
 
-      if (debouncedSearchRef.current.toLowerCase() === term.toLowerCase()) {
+      // 5. If this topic was currently the active search, clear search & reload feed.
+      // If not currently searching this, reset and reload the feed immediately so removed topic disappears from feed!
+      if (debouncedSearchRef.current.toLowerCase() === cleanTerm) {
         handleClearSearch();
+      } else {
+        pageRef.current = 1;
+        cursorRef.current = null;
+        seenRef.current = new Set();
+        setItems([]);
+        loadPage({ reset: true });
       }
     },
-    [profileStorageKey, handleClearSearch]
+    [profileStorageKey, deletedSearchesStorageKey, handleClearSearch, loadPage]
   );
 
   // Trigger reload on filter changes (format, category niche, country region, feed mode)
@@ -2735,10 +2799,11 @@ export default function TrendFeedPage() {
       : (profileRef.current?.goal || updatedProfile?.goal?.trim() || "");
 
     // Guarantee that recent searched topics are preserved in custom interests
-    if (recentDbSearches.length > 0) {
+    const activeSearches = recentDbSearches.filter((s) => !deletedSearchesRef.current.has(s.toLowerCase()));
+    if (activeSearches.length > 0) {
       const mergedList = Array.from(new Set([
         ...customInterests.split(",").map((s) => s.trim()).filter(Boolean),
-        ...recentDbSearches,
+        ...activeSearches,
       ]));
       customInterests = mergedList.join(", ");
     }
@@ -2766,11 +2831,15 @@ export default function TrendFeedPage() {
     if (customInterests) {
       customInterests.split(",").forEach((item) => {
         const t = item.trim();
-        if (t.length > 1) newTunedTerms.push(t);
+        if (t.length > 1 && !deletedSearchesRef.current.has(t.toLowerCase())) {
+          newTunedTerms.push(t);
+        }
       });
     }
 
-    const updatedSearches = sanitizeRecentSearches([...newTunedTerms, ...recentDbSearches]);
+    const updatedSearches = sanitizeRecentSearches([...newTunedTerms, ...activeSearches]).filter(
+      (s) => !deletedSearchesRef.current.has(s.toLowerCase())
+    );
     setRecentDbSearches(updatedSearches);
     recentDbSearchesRef.current = updatedSearches;
 
@@ -3166,7 +3235,6 @@ export default function TrendFeedPage() {
                     : "bg-neutral-100/70 hover:bg-neutral-200/80 dark:bg-neutral-800/60 dark:hover:bg-neutral-700/80 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
                 }`}
               >
-                <Sparkles size={11} className={selectedTopicFilter === null && !debouncedSearch ? "text-amber-400 fill-amber-400" : "text-neutral-400"} />
                 <span>All My Topics {totalTopicsCount > 0 ? `(${totalTopicsCount})` : ""}</span>
               </button>
 

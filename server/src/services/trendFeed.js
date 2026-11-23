@@ -677,18 +677,17 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     try {
       const dbPrefs = await getUserTrendPreferences(userId);
       if (dbPrefs) {
-        // Merge DB saved topics with client-passed topics for this authenticated user
+        // Authenticated user: DB is authoritative
         const dbTopicIds = Array.isArray(dbPrefs.selectedTopicIds) ? dbPrefs.selectedTopicIds : [];
-        const clientTopicIds = String(topicsParam || "").split(",").map((t) => t.trim()).filter(Boolean);
-        const mergedTopicIds = Array.from(new Set([...dbTopicIds, ...clientTopicIds]));
-        topicsParam = mergedTopicIds.join(",");
+        if (dbTopicIds.length > 0) {
+          topicsParam = dbTopicIds.join(",");
+        }
 
         const dbInterests = [dbPrefs.work, dbPrefs.interests, dbPrefs.goal].filter(Boolean).join(", ");
-        rawInterests = [dbInterests, rawInterests].filter(Boolean).join(", ");
+        rawInterests = dbInterests || rawInterests;
 
         const dbSearches = Array.isArray(dbPrefs.recentSearches) ? dbPrefs.recentSearches : [];
-        const clientSearches = String(params.searches || "").split(",").map((s) => s.trim()).filter(Boolean);
-        const searchList = search ? [search, ...dbSearches, ...clientSearches] : [...dbSearches, ...clientSearches];
+        const searchList = search ? [search, ...dbSearches] : dbSearches;
         recentSearches = Array.from(new Set(searchList));
       }
     } catch (e) {

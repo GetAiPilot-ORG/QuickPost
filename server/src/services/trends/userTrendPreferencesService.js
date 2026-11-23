@@ -488,7 +488,10 @@ export async function deleteUserSearch(userId, query) {
 
       const updatedSearches = existingSearches.filter((q) => {
         const qClean = String(q || "").trim().toLowerCase().replace(/^#/, "");
-        return qClean !== cleanQuery;
+        if (qClean === cleanQuery) return false;
+        if (qClean.length >= 3 && cleanQuery.startsWith(qClean)) return false;
+        if (cleanQuery.length >= 3 && qClean.startsWith(cleanQuery)) return false;
+        return true;
       });
 
       // Also remove from interests keywords if present
@@ -498,7 +501,10 @@ export async function deleteUserSearch(userId, query) {
       const updatedInterests = existingInterests
         .filter((s) => {
           const sClean = s.toLowerCase().replace(/^#/, "").trim();
-          return sClean !== cleanQuery;
+          if (sClean === cleanQuery) return false;
+          if (sClean.length >= 3 && cleanQuery.startsWith(sClean)) return false;
+          if (cleanQuery.length >= 3 && sClean.startsWith(cleanQuery)) return false;
+          return true;
         })
         .join(", ");
 
