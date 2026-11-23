@@ -3269,7 +3269,7 @@ export default function TrendFeedPage() {
                     : "bg-neutral-100/70 hover:bg-neutral-200/80 dark:bg-neutral-800/60 dark:hover:bg-neutral-700/80 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
                 }`}
               >
-                <span>All My Topics {totalTopicsCount > 0 ? `(${totalTopicsCount})` : ""}</span>
+                <span>All My Topics</span>
               </button>
 
               {/* Tuned Filter Tab with Cross Option */}

@@ -1,3 +1,6 @@
+## 2026-11-23 — Removed topic count from "All My Topics" button on topic rail
+- Clean Topic Rail Header: Topics rail ke leading button se counting number `(5)` remove kiya; ab button strictly clean text `All My Topics` render karta hai bina kisi bracketed count ke.
+
 ## 2026-11-23 — Tune modal cleanup (removed format chips) & search input auto-clear on submit
 - Tune Modal Format Chips Removal: "Tune Your Inspiration Feed" modal se quick format selection chips (`[Shorts & Reels]`, `[Long Videos]`, etc.) aur orange subtitle completely remove kiye; clean single text input restore kiya jo `detectFormatFromGoal` ke through format detection support karta hai.
 - Search Input Auto-Clear: Search submit (Enter ya Search icon click) hote hi input bar automatically empty (`""`) ho jata hai taaki user direct naya topic type karke search kar sake; active search feed, debounced search query, topic rail pill aur status banner 100% active aur intact rehte hain.
