@@ -1,3 +1,7 @@
+## 2026-11-23 — Auto-added searched topics to user's DB interest topics & preferences
+- Server-side DB synchronization: `GET /api/trends/feed` route me search param aane par `addSearchQueryToUserInterests` auto-call kiya jo term ko user ke Supabase Auth `trend_preferences.interests` string, `recentSearches` array, aur matching `selectedTopicIds` me seamlessly persist karta hai.
+- Client state & deletion guard: `TrendFeedPage` typing debounce par search term ko automatically register kiya; client par server-returned search list merging fix ki with `deletedSearchesRef` taaki naye searched topics drops na hon aur deleted topics resurrect na hon.
+
 ## 2026-11-23 — Replaced cheap system emojis with professional Lucide vector icons
 - Lucide Vector Icon Suite: Saare 53 topic cards me cartoonish OS emojis ki jagah high-resolution `lucide-react` vector icons (`Bot`, `Code2`, `Rocket`, `Cpu`, `Coins`, `Building2`, `Palette`, `Dumbbell`, `Plane`, `Tv2`, `Music`, `Trees`, etc.) map kiye.
 - Sleek Icon Container & Topics Rail: Onboarding modal cards me clean 40x40 rounded-xl container lagaya with subtle gradient highlight when selected; saath hi top topics rail me compact 13px vector icons render kiye for a premium SaaS look.

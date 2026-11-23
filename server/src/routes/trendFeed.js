@@ -25,6 +25,14 @@ const router = express.Router();
 router.get("/trends/feed", authenticateUser, async (req, res) => {
   try {
     const userId = req.user?.authUserId || req.user?.userId || req.user?.id || null;
+    const search = (req.query?.search || req.query?.q || "").trim();
+    if (userId && search && search.length >= 2) {
+      try {
+        await addSearchQueryToUserInterests(userId, search);
+      } catch (addErr) {
+        console.warn("[TREND-FEED] Auto-add search to interests notice:", addErr.message);
+      }
+    }
     const page = await getTrendFeedPage(req.query, { userId });
     res.json(page);
   } catch (error) {

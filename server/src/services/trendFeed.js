@@ -672,37 +672,36 @@ export async function getTrendFeedPage(params = {}, options = {}) {
   const userId = options.userId || params.userId || null;
   let recentSearches = [];
 
-  if (!search) {
-    if (userId) {
-      try {
-        const dbPrefs = await getUserTrendPreferences(userId);
-        if (dbPrefs) {
-          // Merge DB saved topics with client-passed topics for this authenticated user
-          const dbTopicIds = Array.isArray(dbPrefs.selectedTopicIds) ? dbPrefs.selectedTopicIds : [];
-          const clientTopicIds = String(topicsParam || "").split(",").map((t) => t.trim()).filter(Boolean);
-          const mergedTopicIds = Array.from(new Set([...dbTopicIds, ...clientTopicIds]));
-          topicsParam = mergedTopicIds.join(",");
+  if (userId) {
+    try {
+      const dbPrefs = await getUserTrendPreferences(userId);
+      if (dbPrefs) {
+        // Merge DB saved topics with client-passed topics for this authenticated user
+        const dbTopicIds = Array.isArray(dbPrefs.selectedTopicIds) ? dbPrefs.selectedTopicIds : [];
+        const clientTopicIds = String(topicsParam || "").split(",").map((t) => t.trim()).filter(Boolean);
+        const mergedTopicIds = Array.from(new Set([...dbTopicIds, ...clientTopicIds]));
+        topicsParam = mergedTopicIds.join(",");
 
-          const dbInterests = [dbPrefs.work, dbPrefs.interests, dbPrefs.goal].filter(Boolean).join(", ");
-          rawInterests = [dbInterests, rawInterests].filter(Boolean).join(", ");
+        const dbInterests = [dbPrefs.work, dbPrefs.interests, dbPrefs.goal].filter(Boolean).join(", ");
+        rawInterests = [dbInterests, rawInterests].filter(Boolean).join(", ");
 
-          const dbSearches = Array.isArray(dbPrefs.recentSearches) ? dbPrefs.recentSearches : [];
-          const clientSearches = String(params.searches || "").split(",").map((s) => s.trim()).filter(Boolean);
-          recentSearches = Array.from(new Set([...dbSearches, ...clientSearches]));
-        }
-      } catch (e) {
-        console.warn("[TREND-FEED] Could not load DB preferences:", e.message);
+        const dbSearches = Array.isArray(dbPrefs.recentSearches) ? dbPrefs.recentSearches : [];
+        const clientSearches = String(params.searches || "").split(",").map((s) => s.trim()).filter(Boolean);
+        const searchList = search ? [search, ...dbSearches, ...clientSearches] : [...dbSearches, ...clientSearches];
+        recentSearches = Array.from(new Set(searchList));
       }
-    } else {
-      // Only unauthenticated/anonymous visitors use query parameters
-      const searchesParam = params.searches || null;
-      if (searchesParam) {
-        recentSearches = String(searchesParam)
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean);
-      }
+    } catch (e) {
+      console.warn("[TREND-FEED] Could not load DB preferences:", e.message);
     }
+  } else {
+    // Only unauthenticated/anonymous visitors use query parameters
+    const searchesParam = params.searches || null;
+    const searchList = [];
+    if (search) searchList.push(search);
+    if (searchesParam) {
+      searchList.push(...String(searchesParam).split(",").map((s) => s.trim()).filter(Boolean));
+    }
+    recentSearches = Array.from(new Set(searchList));
   }
 
   let targetTopics = [];
@@ -1511,7 +1510,7 @@ export async function getTrendFeedPage(params = {}, options = {}) {
     isPersonalized: Boolean(targetTopics.length > 0 || searchQueries.length > 0),
     activeTopic: activeTopic ? { id: activeTopic.id, label: activeTopic.label, emoji: activeTopic.emoji } : null,
     topics: targetTopics.map((t) => ({ id: t.id, label: t.label, emoji: t.emoji })),
-    recentSearches: recentSearches.slice(0, 5),
+    recentSearches: recentSearches.slice(0, 15),
   };
 
   await writeCache(cache, key, page);

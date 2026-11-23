@@ -2104,11 +2104,13 @@ export default function TrendFeedPage() {
   const feedModeRef = useRef(feedMode);
   feedModeRef.current = feedMode;
   const loadPageRef = useRef(null);
+  const deletedSearchesRef = useRef(new Set());
 
   // Reset all state when active user identity changes (Guarantees 100% user isolation)
   useEffect(() => {
     if (activeUserKeyRef.current !== userKey) {
       activeUserKeyRef.current = userKey;
+      deletedSearchesRef.current = new Set();
       setSelectedTopicIds([]);
       setProfile(emptyProfile());
       setDraftProfile(emptyProfile());
@@ -2263,6 +2265,7 @@ export default function TrendFeedPage() {
     // User pura search kare tabhi add kro - ignore empty or 1-char partial fragments
     if (term.length < 2) return;
 
+    deletedSearchesRef.current.delete(term.toLowerCase());
     const cleanLower = term.toLowerCase();
 
     // 1. Check if it matches any predefined registered topic in TREND_INTEREST_TOPICS
@@ -2306,7 +2309,9 @@ export default function TrendFeedPage() {
 
     // 3. Add to recent searched topics (with full fragment pruning)
     setRecentDbSearches((prev) => {
-      return sanitizeRecentSearches([term, ...prev]);
+      const next = sanitizeRecentSearches([term, ...prev]);
+      recentDbSearchesRef.current = next;
+      return next;
     });
 
     // 4. Save to database (/api/trends/search-history records query in DB and adds to user's interests)
@@ -2339,7 +2344,9 @@ export default function TrendFeedPage() {
             setDraftProfile((prev) => ({ ...prev, interests: prefs.interests }));
           }
           if (Array.isArray(prefs.recentSearches) && prefs.recentSearches.length > 0) {
-            setRecentDbSearches(sanitizeRecentSearches(prefs.recentSearches));
+            const next = sanitizeRecentSearches(prefs.recentSearches);
+            setRecentDbSearches(next);
+            recentDbSearchesRef.current = next;
           }
         }
       })
@@ -2464,16 +2471,14 @@ export default function TrendFeedPage() {
 
         if (Array.isArray(data.recentSearches)) {
           const sanitized = sanitizeRecentSearches(data.recentSearches);
+          const filtered = sanitized.filter((s) => !deletedSearchesRef.current.has(s.toLowerCase()));
           setRecentDbSearches((prev) => {
-            // Keep local deletions intact: do not resurrect terms that user deleted
-            const prevLower = new Set(prev.map((s) => s.toLowerCase()));
-            const filtered = prev.length > 0
-              ? sanitized.filter((s) => prevLower.has(s.toLowerCase()))
-              : sanitized;
+            const merged = Array.from(new Set([...prev, ...filtered]));
             const prevStr = prev.join("|");
-            const nextStr = filtered.join("|");
+            const nextStr = merged.join("|");
             if (prevStr === nextStr) return prev;
-            return filtered;
+            recentDbSearchesRef.current = merged;
+            return merged;
           });
         }
 
@@ -2546,7 +2551,7 @@ export default function TrendFeedPage() {
     loadPage({ reset: true, overrideSearch: "", overrideTopic: null });
   }, [loadPage]);
 
-  // Auto-execute search when user pauses typing (600ms debounce - live feed without registering partial words in DB)
+  // Auto-execute search when user pauses typing (700ms debounce - live feed & register to DB interests)
   useEffect(() => {
     const trimmed = String(searchQuery || "").trim().replace(/^#/, "");
     if (!trimmed) {
@@ -2559,8 +2564,8 @@ export default function TrendFeedPage() {
     if (trimmed.toLowerCase() === debouncedSearchRef.current.toLowerCase()) return;
 
     const timer = setTimeout(() => {
-      handleExecuteSearch(trimmed, false);
-    }, 600);
+      handleExecuteSearch(trimmed, true);
+    }, 700);
 
     return () => clearTimeout(timer);
   }, [searchQuery, handleExecuteSearch, handleClearSearch]);
@@ -2569,6 +2574,7 @@ export default function TrendFeedPage() {
   const handleRemoveSearchedTopic = useCallback(
     async (term) => {
       const cleanTerm = String(term || "").trim().toLowerCase().replace(/^#/, "");
+      deletedSearchesRef.current.add(cleanTerm);
       setRecentDbSearches((prev) =>
         prev.filter((q) => {
           const qClean = String(q || "").trim().toLowerCase().replace(/^#/, "");
