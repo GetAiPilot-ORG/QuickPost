@@ -1,3 +1,7 @@
+## 2026-11-23 — Tune modal cleanup (removed format chips) & search input auto-clear on submit
+- Tune Modal Format Chips Removal: "Tune Your Inspiration Feed" modal se quick format selection chips (`[Shorts & Reels]`, `[Long Videos]`, etc.) aur orange subtitle completely remove kiye; clean single text input restore kiya jo `detectFormatFromGoal` ke through format detection support karta hai.
+- Search Input Auto-Clear: Search submit (Enter ya Search icon click) hote hi input bar automatically empty (`""`) ho jata hai taaki user direct naya topic type karke search kar sake; active search feed, debounced search query, topic rail pill aur status banner 100% active aur intact rehte hain.
+
 ## 2026-11-23 — Actual viral trending reach, views & likes sorting for interest topics
 - Viral Query & Reach-Descending Sort: YouTube direct scrapers me query ko `trending viral ${query} shorts` se enrich kiya, raw views ko numeric me parse karke pool ko descending order me sort kiya, aur <20K views dead items ko discard kiya taaki 14M-284M viral videos hamesha top par aayein.
 - Verified Likes & Engagement Score: Viral reach ke according realistic verified likes compute kiye (`Math.round(views * 0.058)`) aur `engagement_score` me reach weight amplify kiya; `published_at` uniform rakha taaki arbitrary scraper index viral videos ko penalize na kare.
@@ -122,15 +126,4 @@
 - Country filter in header now triggers immediate reset, instant ticker refresh (`loadHotTopics`), and drives live regional trends across Google Trends, YouTube popular charts, news, and Pinterest.
 - Formatted Tune modal input labels to regular sentence casing and font weight, and removed top badge when in tune mode.
 
-## 2026-11-20 — Compact card body layout & tight vertical spacing in TrendCard
-- Eliminated artificial flex stretching (`justify-between`), tightly grouping title, creator, and actions with natural compact spacing (`gap-1.5`).
-- Scaled down padding (`px-2.5 py-2`), font sizes (`text-xs sm:text-[13px]`), icons (`w-4 h-4`), and button heights (`h-7`), reducing card body height by ~40% to match authentic Pinterest pin proportions.
 
-## 2026-11-20 — Removed "Community Spark" badge from community and user post cards
-- Removed the hardcoded "Community Spark" fallback label and emoji from `server/src/services/trendFeed.js`.
-- Filtered out "Community Spark" from `TrendFeedPage.jsx` card body header, keeping cards clean with direct title and creator info.
-
-## 2026-11-20 — Multi-platform creator username resolution, video playback & universal feed sync
-- Resolved foreign key failure on `posts.author_id` by checking `auth.users` existence, persisting `author:${userId}` in `niche_tags` and ranking user uploads at the top.
-- Auto-synced all broadcast uploads across every platform to Trend Feed community posts with video hover-playback support.
-- Enforced username precedence: Instagram handle default for multi-platform broadcasts, individual platform handle for single-platform uploads, and "GAP Social-pilot" for community-only posts.

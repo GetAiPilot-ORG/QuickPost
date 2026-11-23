@@ -1835,53 +1835,14 @@ function CreatorInterestModal({
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs sm:text-[13px] font-normal text-neutral-700 dark:text-neutral-300">
-                  Preferred content format
-                </label>
-                <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
-                  Select or type (e.g. Short video, Reel)
-                </span>
-              </div>
-
-              {/* Quick Format Selection Chips */}
-              <div className="flex items-center gap-1.5 flex-wrap mb-2">
-                {[
-                  { id: "shorts", label: "🎬 Shorts & Reels", value: "Short video, Reels" },
-                  { id: "videos", label: "🎥 Long Videos", value: "YouTube Videos" },
-                  { id: "visuals", label: "🖼️ Visuals & Photos", value: "Visuals, Photos" },
-                  { id: "news", label: "📰 News & Stories", value: "News & Stories" },
-                  { id: "all", label: "🌐 All Formats", value: "All Formats" },
-                ].map((chip) => {
-                  const currentGoalLower = (localProfile.goal || "").toLowerCase();
-                  const isChipActive =
-                    (chip.id === "shorts" && (currentGoalLower.includes("short") || currentGoalLower.includes("reel"))) ||
-                    (chip.id === "videos" && currentGoalLower.includes("video") && !currentGoalLower.includes("short")) ||
-                    (chip.id === "visuals" && (currentGoalLower.includes("visual") || currentGoalLower.includes("photo"))) ||
-                    (chip.id === "news" && currentGoalLower.includes("news")) ||
-                    (chip.id === "all" && (currentGoalLower.includes("all") || !currentGoalLower));
-                  return (
-                    <button
-                      key={chip.id}
-                      type="button"
-                      onClick={() => setLocalProfile((cur) => ({ ...cur, goal: chip.value }))}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
-                        isChipActive
-                          ? "bg-amber-500 text-white border-amber-500 font-bold shadow-xs"
-                          : "bg-neutral-100 dark:bg-white/5 text-neutral-600 dark:text-neutral-300 border-neutral-200 dark:border-white/10 hover:border-amber-500/50"
-                      }`}
-                    >
-                      {chip.label}
-                    </button>
-                  );
-                })}
-              </div>
-
+              <label className="block text-xs sm:text-[13px] font-normal text-neutral-700 dark:text-neutral-300 mb-1.5">
+                Preferred content formats
+              </label>
               <input
                 type="text"
                 value={localProfile.goal || ""}
                 onChange={(e) => setLocalProfile((cur) => ({ ...cur, goal: e.target.value }))}
-                placeholder="e.g. Short video, Viral Reels, Carousels, YouTube Videos"
+                placeholder="e.g. 30s Viral Reels, Carousels, Twitter/X Threads"
                 className="w-full h-10 px-3.5 rounded-xl bg-white dark:bg-white/[0.04] border border-neutral-300 dark:border-white/10 text-xs sm:text-[13px] font-normal text-neutral-900 dark:text-white placeholder:text-neutral-400 dark:placeholder:text-neutral-500 outline-none focus:border-amber-500/60 focus:ring-2 focus:ring-amber-500/15 transition-all"
               />
             </div>
@@ -2634,7 +2595,8 @@ export default function TrendFeedPage() {
     (rawTerm, registerTopic = true) => {
       const term = String(rawTerm || "").trim().replace(/^#/, "");
       if (!term || term.length < 2) return;
-      setSearchQuery(term);
+      // Ek baar search karne ke baad input ko khali rakho taaki naya topic search kar sakein
+      setSearchQuery("");
       setDebouncedSearch(term);
       debouncedSearchRef.current = term;
       setSelectedTopicFilter(null);
@@ -2664,25 +2626,6 @@ export default function TrendFeedPage() {
     setItems([]);
     loadPage({ reset: true, overrideSearch: "", overrideTopic: null });
   }, [loadPage]);
-
-  // Auto-execute search when user pauses typing (700ms debounce - live feed & register to DB interests)
-  useEffect(() => {
-    const trimmed = String(searchQuery || "").trim().replace(/^#/, "");
-    if (!trimmed) {
-      if (debouncedSearchRef.current) {
-        handleClearSearch();
-      }
-      return;
-    }
-    if (trimmed.length < 2) return;
-    if (trimmed.toLowerCase() === debouncedSearchRef.current.toLowerCase()) return;
-
-    const timer = setTimeout(() => {
-      handleExecuteSearch(trimmed, true);
-    }, 700);
-
-    return () => clearTimeout(timer);
-  }, [searchQuery, handleExecuteSearch, handleClearSearch]);
 
   // Turn off suggestion pill from topics rail (topic feed still keeps all search topics!)
   const handleDismissSuggestion = useCallback(
@@ -3009,13 +2952,7 @@ export default function TrendFeedPage() {
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => {
-              const val = e.target.value;
-              setSearchQuery(val);
-              if (!val.trim() && debouncedSearchRef.current) {
-                handleClearSearch();
-              }
-            }}
+            onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -3028,9 +2965,9 @@ export default function TrendFeedPage() {
           {searchQuery && (
             <button
               type="button"
-              onClick={handleClearSearch}
+              onClick={() => setSearchQuery("")}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 p-0.5 cursor-pointer"
-              title="Clear search"
+              title="Clear input"
             >
               <X size={12} />
             </button>
