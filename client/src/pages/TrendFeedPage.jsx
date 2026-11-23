@@ -2172,28 +2172,38 @@ export default function TrendFeedPage() {
 
         const dbPrefs = data.preferences;
         const hasDbTopics = Array.isArray(dbPrefs?.selectedTopicIds) && dbPrefs.selectedTopicIds.length > 0;
-        const hasDbInterests = hasDbTopics || Boolean(dbPrefs?.interests?.trim());
+        const dbSearches = Array.isArray(dbPrefs?.recentSearches) ? sanitizeRecentSearches(dbPrefs.recentSearches) : [];
+        const hasDbInterests = hasDbTopics || Boolean(dbPrefs?.interests?.trim()) || dbSearches.length > 0;
 
         if (hasDbInterests) {
-          // User HAS saved interests in DB - populate and do not prompt onboarding
+          // User HAS saved interests or searches in DB - populate and do not prompt onboarding
           setSelectedTopicIds(dbPrefs.selectedTopicIds || []);
+          setRecentDbSearches(dbSearches);
+          recentDbSearchesRef.current = dbSearches;
+
+          let interestsStr = sanitizeSavedInterests(dbPrefs.interests || "");
+          if (dbSearches.length > 0) {
+            const list = Array.from(new Set([...interestsStr.split(",").map((s) => s.trim()).filter(Boolean), ...dbSearches]));
+            interestsStr = list.join(", ");
+          }
+
           const dbProfile = {
             work: dbPrefs.work || "",
-            interests: sanitizeSavedInterests(dbPrefs.interests || ""),
+            interests: interestsStr,
             goal: dbPrefs.goal || "",
             selectedTopicIds: dbPrefs.selectedTopicIds || [],
+            recentSearches: dbSearches,
             onboarded: true,
           };
           setProfile(dbProfile);
           setDraftProfile(dbProfile);
+          profileRef.current = dbProfile;
           try {
             localStorage.setItem(profileStorageKey, JSON.stringify(dbProfile));
             localStorage.setItem(onboardingStorageKey, "true");
             onboardingTriggeredRef.current = true;
           } catch { }
           setShowInterestModal(false);
-          const searches = Array.isArray(dbPrefs?.recentSearches) ? sanitizeRecentSearches(dbPrefs.recentSearches) : [];
-          setRecentDbSearches(searches);
           loadPage({ reset: true, overrideProfile: dbProfile });
         } else {
           // DB ME USKA INTEREST KHALI H: Clean slate strictly for this user
@@ -2710,9 +2720,29 @@ export default function TrendFeedPage() {
   };
 
   const handleSaveInterests = async (nextSelectedTopicIds = selectedTopicIds, updatedProfile = draftProfile) => {
-    const customInterests = updatedProfile?.interests?.trim() || "";
-    const roleTerm = updatedProfile?.work?.trim() || "";
-    const goalTerm = updatedProfile?.goal?.trim() || "";
+    const isTuneModal = interestModalMode === "tune";
+    const existingInterests = profileRef.current?.interests || "";
+    let customInterests = isTuneModal
+      ? (updatedProfile?.interests?.trim() || "")
+      : (existingInterests || updatedProfile?.interests?.trim() || "");
+
+    const roleTerm = isTuneModal
+      ? (updatedProfile?.work?.trim() || "")
+      : (profileRef.current?.work || updatedProfile?.work?.trim() || "");
+
+    const goalTerm = isTuneModal
+      ? (updatedProfile?.goal?.trim() || "")
+      : (profileRef.current?.goal || updatedProfile?.goal?.trim() || "");
+
+    // Guarantee that recent searched topics are preserved in custom interests
+    if (recentDbSearches.length > 0) {
+      const mergedList = Array.from(new Set([
+        ...customInterests.split(",").map((s) => s.trim()).filter(Boolean),
+        ...recentDbSearches,
+      ]));
+      customInterests = mergedList.join(", ");
+    }
+
     const hasSavedInterests = (Array.isArray(nextSelectedTopicIds) && nextSelectedTopicIds.length > 0) || Boolean(customInterests) || Boolean(roleTerm);
 
     if (hasSavedInterests) {

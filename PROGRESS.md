@@ -1,3 +1,7 @@
+## 2026-11-23 — Fixed searched topics not populating in main personalized All Feeds
+- First-class searched topic definitions: `resolveTargetTopics` me searched terms ke liye custom topic objects banaye taaki `targetTopics` me jud kar live external fetches (YouTube, Pinterest, News) aur 90M ranking boost trigger ho sakein.
+- Cache key & Onboarding persistence fix: `trendFeed.js` ke `cacheKey` me `recentSearches` add kiya taaki purana unpersonalized feed cache hit na kare; `TrendFeedPage` me `hasDbInterests` aur `handleSaveInterests` ko fix kiya taaki modal save karne par existing searched topics wipe out na hon.
+
 ## 2026-11-23 — Auto-added searched topics to user's DB interest topics & preferences
 - Server-side DB synchronization: `GET /api/trends/feed` route me search param aane par `addSearchQueryToUserInterests` auto-call kiya jo term ko user ke Supabase Auth `trend_preferences.interests` string, `recentSearches` array, aur matching `selectedTopicIds` me seamlessly persist karta hai.
 - Client state & deletion guard: `TrendFeedPage` typing debounce par search term ko automatically register kiya; client par server-returned search list merging fix ki with `deletedSearchesRef` taaki naye searched topics drops na hon aur deleted topics resurrect na hon.

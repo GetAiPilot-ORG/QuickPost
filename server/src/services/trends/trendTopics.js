@@ -708,6 +708,28 @@ export function resolveTargetTopics({ topics = "", topic = "", interests = "", r
         if (def && !targetTopics.some((t) => t.id === def.id)) {
           targetTopics.push(def);
           def.keywords.forEach((k) => keywordSet.add(k));
+        } else if (!def && cleanS.length > 1) {
+          // Build first-class custom topic definition for the searched topic!
+          const slug = cleanS.toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 36);
+          const tokens = cleanS
+            .toLowerCase()
+            .split(/\s+/)
+            .filter((w) => w.length > 1 && !["the", "for", "and", "with", "all"].includes(w));
+          const customDef = {
+            id: `search_${slug}`,
+            label: cleanS,
+            searchQuery: cleanS,
+            pinterestQuery: cleanS,
+            blueskyQuery: cleanS,
+            keywords: Array.from(new Set([cleanS.toLowerCase(), cleanS, ...tokens])),
+            emoji: "🔍",
+            subCategory: "all",
+            isSearchedTopic: true,
+          };
+          if (!targetTopics.some((t) => t.id === customDef.id || t.label.toLowerCase() === cleanS.toLowerCase())) {
+            targetTopics.unshift(customDef);
+          }
+          customDef.keywords.forEach((k) => keywordSet.add(k));
         }
         // Extract meaningful search tokens for keyword scoring
         cleanS
