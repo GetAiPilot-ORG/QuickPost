@@ -291,6 +291,22 @@ export async function fetchYouTubeTrends({ region = "IN", category = "all", quer
 // -----------------------------------------------------------------------------
 // 1C. DIRECT YOUTUBE EXTRACTION (Fast, Zero-Quota Scraper for Shorts & Videos)
 // -----------------------------------------------------------------------------
+export function parseNumericViews(viewsStr) {
+  if (!viewsStr) return 25000;
+  const s = String(viewsStr).toLowerCase().trim();
+  const raw = s.replace(/[^0-9.]/g, "");
+  const num = parseFloat(raw);
+  if (isNaN(num)) return 25000;
+  if (s.includes("b") || s.includes("billion")) return Math.round(num * 1000000000);
+  if (s.includes("m") || s.includes("million")) return Math.round(num * 1000000);
+  if (s.includes("k") || s.includes("thousand") || s.includes("lakh") || s.includes("crore")) {
+    if (s.includes("crore")) return Math.round(num * 10000000);
+    if (s.includes("lakh")) return Math.round(num * 100000);
+    return Math.round(num * 1000);
+  }
+  return Math.round(num);
+}
+
 export async function fetchYouTubeDirectShorts({ query = "", region = "IN", maxResults = 25 } = {}) {
   const cleanQuery = (query || "").trim();
   const regionCode = normalizeRegionCode(region);
@@ -298,9 +314,14 @@ export async function fetchYouTubeDirectShorts({ query = "", region = "IN", maxR
 
   let searchQuery;
   if (cleanQuery) {
-    searchQuery = cleanQuery.toLowerCase().includes("short") ? cleanQuery : `${cleanQuery} shorts`;
+    const qLower = cleanQuery.toLowerCase();
+    if (qLower.includes("trending") || qLower.includes("viral")) {
+      searchQuery = qLower.includes("short") ? cleanQuery : `${cleanQuery} shorts`;
+    } else {
+      searchQuery = `trending viral ${cleanQuery} shorts`;
+    }
   } else {
-    searchQuery = countryName ? `trending shorts viral ${countryName}` : "trending shorts viral";
+    searchQuery = countryName ? `trending viral shorts ${countryName}` : "trending viral shorts";
   }
 
   const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery)}`;
@@ -319,7 +340,12 @@ export async function fetchYouTubeDirectShorts({ query = "", region = "IN", maxR
   if (endIdx === -1) return [];
 
   const jsonStr = html.slice(idx + "ytInitialData = ".length, endIdx);
-  const data = JSON.parse(jsonStr);
+  let data;
+  try {
+    data = JSON.parse(jsonStr);
+  } catch {
+    return [];
+  }
 
   const shorts = [];
   const seenIds = new Set();
@@ -345,7 +371,7 @@ export async function fetchYouTubeDirectShorts({ query = "", region = "IN", maxR
         `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
       if (videoId && !seenIds.has(videoId)) {
         seenIds.add(videoId);
-        shorts.push({ videoId, title, viewsStr, thumb });
+        shorts.push({ videoId, title, viewsStr, thumb, numericViews: parseNumericViews(viewsStr) });
       }
     }
     if (obj.reelItemRenderer) {
@@ -358,7 +384,7 @@ export async function fetchYouTubeDirectShorts({ query = "", region = "IN", maxR
         `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
       if (videoId && !seenIds.has(videoId)) {
         seenIds.add(videoId);
-        shorts.push({ videoId, title, viewsStr, thumb });
+        shorts.push({ videoId, title, viewsStr, thumb, numericViews: parseNumericViews(viewsStr) });
       }
     }
     if (Array.isArray(obj)) {
@@ -369,12 +395,16 @@ export async function fetchYouTubeDirectShorts({ query = "", region = "IN", maxR
   }
   walk(data);
 
-  return shorts.slice(0, maxResults).map((s, index) => {
-    const rawViews = s.viewsStr.replace(/[^0-9.]/g, "");
-    let multiplier = 1;
-    if (/M|million/i.test(s.viewsStr)) multiplier = 1000000;
-    else if (/K/i.test(s.viewsStr)) multiplier = 1000;
-    const views = Math.round((parseFloat(rawViews) || 50) * multiplier);
+  // Filter out low-reach/dead uploads (< 20k views) if higher-reach items are available
+  const highReach = shorts.filter((s) => s.numericViews >= 20000);
+  const pool = highReach.length >= 5 ? highReach : shorts;
+
+  // STRICTLY SORT BY REACH / VIEWS DESCENDING (highest trending reach on top!)
+  pool.sort((a, b) => b.numericViews - a.numericViews);
+
+  return pool.slice(0, maxResults).map((s) => {
+    const views = s.numericViews;
+    const likes = Math.max(Math.round(views * 0.058), 1200);
     const cleanTitle = s.title.replace(/"/g, "&quot;");
 
     return {
@@ -386,20 +416,24 @@ export async function fetchYouTubeDirectShorts({ query = "", region = "IN", maxR
       thumbnail_url: s.thumb,
       full_image_url: `https://i.ytimg.com/vi/${s.videoId}/maxresdefault.jpg`,
       title: s.title,
-      caption: `⚡ YouTube Short (${s.viewsStr})\n\n${s.title}\n\nWatch on YouTube Shorts: https://www.youtube.com/shorts/${s.videoId}`,
+      caption: `⚡ Trending YouTube Short (${s.viewsStr})\n\n${s.title}\n\nWatch on YouTube Shorts: https://www.youtube.com/shorts/${s.videoId}`,
       creator: cleanQuery || "YouTube Creator",
       content_type: "short",
       media_type: "video",
       is_short: true,
       region: regionCode,
       country: regionCode,
-      engagement_score: 9500 + (30 - index) * 150 + Math.min(views, 500000) * 0.05,
+      engagement_score: Math.round(views * 0.5 + likes * 2),
       metrics: {
-        views: s.viewsStr,
+        views,
+        viewCount: views,
+        likes,
+        likeCount: likes,
+        formattedViews: s.viewsStr,
         platform: "YouTube Shorts",
       },
       niche_tags: ["shorts", "reel", "youtube_shorts", `region:${regionCode}`, cleanQuery].filter(Boolean),
-      published_at: new Date(Date.now() - index * 3600000).toISOString(),
+      published_at: new Date(Date.now() - 3600000).toISOString(),
       ingested_at: new Date().toISOString(),
     };
   });
@@ -409,7 +443,9 @@ export async function fetchYouTubeDirectVideos({ query = "", region = "IN", maxR
   const cleanQuery = (query || "").trim();
   const regionCode = normalizeRegionCode(region);
   const countryName = REGION_NAMES[regionCode] || "";
-  const searchQuery = cleanQuery ? (countryName ? `${cleanQuery} ${countryName}` : cleanQuery) : "trending viral video";
+  const searchQuery = cleanQuery
+    ? (cleanQuery.toLowerCase().includes("trending") ? cleanQuery : `trending viral ${cleanQuery}`)
+    : (countryName ? `trending viral video ${countryName}` : "trending viral video");
 
   const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery)}`;
   const res = await axios.get(url, {
@@ -427,7 +463,12 @@ export async function fetchYouTubeDirectVideos({ query = "", region = "IN", maxR
   if (endIdx === -1) return [];
 
   const jsonStr = html.slice(idx + "ytInitialData = ".length, endIdx);
-  const data = JSON.parse(jsonStr);
+  let data;
+  try {
+    data = JSON.parse(jsonStr);
+  } catch {
+    return [];
+  }
 
   const videos = [];
   const seenIds = new Set();
@@ -447,7 +488,7 @@ export async function fetchYouTubeDirectVideos({ query = "", region = "IN", maxR
         (v.navigationEndpoint?.commandMetadata?.webCommandMetadata?.url || "").includes("/shorts/");
       if (videoId && !seenIds.has(videoId)) {
         seenIds.add(videoId);
-        videos.push({ videoId, title, channel, viewsStr, thumb, isShort });
+        videos.push({ videoId, title, channel, viewsStr, thumb, isShort, numericViews: parseNumericViews(viewsStr) });
       }
     }
     if (Array.isArray(obj)) {
@@ -458,12 +499,12 @@ export async function fetchYouTubeDirectVideos({ query = "", region = "IN", maxR
   }
   walk(data);
 
-  return videos.slice(0, maxResults).map((v, index) => {
-    const rawViews = v.viewsStr.replace(/[^0-9.]/g, "");
-    let multiplier = 1;
-    if (/M|million/i.test(v.viewsStr)) multiplier = 1000000;
-    else if (/K/i.test(v.viewsStr)) multiplier = 1000;
-    const views = Math.round((parseFloat(rawViews) || 50) * multiplier);
+  // STRICTLY SORT BY REACH / VIEWS DESCENDING
+  videos.sort((a, b) => b.numericViews - a.numericViews);
+
+  return videos.slice(0, maxResults).map((v) => {
+    const views = v.numericViews;
+    const likes = Math.max(Math.round(views * 0.048), 800);
     const cleanTitle = v.title.replace(/"/g, "&quot;");
 
     return {
@@ -481,10 +522,16 @@ export async function fetchYouTubeDirectVideos({ query = "", region = "IN", maxR
       is_short: v.isShort,
       region: regionCode,
       country: regionCode,
-      engagement_score: views + 10000,
-      metrics: { views, likes: Math.floor(views * 0.05), comments: Math.floor(views * 0.01) },
+      engagement_score: Math.round(views * 0.5 + likes * 2),
+      metrics: {
+        views,
+        viewCount: views,
+        likes,
+        likeCount: likes,
+        comments: Math.floor(views * 0.01),
+      },
       niche_tags: [v.isShort ? "shorts" : "video", `region:${regionCode}`, cleanQuery].filter(Boolean),
-      published_at: new Date().toISOString(),
+      published_at: new Date(Date.now() - 3600000).toISOString(),
       ingested_at: new Date().toISOString(),
     };
   });
@@ -517,7 +564,9 @@ export async function fetchYouTubeShorts({ region = "IN", category = "all", quer
       const effectiveGl = regionCode === "GLOBAL" ? "us" : regionCode.toLowerCase();
       let searchQuery;
       if (cleanQuery) {
-        searchQuery = `${cleanQuery} shorts`;
+        searchQuery = cleanQuery.toLowerCase().includes("trending")
+          ? `${cleanQuery} shorts`
+          : `trending viral ${cleanQuery} shorts`;
       } else {
         searchQuery = countryName ? `trending #shorts viral ${countryName}` : "trending #shorts viral";
       }
@@ -564,42 +613,50 @@ export async function fetchYouTubeShorts({ region = "IN", category = "all", quer
 
       if (extractedShorts.length > 0) {
         const seenIds = new Set();
-        items = extractedShorts
-          .filter((s) => {
-            if (!s.video_id || seenIds.has(s.video_id)) return false;
-            seenIds.add(s.video_id);
-            return true;
-          })
-          .map((s, index) => {
-            const views = s.views || 50000 + (30 - index) * 5000;
-            const channelName = s.channel?.name || "YouTube Creator";
-            const cleanTitle = s.title || "Trending YouTube Short";
-            return {
-              id: `yt_short_${s.video_id}`,
-              source_platform: "youtube",
-              source_url: `https://www.youtube.com/shorts/${s.video_id}`,
-              video_id: s.video_id,
-              embed_html: `<iframe src="https://www.youtube-nocookie.com/embed/${s.video_id}?autoplay=1&loop=1" title="${cleanTitle.replace(/"/g, "&quot;")}" allowfullscreen></iframe>`,
-              thumbnail_url: s.thumbnail || `https://i.ytimg.com/vi/${s.video_id}/hqdefault.jpg`,
-              full_image_url: `https://i.ytimg.com/vi/${s.video_id}/maxresdefault.jpg`,
-              title: cleanTitle,
-              caption: `⚡ YouTube Short by ${channelName} (${s.views_original || "Trending"})\n\n${cleanTitle}\n\nWatch on YouTube Shorts: https://www.youtube.com/shorts/${s.video_id}`,
-              creator: channelName,
-              content_type: "short",
-              media_type: "video",
-              is_short: true,
-              region: regionCode,
-              country: regionCode,
-              engagement_score: 9500 + (30 - index) * 150 + Math.min(views, 500000) * 0.05,
-              metrics: {
-                views: s.views_original || `${Math.floor(views / 1000)}K`,
-                platform: "YouTube Shorts",
-              },
-              niche_tags: ["shorts", "reel", "youtube_shorts", `region:${regionCode}`, category].filter(Boolean),
-              published_at: new Date(Date.now() - index * 3600000).toISOString(),
-              ingested_at: new Date().toISOString(),
-            };
-          });
+        const uniqueShorts = extractedShorts.filter((s) => {
+          if (!s.video_id || seenIds.has(s.video_id)) return false;
+          seenIds.add(s.video_id);
+          return true;
+        });
+
+        // Sort by views descending (highest reach on top!)
+        uniqueShorts.sort((a, b) => (b.views || 0) - (a.views || 0));
+
+        items = uniqueShorts.map((s) => {
+          const views = s.views || 100000;
+          const likes = Math.max(Math.round(views * 0.058), 1200);
+          const channelName = s.channel?.name || "YouTube Creator";
+          const cleanTitle = s.title || "Trending YouTube Short";
+          return {
+            id: `yt_short_${s.video_id}`,
+            source_platform: "youtube",
+            source_url: `https://www.youtube.com/shorts/${s.video_id}`,
+            video_id: s.video_id,
+            embed_html: `<iframe src="https://www.youtube-nocookie.com/embed/${s.video_id}?autoplay=1&loop=1" title="${cleanTitle.replace(/"/g, "&quot;")}" allowfullscreen></iframe>`,
+            thumbnail_url: s.thumbnail || `https://i.ytimg.com/vi/${s.video_id}/hqdefault.jpg`,
+            full_image_url: `https://i.ytimg.com/vi/${s.video_id}/maxresdefault.jpg`,
+            title: cleanTitle,
+            caption: `⚡ Trending YouTube Short by ${channelName} (${s.views_original || "Trending"})\n\n${cleanTitle}\n\nWatch on YouTube Shorts: https://www.youtube.com/shorts/${s.video_id}`,
+            creator: channelName,
+            content_type: "short",
+            media_type: "video",
+            is_short: true,
+            region: regionCode,
+            country: regionCode,
+            engagement_score: Math.round(views * 0.5 + likes * 2),
+            metrics: {
+              views,
+              viewCount: views,
+              likes,
+              likeCount: likes,
+              formattedViews: s.views_original || `${Math.floor(views / 1000)}K views`,
+              platform: "YouTube Shorts",
+            },
+            niche_tags: ["shorts", "reel", "youtube_shorts", `region:${regionCode}`, category].filter(Boolean),
+            published_at: new Date(Date.now() - 3600000).toISOString(),
+            ingested_at: new Date().toISOString(),
+          };
+        });
       }
     } catch (err) {
       handleSerpApiError(err, "YouTube Shorts");

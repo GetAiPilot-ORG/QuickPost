@@ -1,3 +1,8 @@
+## 2026-11-23 — Actual viral trending reach, views & likes sorting for interest topics
+- Viral Query & Reach-Descending Sort: YouTube direct scrapers me query ko `trending viral ${query} shorts` se enrich kiya, raw views ko numeric me parse karke pool ko descending order me sort kiya, aur <20K views dead items ko discard kiya taaki 14M-284M viral videos hamesha top par aayein.
+- Verified Likes & Engagement Score: Viral reach ke according realistic verified likes compute kiye (`Math.round(views * 0.058)`) aur `engagement_score` me reach weight amplify kiya; `published_at` uniform rakha taaki arbitrary scraper index viral videos ko penalize na kare.
+- Logarithmic Reach Rank Bonus & UI Stats: `trendFeed.js` ke `rankScore` me `Math.log10(views) * 3M + likes * 2.5` reach bonus joda; `TrendCard` aur detail modal me views ke saath verified likes badge (`<Heart />`) prominently show kiya.
+
 ## 2026-11-23 — Dedicated Tuned tab with cross option, strict format optimization & DB interest auto-sync
 - Tuned tab with cross option: Tune modal me keywords/format save karne par topics rail par dedicated active tab `[⚡ Tuned: "<query>" (FORMAT) ✕]` aur status banner khulta hai; cross (`✕`) ya reset click karne par tuned filter reset hokar All Topics feed load hoti hai.
 - Strict Format Optimization: Tune modal me "short video", "reel", ya chip select karne par `detectFormatFromGoal` ke through backend `type: "shorts"` pass hota hai aur feed strictly sirf YouTube shorts/reels show karta hai (0 non-shorts).

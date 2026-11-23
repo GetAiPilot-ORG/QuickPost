@@ -1062,30 +1062,45 @@ export async function getTrendFeedPage(params = {}, options = {}) {
             (post.source_platform === "google_trends" || post.content_type === "trend_query") &&
             (targetRegionUpper === "GLOBAL" || isMatchingRegion);
 
-          // Prioritize user's own uploads at top, followed by user's searched, tuned, and interest topics!
+          // Extract actual reach metrics (views & likes) to heavily favor genuine viral/trending posts
+          const postViews = Number(
+            post.metrics?.viewCount ??
+              (typeof post.metrics?.views === "number" ? post.metrics.views : 0) ??
+              0
+          );
+          const postLikes = Number(
+            post.metrics?.likeCount ??
+              (typeof post.metrics?.likes === "number" ? post.metrics.likes : 0) ??
+              0
+          );
+          const reachBonus = postViews > 0
+            ? Math.round(Math.log10(postViews + 1) * 3000000 + (postLikes * 2.5))
+            : Number(post.engagement_score || 0);
+
+          // Prioritize user's own uploads at top, followed by user's searched, tuned, and interest topics with viral reach!
           let rankScore;
           if (search) {
             const relScore = calculateRelevance(post, search);
             const ownBonus = isUserOwn ? 50000000 : 0;
-            rankScore = ownBonus + (relScore * 1000000) + score;
+            rankScore = ownBonus + (relScore * 1000000) + reachBonus + score;
           } else if (isUserOwn) {
             rankScore = 200000000 + score;
           } else if (isTunedMatch) {
             const regMultiplier = isMatchingRegion ? 1.4 : 1.0;
-            rankScore = (95000000 * regMultiplier) + (score * 800) + matches * 30000;
+            rankScore = (95000000 * regMultiplier) + reachBonus + (score * 500) + matches * 30000;
           } else if (isSearchedMatch) {
             const regMultiplier = isMatchingRegion ? 1.4 : 1.0;
-            rankScore = (90000000 * regMultiplier) + (score * 800) + matches * 25000;
+            rankScore = (90000000 * regMultiplier) + reachBonus + (score * 500) + matches * 25000;
           } else if (hasDirectTopic || matches > 0) {
             const regMultiplier = isMatchingRegion ? 1.4 : 1.0;
-            rankScore = (70000000 * regMultiplier) + (score * 500) + matches * 10000;
+            rankScore = (70000000 * regMultiplier) + reachBonus + (score * 400) + matches * 10000;
           } else if (isCountryPulse) {
-            rankScore = 30000000 + score;
+            rankScore = 30000000 + reachBonus + score;
           } else if (isSocialpilot) {
             rankScore = 20000000 + score;
           } else {
             const regMultiplier = isMatchingRegion ? 2.5 : 1.0;
-            rankScore = Number((score * topicBoost * regMultiplier).toFixed(6));
+            rankScore = Number((score * topicBoost * regMultiplier + reachBonus).toFixed(6));
           }
 
           const matchedTopicLabel = search ? search : (post.matched_topic || matchResult.matchedTopic?.label || null);

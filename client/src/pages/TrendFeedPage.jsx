@@ -802,23 +802,23 @@ function TrendCard({ post, onUseIdea, onRemix, onCompose, onSave, isSaved, onOpe
           </div>
 
           {/* Minimal Engagement Metrics */}
-          <div className="flex items-center gap-1.5 text-[10px] font-medium text-neutral-400 dark:text-neutral-500 flex-shrink-0">
+          <div className="flex items-center gap-2 text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 flex-shrink-0">
             {views && (
-              <span className="inline-flex items-center gap-0.5" title={`${views} views`}>
+              <span className="inline-flex items-center gap-0.5 text-neutral-700 dark:text-neutral-200" title={`${views} views`}>
                 <Eye size={11} className="text-neutral-400" />
                 <span>{views}</span>
               </span>
             )}
-            {saves && (
+            {likes && (
+              <span className="inline-flex items-center gap-0.5 text-rose-600 dark:text-rose-400 font-bold" title={`${likes} likes`}>
+                <Heart size={10} className="fill-current text-rose-500" />
+                <span>{likes}</span>
+              </span>
+            )}
+            {saves && !likes && (
               <span className="inline-flex items-center gap-0.5 text-rose-500 font-semibold" title={`${saves} saves`}>
                 <Bookmark size={10} className="fill-current" />
                 <span>{saves}</span>
-              </span>
-            )}
-            {likes && !saves && (
-              <span className="inline-flex items-center gap-0.5" title={`${likes} likes`}>
-                <Heart size={10} className="text-neutral-400 fill-current" />
-                <span>{likes}</span>
               </span>
             )}
           </div>
@@ -1045,21 +1045,21 @@ function TrendDetailsBottomSheet({ isOpen, onClose, post, onRemix, onCompose, on
               {/* Engagement Pills */}
               <div className="flex items-center gap-2.5 py-1 text-xs text-neutral-500 dark:text-neutral-400 font-medium flex-wrap">
                 {views && (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-neutral-100 dark:bg-neutral-800">
-                    <Eye size={13} />
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-white font-bold">
+                    <Eye size={13} className="text-neutral-500" />
                     <span>{views} views</span>
                   </span>
                 )}
-                {saves && (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-rose-500/10 text-rose-500 font-semibold">
-                    <Bookmark size={13} className="fill-current" />
-                    <span>{saves} saves</span>
+                {likes && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold">
+                    <Heart size={13} className="fill-current text-rose-500" />
+                    <span>{likes} likes</span>
                   </span>
                 )}
-                {likes && (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-neutral-100 dark:bg-neutral-800">
-                    <Heart size={13} />
-                    <span>{likes} likes</span>
+                {saves && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold">
+                    <Bookmark size={13} className="fill-current text-amber-500" />
+                    <span>{saves} saves</span>
                   </span>
                 )}
                 {reposts && (
