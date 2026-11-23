@@ -1,3 +1,8 @@
+## 2026-11-23 — Cleaned up Onboarding Modal (removed Creator Inspiration badge, search bar & card subtitles)
+- Header cleanup: "Creator Inspiration Engine" pill badge ko modal header se remove kiya taaki seedhe clean heading "What topics do you create or love?" dikhe.
+- Search bar removal: Custom interest topic search bar aur "Add Topic" button ko modal body se remove kiya taaki user ko sirf curated topic niche cards dikhein.
+- Topic cards simplification: Har topic card se 2nd line category subtitle (jaise "Tech & AI", "Business & Wealth") hata diya taaki card me sirf emoji, title aur checkmark ka clean minimal look rahe.
+
 ## 2026-11-21 — Added Direct YouTube Shorts & Videos scraper to eliminate 429 quota failures
 - Root cause: SerpApi monthly search quota khatam ho chuka tha (250/250 searches used, returning 429), aur YouTube Data API `search.list` ki daily 10k quota bhi exhaust ho chuki thi (status 429 `RESOURCE_EXHAUSTED`), jisse YouTube shorts empty return ho rahe the.
 - Direct extraction & Circuit breaker: `fetchYouTubeDirectShorts` aur `fetchYouTubeDirectVideos` scrapers add kiye jo YouTube `ytInitialData` se `shortsLockupViewModel` aur `videoRenderer` directly parse karte hain (0 quota cost, 100% reliable, exact query matches); saath hi SerpApi par 30-min 429 circuit breaker lagaya taaki repeated slow failing calls na hon.

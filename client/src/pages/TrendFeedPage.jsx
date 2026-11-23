@@ -1661,29 +1661,6 @@ function CreatorInterestModal({
     interests: initialProfile?.interests || "",
     goal: initialProfile?.goal || "",
   }));
-  const [customInput, setCustomInput] = useState("");
-
-  const handleAddCustom = (e) => {
-    if (e && e.preventDefault) e.preventDefault();
-    const term = customInput.trim().replace(/^#/, "");
-    if (!term || term.length < 2) return;
-
-    // Check if matches registered topic
-    const cleanLower = term.toLowerCase();
-    const matched = TREND_INTEREST_TOPICS.find(
-      (t) =>
-        t.id.toLowerCase() === cleanLower ||
-        t.label.toLowerCase() === cleanLower ||
-        t.keywords.toLowerCase().includes(cleanLower)
-    );
-    if (matched && !localTopicIds.includes(matched.id)) {
-      setLocalTopicIds((prev) => [...prev, matched.id]);
-    }
-
-    const nextInterests = addTermToInterestsString(localProfile.interests, term);
-    setLocalProfile((prev) => ({ ...prev, interests: nextInterests }));
-    setCustomInput("");
-  };
 
   useEffect(() => {
     if (isOpen) {
@@ -1739,12 +1716,6 @@ function CreatorInterestModal({
         <div className="relative px-5 sm:px-6 py-3.5 sm:py-4 border-b border-black/[0.06] dark:border-white/[0.08] flex-shrink-0 bg-neutral-50/70 dark:bg-white/[0.02]">
           <div className="flex items-center justify-between gap-3">
             <div>
-              {!isTune && (
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-orange-500/10 dark:bg-orange-500/15 border border-orange-500/25 text-orange-700 dark:text-orange-400 text-[10px] sm:text-[11px] font-bold tracking-wider uppercase mb-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-orange-500 shadow-[0_0_6px_rgba(249,115,22,0.6)]" />
-                  <span>Creator Inspiration Engine</span>
-                </div>
-              )}
               <h2 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-neutral-100 tracking-tight leading-snug">
                 {isTune ? "Tune Your Inspiration Feed" : "What topics do you create or love?"}
               </h2>
@@ -1804,75 +1775,8 @@ function CreatorInterestModal({
             </div>
           </div>
         ) : (
-          /* First-Time Visit Onboarding: Strictly Topic Niches + Searched/Custom Interests */
+          /* First-Time Visit Onboarding: Strictly Topic Niches */
           <div className="flex-1 overflow-y-auto p-4 sm:p-5 custom-scrollbar space-y-4 overscroll-contain">
-            {/* Quick search/add custom interest topic */}
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-                <input
-                  type="text"
-                  value={customInput}
-                  onChange={(e) => setCustomInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      handleAddCustom();
-                    }
-                  }}
-                  placeholder="Search or add custom interest topic (e.g. Cricket, Anime, Spiderman)..."
-                  className="w-full h-9 pl-8 pr-3 rounded-xl bg-neutral-50 dark:bg-white/[0.04] border border-black/[0.08] dark:border-white/10 text-xs text-neutral-900 dark:text-white placeholder:text-neutral-400 outline-none focus:border-amber-500/60"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={handleAddCustom}
-                className="h-9 px-3.5 rounded-xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 text-xs font-bold hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-colors cursor-pointer"
-              >
-                Add Topic
-              </button>
-            </div>
-
-            {/* Display user's searched & added custom interests */}
-            {Boolean(localProfile.interests && localProfile.interests.trim()) && (
-              <div className="p-3 rounded-2xl bg-amber-500/[0.08] dark:bg-amber-500/[0.12] border border-amber-500/25">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-amber-800 dark:text-amber-300 mb-2">
-                  <Sparkles size={12} className="text-amber-500" />
-                  <span>Your Searched & Custom Interests:</span>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {localProfile.interests
-                    .split(",")
-                    .map((s) => s.trim())
-                    .filter(Boolean)
-                    .map((item, idx) => (
-                      <span
-                        key={idx}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 border border-amber-500/30 shadow-xs"
-                      >
-                        <Search size={10} className="text-amber-500" />
-                        <span>{item}</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const updated = localProfile.interests
-                              .split(",")
-                              .map((s) => s.trim())
-                              .filter((s) => s.toLowerCase() !== item.toLowerCase())
-                              .join(", ");
-                            setLocalProfile((prev) => ({ ...prev, interests: updated }));
-                          }}
-                          className="hover:text-red-500 cursor-pointer ml-0.5 text-neutral-400 hover:scale-110 transition-transform"
-                          title="Remove"
-                        >
-                          <X size={10} />
-                        </button>
-                      </span>
-                    ))}
-                </div>
-              </div>
-            )}
-
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
               {TREND_INTEREST_TOPICS.map((topic) => {
                 const isSelected = localTopicIds.includes(topic.id);
@@ -1906,14 +1810,6 @@ function CreatorInterestModal({
                       >
                         {topic.label}
                       </h4>
-                      <p
-                        className={`text-[10px] truncate transition-colors ${isSelected
-                          ? "text-amber-700 dark:text-amber-300/80 font-medium"
-                          : "text-neutral-400 dark:text-neutral-500"
-                          }`}
-                      >
-                        {topic.category}
-                      </p>
                     </div>
 
                     {/* Tactile Checkbox Pill with Instant CSS Animation */}
