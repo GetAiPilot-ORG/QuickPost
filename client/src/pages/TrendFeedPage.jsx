@@ -38,6 +38,54 @@ import {
   Sparkles,
   Repeat2,
   History,
+  Bot,
+  Code2,
+  Rocket,
+  Cpu,
+  ShieldCheck,
+  Command,
+  Coins,
+  Building2,
+  LineChart,
+  Home,
+  ShoppingBag,
+  Users,
+  Briefcase,
+  BarChart3,
+  Clapperboard,
+  Palette,
+  Camera,
+  Compass,
+  Type,
+  Film,
+  Dumbbell,
+  Activity,
+  HeartHandshake,
+  Utensils,
+  Dna,
+  CheckSquare,
+  Brain,
+  BookOpen,
+  Droplets,
+  Plane,
+  Palmtree,
+  ChefHat,
+  Coffee,
+  Shirt,
+  Leaf,
+  Hammer,
+  Gamepad2,
+  Gamepad,
+  Tv2,
+  Laugh,
+  Music,
+  Headphones,
+  Mic,
+  Car,
+  Bike,
+  Scroll,
+  PawPrint,
+  Trees,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
@@ -113,70 +161,70 @@ const REGION_OPTIONS = [
 
 const TREND_INTEREST_TOPICS = [
   // 1. Tech & AI
-  { id: "ai_chatgpt", label: "AI & ChatGPT", emoji: "🤖", category: "Tech & AI", keywords: "ai, chatgpt, llm, artificial intelligence, claude, midjourney, prompt, openai, generative ai" },
-  { id: "tech_gadgets", label: "Tech & Gadgets", emoji: "⚡", category: "Tech & AI", keywords: "tech, gadgets, apple, smartphone, setup, hardware, devices, desk setup" },
-  { id: "coding_dev", label: "Coding & Dev", emoji: "💻", category: "Tech & AI", keywords: "coding, programmer, developer, software, web development, python, javascript, code, github" },
-  { id: "science_space", label: "Future & Space", emoji: "🚀", category: "Tech & AI", keywords: "science, future, space, astrophysics, robotics, astronomy, nasa, spacex" },
-  { id: "robotics_hardware", label: "Robotics & Hardware", emoji: "🦾", category: "Tech & AI", keywords: "robotics, hardware, engineering, arduino, raspberry pi, drones, automation, sensors" },
-  { id: "cybersecurity_privacy", label: "Cyber & Security", emoji: "🛡️", category: "Tech & AI", keywords: "cybersecurity, hacking, security, privacy, encryption, infosec, ethical hacking, malware" },
-  { id: "apple_ecosystem", label: "Apple Ecosystem", emoji: "🍎", category: "Tech & AI", keywords: "apple, iphone, macbook, ios, ipad, apple watch, macos, airpods, tim cook" },
-  { id: "crypto_bitcoin", label: "Crypto & Bitcoin", emoji: "🪙", category: "Tech & AI", keywords: "crypto, bitcoin, ethereum, blockchain, web3, solana, crypto news, defi" },
+  { id: "ai_chatgpt", label: "AI & ChatGPT", icon: Bot, emoji: "🤖", category: "Tech & AI", keywords: "ai, chatgpt, llm, artificial intelligence, claude, midjourney, prompt, openai, generative ai" },
+  { id: "tech_gadgets", label: "Tech & Gadgets", icon: Zap, emoji: "⚡", category: "Tech & AI", keywords: "tech, gadgets, apple, smartphone, setup, hardware, devices, desk setup" },
+  { id: "coding_dev", label: "Coding & Dev", icon: Code2, emoji: "💻", category: "Tech & AI", keywords: "coding, programmer, developer, software, web development, python, javascript, code, github" },
+  { id: "science_space", label: "Future & Space", icon: Rocket, emoji: "🚀", category: "Tech & AI", keywords: "science, future, space, astrophysics, robotics, astronomy, nasa, spacex" },
+  { id: "robotics_hardware", label: "Robotics & Hardware", icon: Cpu, emoji: "🦾", category: "Tech & AI", keywords: "robotics, hardware, engineering, arduino, raspberry pi, drones, automation, sensors" },
+  { id: "cybersecurity_privacy", label: "Cyber & Security", icon: ShieldCheck, emoji: "🛡️", category: "Tech & AI", keywords: "cybersecurity, hacking, security, privacy, encryption, infosec, ethical hacking, malware" },
+  { id: "apple_ecosystem", label: "Apple Ecosystem", icon: Command, emoji: "🍎", category: "Tech & AI", keywords: "apple, iphone, macbook, ios, ipad, apple watch, macos, airpods, tim cook" },
+  { id: "crypto_bitcoin", label: "Crypto & Bitcoin", icon: Coins, emoji: "🪙", category: "Tech & AI", keywords: "crypto, bitcoin, ethereum, blockchain, web3, solana, crypto news, defi" },
 
   // 2. Business & Wealth
-  { id: "startups_saas", label: "Startups & SaaS", emoji: "🏢", category: "Business & Wealth", keywords: "startups, saas, founder, indie hacker, entrepreneurship, building in public, business" },
-  { id: "marketing_growth", label: "Marketing & Growth", emoji: "📈", category: "Business & Wealth", keywords: "marketing, growth, seo, copywriting, sales, advertising, branding, funnel, viral growth" },
-  { id: "finance_stocks", label: "Investing & Stocks", emoji: "💵", category: "Business & Wealth", keywords: "investing, stocks, wealth, portfolio, passive income, market, etf, finance, dividends" },
-  { id: "real_estate", label: "Real Estate & Homes", emoji: "🏠", category: "Business & Wealth", keywords: "real estate, property, housing, architecture, rental properties, real estate investing, mortgage" },
-  { id: "ecommerce_dropship", label: "E-Commerce & Brands", emoji: "🛍️", category: "Business & Wealth", keywords: "ecommerce, shopify, amazon fba, dropshipping, direct to consumer, retail, store" },
-  { id: "creator_economy", label: "Creator Economy", emoji: "📱", category: "Business & Wealth", keywords: "creator, monetization, youtube growth, hooks, editing, viral, content creator, sponsorships" },
-  { id: "side_hustles", label: "Side Hustles & Wealth", emoji: "💼", category: "Business & Wealth", keywords: "side hustle, passive income, make money online, freelancing, solopreneur, work from home" },
-  { id: "business_strategy", label: "Business Strategy", emoji: "📊", category: "Business & Wealth", keywords: "business strategy, economics, case studies, corporate, management, venture capital, market analysis" },
+  { id: "startups_saas", label: "Startups & SaaS", icon: Building2, emoji: "🏢", category: "Business & Wealth", keywords: "startups, saas, founder, indie hacker, entrepreneurship, building in public, business" },
+  { id: "marketing_growth", label: "Marketing & Growth", icon: TrendingUp, emoji: "📈", category: "Business & Wealth", keywords: "marketing, growth, seo, copywriting, sales, advertising, branding, funnel, viral growth" },
+  { id: "finance_stocks", label: "Investing & Stocks", icon: LineChart, emoji: "💵", category: "Business & Wealth", keywords: "investing, stocks, wealth, portfolio, passive income, market, etf, finance, dividends" },
+  { id: "real_estate", label: "Real Estate & Homes", icon: Home, emoji: "🏠", category: "Business & Wealth", keywords: "real estate, property, housing, architecture, rental properties, real estate investing, mortgage" },
+  { id: "ecommerce_dropship", label: "E-Commerce & Brands", icon: ShoppingBag, emoji: "🛍️", category: "Business & Wealth", keywords: "ecommerce, shopify, amazon fba, dropshipping, direct to consumer, retail, store" },
+  { id: "creator_economy", label: "Creator Economy", icon: Users, emoji: "📱", category: "Business & Wealth", keywords: "creator, monetization, youtube growth, hooks, editing, viral, content creator, sponsorships" },
+  { id: "side_hustles", label: "Side Hustles & Wealth", icon: Briefcase, emoji: "💼", category: "Business & Wealth", keywords: "side hustle, passive income, make money online, freelancing, solopreneur, work from home" },
+  { id: "business_strategy", label: "Business Strategy", icon: BarChart3, emoji: "📊", category: "Business & Wealth", keywords: "business strategy, economics, case studies, corporate, management, venture capital, market analysis" },
 
   // 3. Creative & Media
-  { id: "reels_video", label: "Reels & Short Video", emoji: "🎥", category: "Creative & Media", keywords: "video editing, reels, tiktok, capcut, cinematography, shortform, broll, viral video" },
-  { id: "video_editing_vfx", label: "Video Editing & VFX", emoji: "🎬", category: "Creative & Media", keywords: "premiere pro, after effects, davinci resolve, vfx, color grading, sound design, transitions" },
-  { id: "design_3d", label: "Design & 3D Art", emoji: "🎨", category: "Creative & Media", keywords: "design, ui, ux, 3d, blender, graphic design, animation, typography, aesthetic, figma" },
-  { id: "photography_gear", label: "Photo & Cameras", emoji: "📸", category: "Creative & Media", keywords: "photography, camera, lighting, portraits, aesthetic, photo, cinematic photo, sony, canon" },
-  { id: "architecture_interiors", label: "Interior & Architecture", emoji: "🏛️", category: "Creative & Media", keywords: "architecture, interior design, home decor, modern home, minimal living, aesthetic room" },
-  { id: "typography_branding", label: "Branding & Logos", emoji: "✒️", category: "Creative & Media", keywords: "branding, logos, typography, visual identity, poster design, aesthetic fonts, creative director" },
-  { id: "animation_motion", label: "Motion & Animation", emoji: "✨", category: "Creative & Media", keywords: "animation, motion graphics, 2d animation, stop motion, anime aesthetic, cgi, motion design" },
-  { id: "filmmaking_cinema", label: "Filmmaking & Directing", emoji: "🎞️", category: "Creative & Media", keywords: "filmmaking, director, cinematography, indie film, screenwriting, camera gear, movie scenes" },
+  { id: "reels_video", label: "Reels & Short Video", icon: Video, emoji: "🎥", category: "Creative & Media", keywords: "video editing, reels, tiktok, capcut, cinematography, shortform, broll, viral video" },
+  { id: "video_editing_vfx", label: "Video Editing & VFX", icon: Clapperboard, emoji: "🎬", category: "Creative & Media", keywords: "premiere pro, after effects, davinci resolve, vfx, color grading, sound design, transitions" },
+  { id: "design_3d", label: "Design & 3D Art", icon: Palette, emoji: "🎨", category: "Creative & Media", keywords: "design, ui, ux, 3d, blender, graphic design, animation, typography, aesthetic, figma" },
+  { id: "photography_gear", label: "Photo & Cameras", icon: Camera, emoji: "📸", category: "Creative & Media", keywords: "photography, camera, lighting, portraits, aesthetic, photo, cinematic photo, sony, canon" },
+  { id: "architecture_interiors", label: "Interior & Architecture", icon: Compass, emoji: "🏛️", category: "Creative & Media", keywords: "architecture, interior design, home decor, modern home, minimal living, aesthetic room" },
+  { id: "typography_branding", label: "Branding & Logos", icon: Type, emoji: "✒️", category: "Creative & Media", keywords: "branding, logos, typography, visual identity, poster design, aesthetic fonts, creative director" },
+  { id: "animation_motion", label: "Motion & Animation", icon: Sparkles, emoji: "✨", category: "Creative & Media", keywords: "animation, motion graphics, 2d animation, stop motion, anime aesthetic, cgi, motion design" },
+  { id: "filmmaking_cinema", label: "Filmmaking & Directing", icon: Film, emoji: "🎞️", category: "Creative & Media", keywords: "filmmaking, director, cinematography, indie film, screenwriting, camera gear, movie scenes" },
 
   // 4. Lifestyle & Health
-  { id: "fitness_gym", label: "Fitness & Gym", emoji: "🏋️", category: "Lifestyle & Health", keywords: "fitness, gym, workout, muscle, bodybuilding, health, training, nutrition, lifting" },
-  { id: "running_cardio", label: "Running & Cardio", emoji: "🏃", category: "Lifestyle & Health", keywords: "running, marathon, sprint, cardio, endurance, trail running, athletics, runner" },
-  { id: "yoga_mindfulness", label: "Yoga & Mindfulness", emoji: "🧘", category: "Lifestyle & Health", keywords: "yoga, meditation, mindfulness, breathing, flexibility, calm, mental health, zen" },
-  { id: "nutrition_mealprep", label: "Nutrition & Diet", emoji: "🥗", category: "Lifestyle & Health", keywords: "nutrition, healthy food, meal prep, high protein, clean eating, diet, macros, vitamins" },
-  { id: "biohacking_sleep", label: "Biohacking & Sleep", emoji: "🧬", category: "Lifestyle & Health", keywords: "biohacking, sleep optimization, longevity, recovery, cold plunge, sauna, circadian rhythm" },
-  { id: "productivity_habits", label: "Productivity & Focus", emoji: "💡", category: "Lifestyle & Health", keywords: "productivity, habits, focus, notion, daily routine, systems, deep work, time management" },
-  { id: "mindset_selfhelp", label: "Mindset & Motivation", emoji: "🧠", category: "Lifestyle & Health", keywords: "motivation, discipline, psychology, mindset, self improvement, stoicism, mental toughness" },
-  { id: "books_learning", label: "Books & Knowledge", emoji: "📚", category: "Lifestyle & Health", keywords: "books, reading, non fiction, book recommendations, learning, philosophy, summary" },
-  { id: "skincare_beauty", label: "Skincare & Self-Care", emoji: "✨", category: "Lifestyle & Health", keywords: "skincare, beauty, grooming, morning routine, dermatologists, glow, self care" },
+  { id: "fitness_gym", label: "Fitness & Gym", icon: Dumbbell, emoji: "🏋️", category: "Lifestyle & Health", keywords: "fitness, gym, workout, muscle, bodybuilding, health, training, nutrition, lifting" },
+  { id: "running_cardio", label: "Running & Cardio", icon: Activity, emoji: "🏃", category: "Lifestyle & Health", keywords: "running, marathon, sprint, cardio, endurance, trail running, athletics, runner" },
+  { id: "yoga_mindfulness", label: "Yoga & Mindfulness", icon: HeartHandshake, emoji: "🧘", category: "Lifestyle & Health", keywords: "yoga, meditation, mindfulness, breathing, flexibility, calm, mental health, zen" },
+  { id: "nutrition_mealprep", label: "Nutrition & Diet", icon: Utensils, emoji: "🥗", category: "Lifestyle & Health", keywords: "nutrition, healthy food, meal prep, high protein, clean eating, diet, macros, vitamins" },
+  { id: "biohacking_sleep", label: "Biohacking & Sleep", icon: Dna, emoji: "🧬", category: "Lifestyle & Health", keywords: "biohacking, sleep optimization, longevity, recovery, cold plunge, sauna, circadian rhythm" },
+  { id: "productivity_habits", label: "Productivity & Focus", icon: CheckSquare, emoji: "💡", category: "Lifestyle & Health", keywords: "productivity, habits, focus, notion, daily routine, systems, deep work, time management" },
+  { id: "mindset_selfhelp", label: "Mindset & Motivation", icon: Brain, emoji: "🧠", category: "Lifestyle & Health", keywords: "motivation, discipline, psychology, mindset, self improvement, stoicism, mental toughness" },
+  { id: "books_learning", label: "Books & Knowledge", icon: BookOpen, emoji: "📚", category: "Lifestyle & Health", keywords: "books, reading, non fiction, book recommendations, learning, philosophy, summary" },
+  { id: "skincare_beauty", label: "Skincare & Self-Care", icon: Droplets, emoji: "✨", category: "Lifestyle & Health", keywords: "skincare, beauty, grooming, morning routine, dermatologists, glow, self care" },
 
   // 5. Travel, Food & Style
-  { id: "travel_nomad", label: "Travel & Nomad", emoji: "✈️", category: "Travel & Culture", keywords: "travel, nomad, adventure, explore, destinations, vacation, digital nomad, wanderlust" },
-  { id: "luxury_hiddenplaces", label: "Luxury Escapes", emoji: "🏝️", category: "Travel & Culture", keywords: "luxury travel, hidden gems, resorts, islands, hotels, first class, scenic views" },
-  { id: "food_cooking", label: "Food & Recipes", emoji: "🍔", category: "Travel & Culture", keywords: "food, cooking, recipes, street food, baking, chef, restaurant, meal prep, gourmet" },
-  { id: "coffee_drinks", label: "Specialty Coffee", emoji: "☕", category: "Travel & Culture", keywords: "coffee, espresso, latte art, cafe, barista, pour over, cocktails, matchalatte" },
-  { id: "fashion_style", label: "Fashion & Streetwear", emoji: "👟", category: "Travel & Culture", keywords: "fashion, streetwear, outfits, styling, sneakers, luxury, drip, lookbook" },
-  { id: "sneakerhead_drops", label: "Sneakers & Kicks", emoji: "🔥", category: "Travel & Culture", keywords: "sneakers, sneakerhead, jordan, nike, yeezy, kicks, unboxing, sneaker collection" },
-  { id: "gardening_plants", label: "Plants & Gardening", emoji: "🌿", category: "Travel & Culture", keywords: "gardening, house plants, urban garden, botany, nature, plant care, balcony garden" },
-  { id: "diy_crafting", label: "DIY & Woodworking", emoji: "🔨", category: "Travel & Culture", keywords: "diy, woodworking, carpentry, crafting, handmade, restoration, maker, workshop" },
+  { id: "travel_nomad", label: "Travel & Nomad", icon: Plane, emoji: "✈️", category: "Travel & Culture", keywords: "travel, nomad, adventure, explore, destinations, vacation, digital nomad, wanderlust" },
+  { id: "luxury_hiddenplaces", label: "Luxury Escapes", icon: Palmtree, emoji: "🏝️", category: "Travel & Culture", keywords: "luxury travel, hidden gems, resorts, islands, hotels, first class, scenic views" },
+  { id: "food_cooking", label: "Food & Recipes", icon: ChefHat, emoji: "🍔", category: "Travel & Culture", keywords: "food, cooking, recipes, street food, baking, chef, restaurant, meal prep, gourmet" },
+  { id: "coffee_drinks", label: "Specialty Coffee", icon: Coffee, emoji: "☕", category: "Travel & Culture", keywords: "coffee, espresso, latte art, cafe, barista, pour over, cocktails, matchalatte" },
+  { id: "fashion_style", label: "Fashion & Streetwear", icon: Shirt, emoji: "👟", category: "Travel & Culture", keywords: "fashion, streetwear, outfits, styling, sneakers, luxury, drip, lookbook" },
+  { id: "sneakerhead_drops", label: "Sneakers & Kicks", icon: Flame, emoji: "🔥", category: "Travel & Culture", keywords: "sneakers, sneakerhead, jordan, nike, yeezy, kicks, unboxing, sneaker collection" },
+  { id: "gardening_plants", label: "Plants & Gardening", icon: Leaf, emoji: "🌿", category: "Travel & Culture", keywords: "gardening, house plants, urban garden, botany, nature, plant care, balcony garden" },
+  { id: "diy_crafting", label: "DIY & Woodworking", icon: Hammer, emoji: "🔨", category: "Travel & Culture", keywords: "diy, woodworking, carpentry, crafting, handmade, restoration, maker, workshop" },
 
   // 6. Entertainment & Pop
-  { id: "gaming_stream", label: "Gaming & Esports", emoji: "🎮", category: "Entertainment", keywords: "gaming, gta, playstation, twitch, steam, esports, xbox, pc gaming, gameplay" },
-  { id: "retro_nintendo", label: "Retro & Nintendo", emoji: "👾", category: "Entertainment", keywords: "retro gaming, nintendo, zelda, pokemon, mario, game boy, arcade, nostalgic gaming" },
-  { id: "cinema_movies", label: "Cinema & TV Shows", emoji: "🍿", category: "Entertainment", keywords: "movies, cinema, trailer, series, netflix, hollywood, film, box office, actors" },
-  { id: "anime_manga", label: "Anime & Manga", emoji: "⛩️", category: "Entertainment", keywords: "anime, manga, animation, japan, otaku, cosplay, shonen, studio ghibli" },
-  { id: "comedy_memes", label: "Comedy & Memes", emoji: "😂", category: "Entertainment", keywords: "comedy, memes, jokes, funny, skits, relatable, humor, viral jokes, laugh" },
-  { id: "music_audio", label: "Music & Viral Audio", emoji: "🎵", category: "Entertainment", keywords: "music, beats, trending audio, sound, artists, live music, new album, concert" },
-  { id: "hiphop_beats", label: "Hip Hop & Beatmaking", emoji: "🎧", category: "Entertainment", keywords: "hip hop, rap, beatmaker, fl studio, producer, instrumentals, trap, sampling" },
-  { id: "podcasts_talks", label: "Podcasts & Interviews", emoji: "🎙️", category: "Entertainment", keywords: "podcasts, interview, conversation, longform, creator talks, speech, discussion" },
-  { id: "cars_supercars", label: "Supercars & Racing", emoji: "🏎️", category: "Entertainment", keywords: "cars, supercars, automotive, racing, f1, vehicles, tuning, ferrari, porsche" },
-  { id: "motorcycles_biker", label: "Motorcycles & Moto", emoji: "🏍️", category: "Entertainment", keywords: "motorcycles, biker, moto, cafe racer, harley, ducati, superbike, riding" },
-  { id: "history_lore", label: "History & Lore", emoji: "📜", category: "Entertainment", keywords: "history, ancient history, mythology, warfare, historical facts, deep lore, empires" },
-  { id: "pets_cuteanimals", label: "Cute Pets & Animals", emoji: "🐾", category: "Entertainment", keywords: "pets, dogs, cats, puppies, kittens, cute animals, wildlife, pet memes" },
-  { id: "nature_exploration", label: "Nature & Wildlife", emoji: "🌲", category: "Entertainment", keywords: "nature, wildlife, ocean, deep sea, national parks, animals, documentary, planet" },
+  { id: "gaming_stream", label: "Gaming & Esports", icon: Gamepad2, emoji: "🎮", category: "Entertainment", keywords: "gaming, gta, playstation, twitch, steam, esports, xbox, pc gaming, gameplay" },
+  { id: "retro_nintendo", label: "Retro & Nintendo", icon: Gamepad, emoji: "👾", category: "Entertainment", keywords: "retro gaming, nintendo, zelda, pokemon, mario, game boy, arcade, nostalgic gaming" },
+  { id: "cinema_movies", label: "Cinema & TV Shows", icon: Film, emoji: "🍿", category: "Entertainment", keywords: "movies, cinema, trailer, series, netflix, hollywood, film, box office, actors" },
+  { id: "anime_manga", label: "Anime & Manga", icon: Tv2, emoji: "⛩️", category: "Entertainment", keywords: "anime, manga, animation, japan, otaku, cosplay, shonen, studio ghibli" },
+  { id: "comedy_memes", label: "Comedy & Memes", icon: Laugh, emoji: "😂", category: "Entertainment", keywords: "comedy, memes, jokes, funny, skits, relatable, humor, viral jokes, laugh" },
+  { id: "music_audio", label: "Music & Viral Audio", icon: Music, emoji: "🎵", category: "Entertainment", keywords: "music, beats, trending audio, sound, artists, live music, new album, concert" },
+  { id: "hiphop_beats", label: "Hip Hop & Beatmaking", icon: Headphones, emoji: "🎧", category: "Entertainment", keywords: "hip hop, rap, beatmaker, fl studio, producer, instrumentals, trap, sampling" },
+  { id: "podcasts_talks", label: "Podcasts & Interviews", icon: Mic, emoji: "🎙️", category: "Entertainment", keywords: "podcasts, interview, conversation, longform, creator talks, speech, discussion" },
+  { id: "cars_supercars", label: "Supercars & Racing", icon: Car, emoji: "🏎️", category: "Entertainment", keywords: "cars, supercars, automotive, racing, f1, vehicles, tuning, ferrari, porsche" },
+  { id: "motorcycles_biker", label: "Motorcycles & Moto", icon: Bike, emoji: "🏍️", category: "Entertainment", keywords: "motorcycles, biker, moto, cafe racer, harley, ducati, superbike, riding" },
+  { id: "history_lore", label: "History & Lore", icon: Scroll, emoji: "📜", category: "Entertainment", keywords: "history, ancient history, mythology, warfare, historical facts, deep lore, empires" },
+  { id: "pets_cuteanimals", label: "Cute Pets & Animals", icon: PawPrint, emoji: "🐾", category: "Entertainment", keywords: "pets, dogs, cats, puppies, kittens, cute animals, wildlife, pet memes" },
+  { id: "nature_exploration", label: "Nature & Wildlife", icon: Trees, emoji: "🌲", category: "Entertainment", keywords: "nature, wildlife, ocean, deep sea, national parks, animals, documentary, planet" },
 ];
 
 function emptyProfile() {
@@ -1790,14 +1838,18 @@ function CreatorInterestModal({
                       : "bg-neutral-50/70 dark:bg-white/[0.03] text-neutral-700 dark:text-neutral-300 border-black/[0.06] dark:border-white/[0.07] hover:border-black/[0.15] dark:hover:border-white/[0.15] hover:bg-neutral-100/80 dark:hover:bg-white/[0.05]"
                       }`}
                   >
-                    {/* Emoji Badge with Smooth Animation */}
+                    {/* Professional Vector Icon Container */}
                     <div
-                      className={`w-11 h-11 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0 transition-transform duration-150 group-hover:scale-105 ${isSelected
-                        ? "bg-gradient-to-br from-amber-500/20 to-orange-500/20 shadow-xs"
-                        : "bg-black/[0.04] dark:bg-white/[0.05]"
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all duration-150 group-hover:scale-105 ${isSelected
+                        ? "bg-gradient-to-br from-amber-500/20 via-orange-500/20 to-rose-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30 shadow-xs"
+                        : "bg-black/[0.04] dark:bg-white/[0.06] text-neutral-600 dark:text-neutral-400 group-hover:text-neutral-900 dark:group-hover:text-white border border-black/[0.04] dark:border-white/[0.04]"
                         }`}
                     >
-                      <span>{topic.emoji}</span>
+                      {topic.icon ? (
+                        <topic.icon size={19} strokeWidth={2} className="transition-transform duration-150" />
+                      ) : (
+                        <span className="text-lg">{topic.emoji}</span>
+                      )}
                     </div>
 
                     {/* Topic Details */}
@@ -3110,7 +3162,11 @@ export default function TrendFeedPage() {
                         : "bg-neutral-100/70 hover:bg-neutral-200/80 dark:bg-neutral-800/60 dark:hover:bg-neutral-700/80 text-neutral-700 dark:text-neutral-300 border-black/[0.04] dark:border-white/[0.06]"
                     }`}
                   >
-                    <span>{topicDef.emoji}</span>
+                    {topicDef.icon ? (
+                      <topicDef.icon size={13} strokeWidth={2.2} className="flex-shrink-0" />
+                    ) : (
+                      <span>{topicDef.emoji}</span>
+                    )}
                     <span>{topicDef.label}</span>
                   </button>
                 );
