@@ -6,7 +6,7 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import apiClient from "../utils/apiClient";
+import apiClient, { clearTokenCache, setCachedToken } from "../utils/apiClient";
 import { supabase } from "../lib/supabase";
 
 const AuthContext = createContext(null);
@@ -164,14 +164,22 @@ export function AuthProvider({ children }) {
       setSession(session);
       if (session) {
         setUser(prev => buildSessionUser(session.user, prev));
-        localStorage.setItem("quickpost_token", session.access_token);
+        setCachedToken(session.access_token, session.expires_at);
         await Promise.all([
           fetchUserProfile(session.user),
           fetchConnectedAccounts()
         ]);
       } else {
         setUser(null);
+        clearTokenCache();
         localStorage.removeItem("quickpost_token");
+        try {
+          Object.keys(localStorage).forEach((k) => {
+            if (k.startsWith("qp_trend_")) {
+              localStorage.removeItem(k);
+            }
+          });
+        } catch { }
         setProfileLoading(false);
         setConnectedAccounts(EMPTY_CONNECTED_ACCOUNTS);
       }

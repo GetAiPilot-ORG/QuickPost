@@ -1,8 +1,14 @@
-﻿import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { supermailbox } from './supermailbox.js';
 
 dotenv.config();
+if (!process.env.SUPABASE_URL) {
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+}
 
 // ✅ Server-side should use SERVICE ROLE key (recommended)
 // Fallback to ANON for local dev only (may fail with RLS)

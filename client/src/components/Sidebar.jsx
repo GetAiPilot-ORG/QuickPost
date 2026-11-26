@@ -879,7 +879,21 @@ function Sidebar({ onClose }) {
                   </div>
                 ) : (
                   <Link
-                    onClick={() => onClose && onClose()}
+                    onClick={() => {
+                      if (onClose) onClose();
+                      const mainEl = document.getElementById("main-content");
+                      if (mainEl) {
+                        mainEl.scrollTop = 0;
+                        if (typeof mainEl.scrollTo === "function") {
+                          try {
+                            mainEl.scrollTo({ top: 0, left: 0, behavior: "instant" });
+                          } catch (e) {
+                            mainEl.scrollTop = 0;
+                          }
+                        }
+                      }
+                      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+                    }}
                     to={to}
                     className={`qp-sidebar-nav-item${active ? " is-active" : ""}`}
                     style={style}

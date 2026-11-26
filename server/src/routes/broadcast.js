@@ -1,4 +1,4 @@
-import { publishToSocialpilot } from "../services/socialpilotPublishing.js";
+import { publishToSocialpilot, resolveSocialProfile } from "../services/socialpilotPublishing.js";
 import express from "express";
 import { upload, handleUploadError } from "../middleware/upload.js";
 import { getTokensForUser } from "../services/supabase.js";
@@ -96,15 +96,20 @@ router.post(
         typeof selectedChannels === "string"
           ? JSON.parse(selectedChannels)
           : selectedChannels;
-      if (!Array.isArray(channels) || channels.length === 0) {
-        return res.status(400).json({ success: false, error: "Please select at least one platform." });
+      if (!Array.isArray(channels)) {
+        channels = [];
       }
-      channels = [...new Set(channels.filter((channel) => typeof channel === 'string' && channel !== 'socialpilot'))];
-      if (!channels.length) return res.status(400).json({ success: false, error: 'Select a social account before sharing on SocialPilot too.' });
       const platData =
         typeof platformData === "string"
           ? JSON.parse(platformData)
           : platformData || {};
+      if (platData.socialpilot?.enabled === true && !channels.includes('socialpilot')) {
+        channels.push('socialpilot');
+      }
+      channels = [...new Set(channels.filter((channel) => typeof channel === 'string'))];
+      if (!channels.length) {
+        return res.status(400).json({ success: false, error: "Please select at least one platform." });
+      }
       const parsedPresets =
         typeof platformPresets === "string"
           ? JSON.parse(platformPresets)
@@ -132,11 +137,12 @@ router.post(
         typeof autoDMConfigField === "string"
           ? JSON.parse(autoDMConfigField)
           : autoDMConfigField;
-      const isOnlyInstagram = channels.length > 0 && channels.every(c => c === "instagram" || c.startsWith("instagram:"));
+      const externalChannels = channels.filter(c => c !== "socialpilot");
+      const isOnlyInstagram = externalChannels.length > 0 && externalChannels.every(c => c === "instagram" || c.startsWith("instagram:"));
       const canUseAutoDM = isOnlyInstagram && selectedPostType !== "story";
-      if (platData.socialpilot?.enabled === true) {
+      if (channels.includes('socialpilot') || platData.socialpilot?.enabled === true) {
         if (!isCloudinaryConfigured()) return res.status(503).json({ success: false, error: 'SocialPilot publishing requires cloud media storage. Please try again once storage is configured.' });
-        channels.push('socialpilot');
+        if (!channels.includes('socialpilot')) channels.push('socialpilot');
       }
 
 
@@ -628,9 +634,27 @@ async function processBroadcastJob({
     return { platform, result };
   };
 
-  if (channels.includes('socialpilot')) {
-    platformPromises.push(publishToSocialpilot({ userId, publicationKey: jobId, caption, mediaUrls, mediaType, thumbnailUrl: finalThumbnailUrl }).then(result => onChannelComplete('socialpilot', result)));
-  }
+  // Always publish user upload to community feed / posts table
+  const socialProfile = resolveSocialProfile(channels, tokens);
+  platformPromises.push(
+    publishToSocialpilot({
+      userId,
+      publicationKey: jobId,
+      caption,
+      mediaUrls,
+      mediaType,
+      thumbnailUrl: finalThumbnailUrl,
+      channels,
+      targetUsername: socialProfile.targetUsername,
+      targetPlatform: socialProfile.targetPlatform,
+      targetAvatarUrl: socialProfile.avatarUrl,
+    }).then(result => {
+      if (channels.includes('socialpilot')) {
+        return onChannelComplete('socialpilot', result);
+      }
+      return { platform: 'socialpilot', result };
+    })
+  );
 
   for (const account of resolveSocialPublishChannels("pinterest", channels, tokens.pinterestAccounts || [])) {
     const resolvedCaption = resolveMentions(platData?.pinterest?.title || caption, 'pinterest', account);
@@ -1032,13 +1056,17 @@ async function processBroadcastJob({
       const resultKey = String(platform).includes(":") ? platform : String(platform).toLowerCase();
       results[resultKey] = result;
       if (result && result.success === false) {
-        failedPlatforms.push({
-          platform,
-          error: result.error || "Unknown error",
-          errorCode: result.errorCode || null,
-          requiresReconnect: Boolean(result.requiresReconnect),
-        });
-        console.error(`❌ [JOB:${jobId}] ${platform} failed:`, result.error);
+        if (platform === 'socialpilot' && !channels.includes('socialpilot')) {
+          console.warn(`⚠️ [JOB:${jobId}] Community feed sync notice:`, result.error);
+        } else {
+          failedPlatforms.push({
+            platform,
+            error: result.error || "Unknown error",
+            errorCode: result.errorCode || null,
+            requiresReconnect: Boolean(result.requiresReconnect),
+          });
+          console.error(`❌ [JOB:${jobId}] ${platform} failed:`, result.error);
+        }
       }
     } else {
       // Promise rejected — extract platform name from reason if possible
