@@ -26,16 +26,22 @@ const HUB_PLAN_MAPPING = {
   'custom_bundle_half_yearly': 'gap_core',
   'custom_bundle_yearly': 'gap_core',
   'custom': 'gap_core',
+  'core': 'gap_core',
   'gap_core': 'gap_core',
+  'gap core': 'gap_core',
   'gap_max': 'gap_core',
   'gap_ultimate_ecosystem': 'gap_core',
   'gap_scale': 'gap_scale',
   'gap_scale_quarterly': 'gap_scale',
   'gap_scale_half_yearly': 'gap_scale',
   'gap_scale_yearly': 'gap_scale',
+  'gap_enterprise': 'gap_scale',
+  'gap_enterprice': 'gap_scale',
+  'gap enterprise': 'gap_scale',
   'spstarter': 'slite',
   'spgrowth': 'sgrowth',
-  'enterprise': 'gap_scale'
+  'enterprise': 'gap_scale',
+  'enterprice': 'gap_scale',
 };
 
 const HUB_PLAN_DURATION = {
@@ -57,12 +63,17 @@ const HUB_PLAN_DURATION = {
   'custom_bundle_yearly': 'year',
   'custom': 'monthly',
   'gap_core': 'monthly',
+  'gap core': 'monthly',
   'gap_max': 'six_months',
   'gap_ultimate_ecosystem': 'monthly',
   'gap_scale': 'monthly',
+  'gap_enterprise': 'monthly',
+  'gap_enterprice': 'monthly',
+  'gap enterprise': 'monthly',
   'spstarter': 'monthly',
   'spgrowth': 'monthly',
-  'enterprise': 'monthly'
+  'enterprise': 'monthly',
+  'enterprice': 'monthly'
 };
 
 const entitlementsCache = new Map();

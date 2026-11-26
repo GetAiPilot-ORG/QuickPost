@@ -16,7 +16,7 @@ function hasPaidPlan(plan) {
 function normalizePlanId(plan) {
   const p = String(plan || '').toLowerCase().trim();
   if (['gap_core', 'gap core', 'all_in_one_bundle_monthly', 'all_in_one_bundle', 'all_in_one_bundle_quarterly', 'all_in_one_bundle_half_yearly', 'all_in_one_bundle_yearly', 'custom_bundle'].includes(p)) return 'gap_core';
-  if (['gap_scale', 'gap enterprise', 'enterprise', 'gap_scale_quarterly', 'gap_scale_half_yearly', 'gap_scale_yearly'].includes(p)) return 'gap_scale';
+  if (['gap_scale', 'gap enterprise', 'gap_enterprise', 'gap_enterprice', 'enterprise', 'enterprice', 'gap_scale_quarterly', 'gap_scale_half_yearly', 'gap_scale_yearly'].includes(p)) return 'gap_scale';
   if (['growth', 'sgrowth', '1999', '2999', 'spgrowth'].includes(p)) return 'sgrowth';
   if (['starter', 'slite', 'pro', '999', 'spstarter'].includes(p)) return 'slite';
   return p || 'free';

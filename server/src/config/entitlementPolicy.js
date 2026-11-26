@@ -1,5 +1,13 @@
 const ACCESS_STATUSES = new Set(['trialing', 'active']);
-const PLAN_RANK = Object.freeze({ free: 0, slite: 1, pro: 1, sgrowth: 2, enterprise: 2 });
+const PLAN_RANK = Object.freeze({
+  free: 0,
+  slite: 1,
+  pro: 1,
+  sgrowth: 2,
+  gap_core: 3,
+  gap_scale: 4,
+  enterprise: 4,
+});
 
 export function subscriptionIsUsable(subscription, now = Date.now()) {
   if (!subscription || !ACCESS_STATUSES.has(subscription.status)) return false;
