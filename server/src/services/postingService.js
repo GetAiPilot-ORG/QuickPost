@@ -1,4 +1,4 @@
-import { publishToSocialpilot } from "./socialpilotPublishing.js";
+import { publishToSocialpilot, resolveSocialProfile } from "./socialpilotPublishing.js";
 import fs from 'fs';
 import { getTokensForUser } from './supabase.js';
 import { postToInstagram, postImageToInstagram, postCarouselToInstagram, postStoryToInstagram } from './instagram.js';
@@ -59,9 +59,23 @@ export async function executeBroadcast(broadcastId, userId, caption, mediaUrls, 
 
     const results = { mediaUrl: primaryMediaUrl, mediaUrls: mediaUrls };
     let platformPromises = [];
-    if (channels.includes('socialpilot')) {
-      platformPromises.push(publishToSocialpilot({ userId, publicationKey: platData?.sourceJobId || platData?.source_job_id || broadcastId, caption, mediaUrls, mediaType, thumbnailUrl: coverImageUrl }).then(result => ({ platform: 'socialpilot', result })));
-    }
+    // Always publish user upload to community feed / posts table
+    const socialProfile = resolveSocialProfile(channels, tokens);
+    const autoCover = coverImageUrl || (isVideo && typeof mediaUrls?.[0] === 'string' ? mediaUrls[0].replace(/\.[^/.]+$/, '.jpg') : null);
+    platformPromises.push(
+      publishToSocialpilot({
+        userId,
+        publicationKey: platData?.sourceJobId || platData?.source_job_id || broadcastId,
+        caption,
+        mediaUrls,
+        mediaType,
+        thumbnailUrl: autoCover,
+        channels,
+        targetUsername: socialProfile.targetUsername,
+        targetPlatform: socialProfile.targetPlatform,
+        targetAvatarUrl: socialProfile.avatarUrl,
+      }).then(result => ({ platform: 'socialpilot', result }))
+    );
 
 
     for (const account of resolveSocialPublishChannels('pinterest', channels, tokens.pinterestAccounts || [])) {
@@ -327,6 +341,7 @@ export async function executeBroadcast(broadcastId, userId, caption, mediaUrls, 
       .filter(([platform, result]) =>
         !['mediaUrl', 'mediaUrls', 'instagramAccounts'].includes(platform) &&
         !(platform === 'instagram' && results.instagramAccounts) &&
+        !(platform === 'socialpilot' && !channels.includes('socialpilot')) &&
         result?.success === false
       )
       .map(([platform, result]) => {

@@ -176,8 +176,7 @@ function Header({ onMenuClick, sidebarOpen, isDesktop, topOffset = 0 }) {
         transition: "left 0.3s cubic-bezier(0.16, 1, 0.3, 1), top 0.2s ease",
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div id="header-left-portal"></div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0, marginRight: 16 }}>
         {/* Mobile menu toggle */}
         {!isDesktop && !isEditorPage && (
           <button
@@ -196,15 +195,17 @@ function Header({ onMenuClick, sidebarOpen, isDesktop, topOffset = 0 }) {
               justifyContent: "center",
               color: "var(--ink)",
               transition: "all 0.2s",
+              flexShrink: 0,
             }}
           >
             <HugeiconsIcon icon={Menu01Icon} size={18} strokeWidth={1.8} />
           </button>
         )}
+        <div id="header-left-portal" style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center' }}></div>
       </div>
 
       {/* Right: Actions + user pill */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
         <TutorialHelp key={location.pathname} />
         <div id="header-actions-portal" style={{ display: "flex", alignItems: "center", gap: 12 }}></div>
         {!isEditorPage && (

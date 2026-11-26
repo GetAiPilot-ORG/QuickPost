@@ -18,7 +18,8 @@ import {
   UserGroupIcon,
 } from "@hugeicons/core-free-icons";
 import { useAuth } from "../context/AuthContext";
-import apiClient from "../utils/apiClient";
+import apiClient, { clearTokenCache } from "../utils/apiClient";
+import { supabase } from "../lib/supabase";
 import ComposerModal from "./ComposerModal";
 import InfoHelp from "./InfoHelp";
 
@@ -187,16 +188,30 @@ export default function DashboardOverview() {
   const [error, setError] = useState("");
   const [hoveredSegment, setHoveredSegment] = useState(null);
 
-  const fetchOverview = async () => {
+  const fetchOverview = async (isManualRetry = false) => {
     setLoading(true);
     setError("");
     try {
+      if (isManualRetry) {
+        clearTokenCache();
+        try {
+          await supabase.auth.getSession();
+        } catch (sessionErr) {
+          console.warn("[DashboardOverview] Session get failed on retry:", sessionErr);
+        }
+      }
       const response = await apiClient.get("/api/dashboard/overview", {
         params: { range, instagramAccountId },
       });
       setData({ ...emptyOverview, ...(response.data || {}) });
     } catch (err) {
-      setError(err.response?.data?.error || err.message || "Failed to load dashboard");
+      const respError = err.response?.data?.error || err.response?.data?.message;
+      const status = err.response?.status;
+      if (status === 401 || respError === "Invalid token" || respError === "TOKEN_EXPIRED") {
+        setError("Your session expired or needs refreshing. Please click Retry to reconnect.");
+      } else {
+        setError(respError || err.message || "Failed to load dashboard");
+      }
     } finally {
       setLoading(false);
     }
@@ -368,7 +383,7 @@ export default function DashboardOverview() {
             <strong>Dashboard could not refresh</strong>
             <p>{error}</p>
           </div>
-          <button type="button" className="dash-btn secondary" onClick={fetchOverview}>
+          <button type="button" className="dash-btn secondary" onClick={() => fetchOverview(true)}>
             <HugeiconsIcon icon={RefreshIcon} size={15} strokeWidth={1.8} />
             Retry
           </button>
