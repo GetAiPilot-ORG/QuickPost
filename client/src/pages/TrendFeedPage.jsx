@@ -2595,8 +2595,8 @@ export default function TrendFeedPage() {
     (rawTerm, registerTopic = true) => {
       const term = String(rawTerm || "").trim().replace(/^#/, "");
       if (!term || term.length < 2) return;
-      // Ek baar search karne ke baad input ko khali rakho taaki naya topic search kar sakein
-      setSearchQuery("");
+      // Keep searched term visible inside the input until the user clears it
+      setSearchQuery(term);
       setDebouncedSearch(term);
       debouncedSearchRef.current = term;
       setSelectedTopicFilter(null);
@@ -2952,7 +2952,13 @@ export default function TrendFeedPage() {
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              const val = e.target.value;
+              setSearchQuery(val);
+              if (!val.trim() && debouncedSearchRef.current) {
+                handleClearSearch();
+              }
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -2962,12 +2968,12 @@ export default function TrendFeedPage() {
             placeholder="Search topics, creators, hooks..."
             className="w-full h-8 sm:h-9 pl-8 pr-7 rounded-xl bg-white dark:bg-[#161B22] border border-black/[0.08] dark:border-white/[0.08] text-xs font-normal text-neutral-900 dark:text-white placeholder:text-neutral-400 shadow-sm outline-none focus:border-neutral-400 dark:focus:border-neutral-600 transition-all"
           />
-          {searchQuery && (
+          {(searchQuery || debouncedSearch) && (
             <button
               type="button"
-              onClick={() => setSearchQuery("")}
+              onClick={handleClearSearch}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 p-0.5 cursor-pointer"
-              title="Clear input"
+              title="Clear search"
             >
               <X size={12} />
             </button>
@@ -3187,29 +3193,6 @@ export default function TrendFeedPage() {
               </div>
             )}
           </div>
-
-          {/* Search Active Status Banner */}
-          {debouncedSearch && (
-            <div className="flex items-center justify-between px-2.5 py-1 rounded-lg bg-sky-50 dark:bg-sky-950/30 border border-sky-200/60 dark:border-sky-800/50 text-xs">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <Search size={12} className="text-sky-600 dark:text-sky-400 flex-shrink-0" />
-                <span className="text-neutral-600 dark:text-neutral-300 text-[11px]">Searching</span>
-                <span className="font-bold text-neutral-900 dark:text-white truncate text-[11px]">"{debouncedSearch}"</span>
-                {items.length > 0 && (
-                  <span className="text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 whitespace-nowrap">
-                    • {items.length} results
-                  </span>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={handleClearSearch}
-                className="text-[11px] font-semibold text-sky-700 dark:text-sky-300 hover:underline px-1.5 py-0.5 transition-colors flex-shrink-0 cursor-pointer"
-              >
-                Clear
-              </button>
-            </div>
-          )}
 
           {/* Tuned Filter Active Status Banner */}
           {activeTunedFilter && !debouncedSearch && (
