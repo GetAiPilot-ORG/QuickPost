@@ -56,11 +56,13 @@ export async function getUserTrendPreferences(userId) {
           
           const hasSavedInterests =
             preferences.selectedTopicIds.length > 0 ||
-            Boolean(preferences.interests.trim());
+            Boolean(preferences.interests.trim()) ||
+            Boolean(preferences.work.trim()) ||
+            preferences.recentSearches.length > 0;
 
           preferences.hasInterests = hasSavedInterests;
-          // Only truly onboarded if user has at least one topic or custom interest saved in DB
-          preferences.onboarded = Boolean(meta.onboarded) && hasSavedInterests;
+          // Only truly onboarded if user has at least one topic, search, or custom interest saved in DB
+          preferences.onboarded = hasSavedInterests;
           preferences.isCustomized = hasSavedInterests;
         }
       } catch (authErr) {
@@ -159,8 +161,12 @@ export async function saveUserTrendPreferences(
 
       nextRecentSearches = sanitizeRecentSearchesList(nextRecentSearches);
 
-      const hasSavedInterests = cleanTopicIds.length > 0 || Boolean(cleanInterests) || Boolean(cleanWork);
-      const isActuallyOnboarded = hasSavedInterests ? Boolean(onboarded) : false;
+      const hasSavedInterests =
+        cleanTopicIds.length > 0 ||
+        Boolean(cleanInterests) ||
+        Boolean(cleanWork) ||
+        nextRecentSearches.length > 0;
+      const isActuallyOnboarded = hasSavedInterests;
 
       const updatedTrend = {
         ...existingTrend,
@@ -199,8 +205,12 @@ export async function saveUserTrendPreferences(
       // Ignore if table does not exist
     }
 
-    const hasSavedInterests = cleanTopicIds.length > 0 || Boolean(cleanInterests) || Boolean(cleanWork);
-    const isActuallyOnboarded = hasSavedInterests ? Boolean(onboarded) : false;
+    const hasSavedInterests =
+      cleanTopicIds.length > 0 ||
+      Boolean(cleanInterests) ||
+      Boolean(cleanWork) ||
+      nextRecentSearches.length > 0;
+    const isActuallyOnboarded = hasSavedInterests;
 
     const savedPreferences = {
       selectedTopicIds: cleanTopicIds,
