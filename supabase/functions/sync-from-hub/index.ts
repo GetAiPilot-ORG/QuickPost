@@ -122,7 +122,13 @@ Deno.serve(async (req: Request) => {
     }
 
     // null expires_at in payload must not accidentally erase existing valid non-null expires_at in DB
-    const finalExpiresAt = expires_at || existingSub?.expires_at || null;
+    // unless the plan is explicitly being downgraded/revoked
+    const isRevoke =
+      mappedPlan === "free" &&
+      (!rawStatus || ["inactive", "expired", "canceled", "cancelled"].includes(rawStatus));
+    const finalExpiresAt = isRevoke
+      ? (expires_at || new Date().toISOString())
+      : (expires_at || existingSub?.expires_at || null);
 
     // ── Upsert into hub_subscriptions (email as primary key) ──────────────
     const record: Record<string, unknown> = {
